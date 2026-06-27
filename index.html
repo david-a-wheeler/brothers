@@ -20,7 +20,11 @@
   <body>
     <div id="game"></div>
 
-    <!-- Module scripts are deferred, so Phaser is already defined here. -->
-    <script type="module" src="src/main.js"></script>
+    <!--
+      The loader (an external module, so no inline script is needed — keeps the
+      page CSP-friendly) resiliently loads the rest of the app. Module scripts
+      are deferred, so Phaser is already defined here.
+    -->
+    <script type="module" src="src/boot.js"></script>
   </body>
 </html>

@@ -20,3 +20,22 @@ body {
   /* Let Phaser own touch drags instead of the browser scrolling/zooming. */
   touch-action: none;
 }
+
+/* Shown by the loader (src/boot.js) only if the game can't be loaded. */
+.load-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 1rem;
+  color: #dddddd;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.load-error button {
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
