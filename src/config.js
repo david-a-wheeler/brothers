@@ -44,8 +44,9 @@ export const Config = {
   slingshot: {
     maxPull: 260, // furthest the launcher can be stretched from the anchor
     minPull: 24, // shorter pulls are treated as a mis-click, not a launch
-    maxSpeed: 170, // launch speed at a full-strength pull
-    curve: 2, // >1 eases in: small pulls give proportionally less, for fine control
+    maxSpeed: 220, // launch speed at a full-strength pull
+    minSpeed: 40, // floor: even the shortest valid pull launches this fast
+    curve: 1.4, // >1 eases in; gentler curve so small/mid pulls still carry
   },
 
   /**
@@ -59,8 +60,29 @@ export const Config = {
     // friction alone. Once a ball drops below `brakeSpeed`, actively bleed off
     // its velocity (keep `brakeFactor` of it each frame) so it comes to rest
     // quickly. Faster motion stays above the threshold and is untouched.
-    brakeSpeed: 1.4,
-    brakeFactor: 0.8,
+    brakeSpeed: 3.0,
+    brakeFactor: 0.7,
+  },
+
+  /**
+   * Physics stepping. We advance Matter in a fixed number of small sub-steps
+   * per frame so fast bodies can't tunnel through thin (and, later, moving)
+   * obstacles: Matter has no continuous collision, so a body that moves farther
+   * in one step than an obstacle is thick passes straight through it.
+   *
+   * Sizing `substeps`: the fastest launch covers ~`slingshot.maxSpeed` px in a
+   * frame, so each sub-step moves ~maxSpeed / substeps. That must stay below the
+   * contact window of the thinnest obstacle — its thickness plus twice the ball
+   * radius. For a 22px wall and a 30px-radius ball that window is ~82px; at
+   * 220 / 8 ≈ 28px per sub-step we're well under it. (If you ever add a thin,
+   * fast, *small-radius* object, raise `substeps` accordingly.) Raising it is
+   * safe for feel: Matter normalises velocities and `body.speed` to per-frame
+   * units, so launch strength, friction, and the settle/brake thresholds are
+   * all sub-step-independent. Cost scales linearly with it.
+   */
+  physics: {
+    substeps: 8,
+    maxFrameDelta: 1000 / 30, // clamp a stalled frame so sub-steps stay stable
   },
 
   /**

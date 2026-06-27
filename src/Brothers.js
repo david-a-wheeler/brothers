@@ -434,14 +434,17 @@ export class Brothers {
     }
 
     const angle = Phaser.Math.Angle.Between(l.x, l.y, a.x, a.y);
-    // Eased launch: normalise the pull, then apply a >1 exponent so gentle
-    // pulls stay gentle while a full draw still hits hard.
+    // Eased launch between a non-zero floor and the max: normalise the pull and
+    // apply a >1 exponent so gentle pulls stay gentle, but `minSpeed` ensures
+    // even the shortest valid pull still carries the pair a meaningful distance.
     const t = Phaser.Math.Clamp((pull - s.minPull) / (s.maxPull - s.minPull), 0, 1);
-    const speed = s.maxSpeed * Math.pow(t, s.curve);
+    const speed = s.minSpeed + (s.maxSpeed - s.minSpeed) * Math.pow(t, s.curve);
     this._aiming = false;
     this._refusalX.setVisible(false);
     sfx.stopBand();
     l.setStatic(false);
+    // Matter normalises velocity to per-frame units regardless of sub-step
+    // count, so `speed` is passed through unscaled.
     l.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     this.setExpressions('flight');
     this._hideIndicator();
@@ -480,6 +483,8 @@ export class Brothers {
     const { brakeSpeed, brakeFactor } = Config.settle;
     for (const b of [this.david, this.ken]) {
       const body = b.go.body;
+      // body.speed is already per-frame (Matter normalises it), so no sub-step
+      // scaling is needed here or in isSettled().
       if (body.isStatic || body.speed === 0 || body.speed >= brakeSpeed) continue;
       b.go.setVelocity(body.velocity.x * brakeFactor, body.velocity.y * brakeFactor);
       b.go.setAngularVelocity(body.angularVelocity * brakeFactor);
