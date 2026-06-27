@@ -11,8 +11,8 @@ This document serves as the architectural blueprint and project roadmap for **Br
 ### Core Gameplay Loop
 
 * **Turn-Based Slingshotting:** The game is turn-based. At the start of a turn, one brother is frozen completely solid (the Anchor), while the player can click/touch and drag the other brother (the Launcher) backward like a slingshot.
-* **The Hybrid Snap:** Upon release, the Launcher rockets toward the Anchor. The Anchor remains frozen until the exact millisecond of impact. When they collide, the Anchor unfreezes, momentum transfers, and both balls ricochet across the level.
-* **Friction & Win States:** Both balls slide and bounce around the map, interacting with hazards and walls. Air friction naturally slows them down. Once both balls completely settle to a stop, the roles reverse for the next turn.
+* **The Hybrid Snap:** Upon release, the Launcher rockets toward the Anchor. The Anchor stays frozen (static) until the moment of impact, at which point it is converted back to a dynamic body so momentum transfers and both balls ricochet across the level. **This static→dynamic hand-off at the instant of collision is the single hardest piece of the game and must be prototyped first** — see the "Hybrid Snap" notes in Phase 3.
+* **Friction & Win States:** Both balls slide and bounce around the map, interacting with hazards and walls. Air friction (`frictionAir`) plus the tether's damping naturally bleed off energy. Because the elastic tether keeps applying a restoring force, the balls will jitter slightly before they truly stop, so "settled" is defined by a debounced low-speed threshold (see Phase 3) rather than an exact-zero check. Once both balls are settled, the roles reverse for the next turn.
 * **The Goal:** The player must navigate the environment and get *at least one* of the brothers to stop in the designated "Destination Area" before running out of a fixed number of moves allocated for that level. If they fail, they start again until they complete that level.
 
 ---
@@ -22,7 +22,7 @@ This document serves as the architectural blueprint and project roadmap for **Br
 To minimize development time while maintaining total architectural control, the game will be built entirely using the following open source software (OSS) components:
 
 * **Game Framework: Phaser 3 (MIT License)**
-Handles the core update loops, asset loading, mobile web layout scaling, multi-touch pointer interactions, camera viewport management, and rendering via WebGL/WebGPU.
+Handles the core update loops, asset loading, mobile web layout scaling, multi-touch pointer interactions, camera viewport management, and rendering via WebGL (with an automatic Canvas fallback).
 * **Physics Engine: Matter.js (MIT License)**
 Integrated natively within Phaser 3. It handles rigid body geometry, circular collisions, elastic constraints, air resistance tracking, and overlap sensors.
 * **Level Designer: Tiled Map Editor (GPL/Free)**
@@ -87,9 +87,11 @@ The game map uses a 2D coordinate system populated by three main types of struct
 This phased approach breaks development down into isolated, highly achievable milestones to keep development quick and rewarding.
 
 ```
-[ Phase 1: Assets ] ──> [ Phase 2: Map Loading ] ──> [ Phase 3: Game Loop ] ──> [ Phase 4: Polish ]
+[ Phase 1: Assets ] ──> [ Phase 2: Map Loading ] ──> [ Phase 3: Game Loop ] ──> [ Phase 4: Polish ] ──> [ Phase 5: Final Art ]
 
 ```
+
+> **Note on phases:** Phase 1 only needs throwaway placeholder art (even two colored circles) so the physics is playable. Phase 5 is where the real photos and the full expression matrix from Section 3 get produced. Keeping them split lets you build and test the game loop without waiting on final art.
 
 ### Phase 1: Basic Assets
 
@@ -105,16 +107,22 @@ This phased approach breaks development down into isolated, highly achievable mi
 * Draw an outer bounding wall layer. Add an "Objects" layer and place rectangles for the `destination` and a `teleporter_source`/`teleporter_destination`.
 * Update the Phaser codebase to load this JSON file using `this.load.tilemapTiledJSON()`.
 * Map mouse-drag and pinch-to-zoom listeners to control `this.cameras.main.scrollX`, `scrollY`, and `setZoom()` so the player can effortlessly look around the large level map.
+* **Resolve the drag conflict up front.** Both the slingshot and the camera pan are "press and drag" gestures, so they must be disambiguated on `pointerdown`: hit-test the pointer against the current Launcher's body — if it hits, the gesture is a slingshot pull; otherwise it pans the camera. A boolean like `isAiming` set on `pointerdown` routes the subsequent `pointermove`/`pointerup` to the correct handler so a camera pan can never be mistaken for a launch (and vice-versa). This flag is also what Phase 4 uses to decide whether a `pointerup` should consume a move.
 
 ### Phase 3: State Machine & Turn Execution Logic (Est. Time: One Evening)
 
-* Integrate the updated hybrid physics code: set the Matter.js constraint length to `0` and stiffness to `0.02`.
+* **The tether constraint.** Connect the two brothers with a single Matter.js `Constraint`, configured as a soft, damped elastic rather than a zero-length spring:
+* `length`: a **small non-zero preferred rest separation** — roughly `1.5 ×` the ball diameter (e.g. `~60px` for a `40px`-diameter ball). This gives the pair a natural resting gap so they don't try to occupy the same point and grind against each other.
+* `stiffness`: `0.02` (soft, slingshot-like restoring force).
+* `damping`: `~0.05–0.1`. This is the key addition — without damping the soft spring stores and returns energy indefinitely and the pair never settles; damping bleeds tether energy out each oscillation so they actually come to rest.
+* Tune `stiffness`, `damping`, and `frictionAir` together against the global `restitution` so a typical launch is satisfying but doesn't pump energy into an endless bounce.
+* **The Hybrid Snap (prototype this in isolation before anything else).** The Anchor is `isStatic: true` during aiming. On release the Launcher flies at it; in a Matter.js `collisionStart` handler, detect the Launcher↔Anchor pair and flip the Anchor to dynamic (`Body.setStatic(anchor, false)`) so the solver resolves the impact with finite mass and momentum transfers. Watch for: (a) flipping *before* the solver runs so the very first contact transfers momentum, and (b) the velocity jolt from the infinite→finite mass swap — if it's too violent, briefly raise the Anchor's mass or clamp the post-impact speed. Keep this as a standalone test scene until it feels right; it's the riskiest mechanic in the game.
 * Code the visual tracking logic that loops over the face sprites and locks their angles to zero while copying the physical ball X/Y coordinates.
-* Wire up the turn swapping mechanism: evaluate `body.speed` across both characters. Once it falls below `0.15` for 30 consecutive frames, clear velocities, invert the static properties between the brothers, and alter the text layout overlay to show whose turn it is.
+* **Settle detection (debounced).** Because the damped tether leaves a little residual jitter, don't test for zero velocity. Evaluate `body.speed` across both characters each frame; once **both** stay below a `~0.15` threshold for `30` consecutive frames, treat the turn as settled: clear both velocities (and angular velocity) to fully kill the jitter, invert the `isStatic` roles between the brothers, and update the turn-indicator overlay. Resetting the consecutive-frame counter whenever either ball exceeds the threshold prevents a brief slow-down mid-bounce from ending the turn early.
 
 ### Phase 4: UI, Score Tracking, & Mobile Optimization (Est. Time: 2-3 Hours)
 
-* Create a `movesLeft` counter initialized at the start of each level scene. Subtract 1 on every `pointerup` event.
+* Create a `movesLeft` counter initialized at the start of each level scene. **Subtract 1 only on an actual launch** — i.e. on a `pointerup` where the `isAiming` flag from Phase 2 is set (the gesture began on the Launcher) *and* the slingshot was pulled past a minimum drag distance. Camera pans, stray clicks, and taps that don't move the ball must not consume a move.
 * Add a simple checking conditional: if `movesLeft === 0` and the state machine switches from `MOVING` back to `AIMING` without a goal trigger, show an "Out of moves" indicator with a restart level option.
 * Implement Phaser's scale manager configuration (`Phaser.Scale.FIT`) to verify that testing on an actual mobile device scales responsively across Chrome, Firefox, and Safari, for both laptops and mobile.
 * Hook up the audio playback lines to match the event triggers listed in the Asset Matrix.
