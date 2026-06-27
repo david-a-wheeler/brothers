@@ -214,7 +214,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * On-screen text: moves remaining, whose turn, and the centre banner.
+   * On-screen text: moves remaining, whose turn, the restart button, and the
+   * centre banner.
    *
    * @returns {void}
    */
@@ -224,6 +225,25 @@ export class GameScene extends Phaser.Scene {
       .text(Config.view.width - 20, 18, '', { fontSize: '22px', color: '#dddddd' })
       .setOrigin(1, 0)
       .setDepth(10);
+
+    // Restart button: re-runs create(), which resets moves, turn, and the
+    // brothers' starting positions. Hover brightens it for affordance.
+    this.restartButton = this.add
+      .text(Config.view.width / 2, 18, 'Restart level', {
+        fontSize: '20px',
+        color: '#ffffff',
+        backgroundColor: '#444444',
+        padding: { x: 12, y: 6 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(10)
+      .setInteractive({ useHandCursor: true });
+    this.restartButton.on('pointerover', () => this.restartButton.setBackgroundColor('#666666'));
+    this.restartButton.on('pointerout', () => this.restartButton.setBackgroundColor('#444444'));
+    this.restartButton.on('pointerdown', (_p, _x, _y, e) => {
+      e?.stopPropagation(); // don't let the click reach the aim/restart router
+      this.scene.restart();
+    });
     this.banner = this.add
       .text(Config.view.width / 2, Config.view.height / 2, '', {
         fontSize: '48px',
