@@ -371,11 +371,9 @@ export class Brothers {
    *  - any part of the launcher is outside the arena;
    *  - it's overlapping the other brother;
    *  - it's sitting on a wall;
-   *  - the launch *path* (launcher -> anchor, i.e. the elastic) crosses an
-   *    interior wall. The ball flies roughly along the elastic, so a wall in
-   *    the line of fire would mean a clipped, chaotic shot — even though the
-   *    launcher itself sits in open space. Each wall is inflated by the ball
-   *    radius so a path that merely grazes a wall edge is caught too.
+   *  - the elastic band (the launcher -> anchor line, which the ball flies
+   *    roughly along) *touches* a wall. A band that only passes near a wall
+   *    without touching it is allowed.
    * The destination goal and teleporter aren't checked — they're non-solid,
    * so resting on or firing across them is fine.
    *
@@ -401,17 +399,17 @@ export class Brothers {
     });
     if (onWall) return true;
 
-    // Elastic / flight path crossing a wall (rectangle inflated by the radius)?
-    const path = new Phaser.Geom.Line(l.x, l.y, a.x, a.y);
-    return Config.level.walls.some((w) => {
-      const rect = new Phaser.Geom.Rectangle(
-        w.x - w.width / 2 - r,
-        w.y - w.height / 2 - r,
-        w.width + r * 2,
-        w.height + r * 2
-      );
-      return Phaser.Geom.Intersects.LineToRectangle(path, rect);
-    });
+    // Does the elastic band itself touch a wall? Tested against the *actual*
+    // wall rectangle (no inflation), so a band that merely passes close by — but
+    // doesn't touch — is allowed. Both balls being clear is already covered by
+    // the launcher checks above and by the band's endpoints sitting on them.
+    const band = new Phaser.Geom.Line(l.x, l.y, a.x, a.y);
+    return Config.level.walls.some((w) =>
+      Phaser.Geom.Intersects.LineToRectangle(
+        band,
+        new Phaser.Geom.Rectangle(w.x - w.width / 2, w.y - w.height / 2, w.width, w.height)
+      )
+    );
   }
 
   /**
