@@ -1,3 +1,51 @@
-#!/usr/bin/sh
+#!/usr/bin/env python3
+"""Tiny threaded static file server for local development.
 
-python3 -m http.server 8000
+Plain `python -m http.server` handles requests without real concurrency, so a
+tab reload that fires many parallel requests at once (the Phaser CDN plus the
+ES-module waterfall: main.js -> config.js, GameScene.js -> Brothers.js, Sfx.js,
+...) can have sockets reset mid-flight. The browser reports
+`net::ERR_SOCKET_NOT_CONNECTED`, a module silently fails to load, and the page
+comes up blank.
+
+This server fixes that by:
+  * using ThreadingHTTPServer so parallel requests are served concurrently;
+  * keeping HTTP/1.0 (a fresh connection per request) so there are no stale
+    keep-alive sockets to reuse across a reload;
+  * sending `Cache-Control: no-store` so a reload never picks up a partially
+    cached module;
+  * pinning correct JavaScript MIME types so ES modules always load as modules.
+
+Usage: ./serve [port]   (default port 8000)
+"""
+import sys
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+
+class Handler(SimpleHTTPRequestHandler):
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        ".js": "text/javascript",
+        ".mjs": "text/javascript",
+        ".ico": "image/x-icon",
+    }
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
+
+def main():
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    httpd = ThreadingHTTPServer(("", port), Handler)
+    print(f"Serving http://localhost:{port}/  (Ctrl+C to stop)")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print()
+    finally:
+        httpd.server_close()
+
+
+if __name__ == "__main__":
+    main()
