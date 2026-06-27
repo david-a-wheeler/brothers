@@ -47,6 +47,29 @@ export class Sfx {
   }
 
   /**
+   * Release the audio thread when the page is hidden, so it costs no CPU in a
+   * background tab. Any held band is stopped first so nothing resumes stuck.
+   *
+   * @returns {void}
+   */
+  suspend() {
+    if (this._ctx && this._ctx.state === 'running') {
+      this.stopBand();
+      this._ctx.suspend();
+    }
+  }
+
+  /**
+   * Resume audio when the page becomes visible again. Only un-suspends a
+   * context that exists and was previously started (never forces a new one).
+   *
+   * @returns {void}
+   */
+  resume() {
+    if (this._ctx && this._ctx.state === 'suspended') this._ctx.resume();
+  }
+
+  /**
    * A short pitched blip with a fast percussive envelope.
    *
    * @param {{freq:number, dur:number, gain?:number, type?:OscillatorType,

@@ -1,5 +1,6 @@
 import { Config } from './config.js';
 import { GameScene } from './scenes/GameScene.js';
+import { sfx } from './Sfx.js';
 
 /**
  * Boot the game. `Phaser` is the global from the CDN script in index.html.
@@ -26,4 +27,19 @@ const gameConfig = {
   scene: [GameScene],
 };
 
-new Phaser.Game(gameConfig);
+const game = new Phaser.Game(gameConfig);
+
+// Don't burn CPU while the page isn't being shown (hidden tab / minimized
+// window). Browsers already throttle requestAnimationFrame for hidden tabs, but
+// the Web Audio thread keeps running, so we suspend it; we also sleep Phaser's
+// loop explicitly to cover browsers that still fire a throttled rAF. The
+// visibilitychange event fires regardless of rAF, so we can always wake back up.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    sfx.suspend();
+    game.loop?.sleep?.();
+  } else {
+    game.loop?.wake?.();
+    sfx.resume();
+  }
+});
