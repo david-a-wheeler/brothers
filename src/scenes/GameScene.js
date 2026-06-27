@@ -312,10 +312,6 @@ export class GameScene extends Phaser.Scene {
   _wireInput() {
     this.input.on('pointerdown', (p) => {
       sfx.unlock(); // browsers need a user gesture to start audio
-      if (this.state === 'OVER') {
-        this.scene.restart();
-        return;
-      }
       if (this._pinchDist) return; // a two-finger pinch owns the gesture
 
       // Pressing on the launcher (while aiming) starts a shot; pressing
@@ -577,7 +573,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Show the end banner and wait for a click to restart.
+   * Show the end banner. The level stays interactive (pan/zoom still work);
+   * restarting is done via the "Restart level" button, not a stray click.
    *
    * @param {string} message
    * @param {string} face  Emoji shown on both brothers.
@@ -586,7 +583,7 @@ export class GameScene extends Phaser.Scene {
   _endGame(message, face) {
     this.state = 'OVER';
     this.brothers.setBothFaces(face);
-    this.banner.setText(`${message}\nclick to restart`);
+    this.banner.setText(`${message}\nuse "Restart level" to play again`);
   }
 
   /**
