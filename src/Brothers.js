@@ -56,6 +56,8 @@ export class Brothers {
 
     /** David's rectangular glasses, overlaid on his face (see {@link update}). */
     this._davidGlasses = this._createGlasses();
+    /** Ken's mustache, overlaid on his face (see {@link update}). */
+    this._kenMustache = this._createMustache();
 
     /** True while the player is dragging the launcher to aim. */
     this._aiming = false;
@@ -131,6 +133,21 @@ export class Brothers {
     g.strokeRoundedRect(-12.5, -4, 11, 7, 2); // left lens
     g.strokeRoundedRect(1.5, -4, 11, 7, 2); // right lens
     g.lineBetween(-1.5, -0.5, 1.5, -0.5); // bridge
+    return g;
+  }
+
+  /**
+   * Build Ken's mustache: two black lobes (wider than tall) meeting at the
+   * centre, drawn around their own origin so {@link update} can sit them above
+   * his mouth. Shown on every expression.
+   *
+   * @returns {Phaser.GameObjects.Graphics}
+   */
+  _createMustache() {
+    const g = this.scene.add.graphics();
+    g.fillStyle(0x000000, 1);
+    g.fillEllipse(-5, 0, 10, 3); // left half
+    g.fillEllipse(5, 0, 10, 3); // right half
     return g;
   }
 
@@ -223,6 +240,9 @@ export class Brothers {
     // the win face (😎), which already has shades.
     this._davidGlasses.setPosition(this.david.go.x, this.david.go.y - 7);
     this._davidGlasses.setVisible(this.david.face.text !== FACES.win);
+
+    // Ken sports a mustache above his mouth on every expression.
+    this._kenMustache.setPosition(this.ken.go.x, this.ken.go.y + 1);
 
     // Keep the glow ring centred on the movable ball (its scale is tweened).
     this._glow.setPosition(this.launcher.go.x, this.launcher.go.y);
