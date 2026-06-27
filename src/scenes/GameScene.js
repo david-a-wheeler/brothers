@@ -1031,12 +1031,11 @@ export class GameScene extends Phaser.Scene {
   _endGame(message, face, color) {
     this.status = 'ENDED';
     this.brothers.setBothFaces(face);
-    this._refreshResetButton(); // now ended -> reset is enabled
+    this._refreshHud(); // -> "Game Ended" text, reset enabled, ENDED status icon
 
-    // Banner: size the backing panel to the text, then pop both in and let the
-    // text gently breathe. No "restart" instruction text — the icon animates
-    // instead (see _attractRestart).
-    this._refreshStatusIcon(); // -> ENDED
+    // Banner: pop the panel + text in, then let the text gently breathe. No
+    // "restart" instruction text — the icon animates instead (see
+    // _attractRestart).
     this.banner.setText(message).setColor(color);
     for (const o of [this.bannerPanel, this.banner]) o.setScale(0).setVisible(true);
     this.tweens.add({
@@ -1093,7 +1092,21 @@ export class GameScene extends Phaser.Scene {
    */
   _refreshHud() {
     const launcher = this.brothers.launcher;
-    this.turnText.setText(`${launcher.name}'s turn — drag to aim`).setColor(launcher.color);
+    // Ended: a neutral "Game Ended". In flight: "Moving" in the launching
+    // ball's colour. Otherwise: prompt for the current aimer's turn.
+    let text;
+    let color;
+    if (this.status === 'ENDED') {
+      text = 'Game Ended';
+      color = '#9aa0a6';
+    } else if (this.phase === 'MOVING') {
+      text = 'Moving';
+      color = launcher.color;
+    } else {
+      text = `${launcher.name}'s turn — drag to aim`;
+      color = launcher.color;
+    }
+    this.turnText.setText(text).setColor(color);
     this.movesText.setText(`Moves left: ${this.movesLeft}`);
     this._refreshResetButton();
     this._refreshStatusIcon();
