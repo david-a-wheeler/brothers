@@ -28,6 +28,7 @@ class Handler(SimpleHTTPRequestHandler):
         ".js": "text/javascript",
         ".mjs": "text/javascript",
         ".ico": "image/x-icon",
+        ".svg": "image/svg+xml",
     }
 
     def end_headers(self):

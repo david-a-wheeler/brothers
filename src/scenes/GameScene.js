@@ -22,6 +22,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Load image assets. The restart icon is an SVG rasterised to a small texture.
+   *
+   * @returns {void}
+   */
+  preload() {
+    if (!this.textures.exists('icon-restart')) {
+      this.load.svg('icon-restart', 'assets/icons/arrow-clockwise.svg', { width: 30, height: 30 });
+    }
+  }
+
+  /**
    * @returns {void}
    */
   create() {
@@ -48,6 +59,8 @@ export class GameScene extends Phaser.Scene {
     /** Camera-pan drag state. */
     this._isPanning = false;
     this._panLast = { x: 0, y: 0 };
+    /** True while the "Restart level?" confirmation modal is open. */
+    this._modalOpen = false;
 
     this._buildHud();
     this._wireInput();
@@ -104,6 +117,7 @@ export class GameScene extends Phaser.Scene {
       this.turnText,
       this.movesText,
       this.restartButton,
+      this.restartTooltip,
       this.banner,
     ];
     main.ignore(this.hudObjects);
@@ -412,23 +426,43 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(1, 0)
       .setDepth(10);
 
-    // Restart button: re-runs create(), which resets moves, turn, and the
-    // brothers' starting positions. Hover brightens it for affordance.
+    // Restart button: the clockwise-arrow icon, vertically centred in the
+    // ribbon. Clicking opens a confirmation modal (see _showRestartConfirm).
     this.restartButton = this.add
-      .text(Config.view.width / 2, 18, 'Restart level', {
-        fontSize: '20px',
+      .image(Config.view.width / 2, h / 2, 'icon-restart')
+      .setDepth(10)
+      .setAlpha(0.8)
+      .setInteractive({ useHandCursor: true });
+
+    // Tooltip shown on hover or press (hidden on release / pointer-out).
+    this.restartTooltip = this.add
+      .text(Config.view.width / 2, h + 12, 'Restart Level', {
+        fontSize: '15px',
         color: '#ffffff',
-        backgroundColor: '#444444',
-        padding: { x: 12, y: 6 },
+        backgroundColor: '#000000',
+        padding: { x: 8, y: 4 },
       })
       .setOrigin(0.5, 0)
-      .setDepth(10)
-      .setInteractive({ useHandCursor: true });
-    this.restartButton.on('pointerover', () => this.restartButton.setBackgroundColor('#666666'));
-    this.restartButton.on('pointerout', () => this.restartButton.setBackgroundColor('#444444'));
+      .setDepth(11)
+      .setVisible(false);
+
+    const showTip = () => this.restartTooltip.setVisible(true);
+    const hideTip = () => this.restartTooltip.setVisible(false);
+    this.restartButton.on('pointerover', () => {
+      this.restartButton.setAlpha(1);
+      showTip();
+    });
+    this.restartButton.on('pointerout', () => {
+      this.restartButton.setAlpha(0.8);
+      hideTip();
+    });
     this.restartButton.on('pointerdown', (_p, _x, _y, e) => {
-      e?.stopPropagation(); // don't let the click reach the aim/restart router
-      this.scene.restart();
+      e?.stopPropagation(); // don't let the press reach the aim/pan router
+      showTip();
+    });
+    this.restartButton.on('pointerup', () => {
+      hideTip();
+      this._showRestartConfirm();
     });
     this.banner = this.add
       .text(Config.view.width / 2, Config.view.height / 2, '', {
@@ -437,6 +471,92 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(10);
+  }
+
+  /**
+   * Open the "Restart Level?" confirmation modal: a dimming backdrop plus a
+   * panel with Yes/No. Built on the fixed UI camera (so it ignores zoom/pan)
+   * and on the world camera's ignore list (so it isn't double-drawn). Game
+   * input is gated by `_modalOpen` while it's up. Yes restarts the scene; No
+   * just dismisses it.
+   *
+   * @returns {void}
+   */
+  _showRestartConfirm() {
+    if (this._modalOpen) return;
+    this._modalOpen = true;
+    this._isPanning = false;
+
+    const cx = Config.view.width / 2;
+    const cy = Config.view.height / 2;
+    const pw = 380;
+    const ph = 190;
+
+    const backdrop = this.add
+      .rectangle(cx, cy, Config.view.width, Config.view.height, 0x000000, 0.6)
+      .setDepth(30)
+      .setInteractive(); // swallow clicks on the dimmed area
+    const panel = this.add.graphics().setDepth(31);
+    panel.fillStyle(0x23232c, 1).fillRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 14);
+    panel.lineStyle(2, 0x4d4d55, 1).strokeRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 14);
+    const title = this.add
+      .text(cx, cy - 48, 'Restart Level?', { fontSize: '28px', color: '#ffffff' })
+      .setOrigin(0.5)
+      .setDepth(32);
+    const yes = this._modalButton(cx - 80, cy + 35, 'Yes', '#2e7d46', () => this.scene.restart());
+    const no = this._modalButton(cx + 80, cy + 35, 'No', '#555560', () =>
+      this._hideRestartConfirm()
+    );
+
+    this._modalParts = [backdrop, panel, title, yes, no];
+    this.cameras.main.ignore(this._modalParts); // HUD-camera only
+
+    // Gentle fade-in so it doesn't pop in harshly.
+    for (const part of this._modalParts) {
+      const to = part === backdrop ? 0.6 : 1;
+      part.setAlpha(0);
+      this.tweens.add({ targets: part, alpha: to, duration: 130, ease: 'Sine.Out' });
+    }
+  }
+
+  /**
+   * A pill button for the modal: rounded text with a hover lift and a click
+   * handler. Returned so the caller can group/ignore/destroy it.
+   *
+   * @param {number} x
+   * @param {number} y
+   * @param {string} label
+   * @param {string} bg     CSS background colour.
+   * @param {() => void} onClick
+   * @returns {Phaser.GameObjects.Text}
+   */
+  _modalButton(x, y, label, bg, onClick) {
+    const btn = this.add
+      .text(x, y, label, {
+        fontSize: '22px',
+        color: '#ffffff',
+        backgroundColor: bg,
+        padding: { x: 26, y: 8 },
+      })
+      .setOrigin(0.5)
+      .setDepth(32)
+      .setInteractive({ useHandCursor: true });
+    btn.on('pointerover', () => btn.setAlpha(0.85));
+    btn.on('pointerout', () => btn.setAlpha(1));
+    btn.on('pointerup', onClick);
+    return btn;
+  }
+
+  /**
+   * Dismiss the confirmation modal with no other effect.
+   *
+   * @returns {void}
+   */
+  _hideRestartConfirm() {
+    if (!this._modalParts) return;
+    for (const part of this._modalParts) part.destroy();
+    this._modalParts = null;
+    this._modalOpen = false;
   }
 
   // --- Input --------------------------------------------------------------
@@ -451,7 +571,9 @@ export class GameScene extends Phaser.Scene {
   _wireInput() {
     this.input.on('pointerdown', (p) => {
       sfx.unlock(); // browsers need a user gesture to start audio
+      if (this._modalOpen) return; // modal owns input; its buttons handle themselves
       if (this._pinchDist) return; // a two-finger pinch owns the gesture
+      if (p.y < this._hudHeight) return; // press is on the HUD ribbon, not the arena
 
       // Pressing on the launcher (while aiming) starts a shot; pressing
       // anywhere else on the board pans the camera instead.
@@ -471,6 +593,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.on('pointermove', (p) => {
+      if (this._modalOpen) return;
       if (this.isAiming) {
         const w = this.cameras.main.getWorldPoint(p.x, p.y);
         this.brothers.dragTo(w.x, w.y);
@@ -491,6 +614,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.on('pointerup', () => {
+      if (this._modalOpen) return;
       this._isPanning = false;
       if (!this.isAiming) return;
       this.isAiming = false;
@@ -505,6 +629,7 @@ export class GameScene extends Phaser.Scene {
 
     // Laptop: mouse wheel zooms toward the cursor.
     this.input.on('wheel', (p, _over, _dx, dy) => {
+      if (this._modalOpen) return;
       const step = Config.zoom.wheelStep;
       this._zoomBy(dy > 0 ? 1 - step : 1 + step, p.x, p.y);
     });
@@ -542,6 +667,7 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _updatePinch() {
+    if (this._modalOpen) return;
     const p1 = this.input.pointer1;
     const p2 = this.input.pointer2;
     if (!(p1?.isDown && p2?.isDown)) {

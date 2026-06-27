@@ -24,10 +24,21 @@ license: no royalties, no attribution requirements, and no usage restrictions.
 The generating code in `src/Sfx.js` is covered by this project's own software
 license.
 
+## Icons
+
+| File | Source | License |
+| ---- | ------ | ------- |
+| `assets/icons/arrow-clockwise.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`arrow-clockwise`) | MIT — see `assets/icons/LICENSE` |
+
+The only modification is setting the fill color to white so it reads on the dark
+HUD ribbon. The MIT license text and copyright are preserved in
+`assets/icons/LICENSE`.
+
 ## Other assets
 
-- **Graphics:** All visuals (balls, walls' brick pattern, target, grid, HUD)
-  are drawn procedurally with Phaser's graphics primitives — no image files.
+- **Graphics:** Remaining visuals (balls, walls' brick pattern, target, grid,
+  HUD panel) are drawn procedurally with Phaser's graphics primitives — no image
+  files.
 - **Fonts:** Default Phaser/browser fonts only; none bundled.
 - **Emoji:** Faces use standard Unicode emoji rendered by the system font; no
   emoji image assets are bundled.
