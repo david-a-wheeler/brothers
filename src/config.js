@@ -85,5 +85,16 @@ export const Config = {
       target: { x: 160, y: 160 },
       retainVelocity: 0.6, // keep 60% of speed coming out of the portal
     },
+    /**
+     * Short interior brick walls (centre x/y, width/height). A few light
+     * obstacles that force indirect shots without sealing off any route.
+     * `restitution` is how bouncy they are off the balls.
+     */
+    walls: [
+      { x: 640, y: 470, width: 220, height: 22 }, // mid-field barrier
+      { x: 780, y: 300, width: 22, height: 170 }, // shields the goal's lower-left
+      { x: 380, y: 250, width: 160, height: 22 }, // upper-left barrier
+    ],
+    wallRestitution: 0.6,
   },
 };

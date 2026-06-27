@@ -25,6 +25,7 @@ export class GameScene extends Phaser.Scene {
    */
   create() {
     this._buildArena();
+    this._buildWalls();
     this._buildZones();
 
     this.brothers = new Brothers(this);
@@ -52,6 +53,59 @@ export class GameScene extends Phaser.Scene {
    */
   _buildArena() {
     this.matter.world.setBounds(0, 0, Config.view.width, Config.view.height, 64);
+  }
+
+  /**
+   * Generate a small, seamless brick-pattern texture once (offset courses of
+   * bricks separated by mortar), so walls can be drawn as tiling sprites at
+   * any size without an image asset.
+   *
+   * @returns {void}
+   */
+  _makeBrickTexture() {
+    if (this.textures.exists('brick')) return;
+    const mortar = 0x4a3327;
+    const brick = 0xb5651d;
+    const bw = 24;
+    const bh = 11;
+    const tile = bw + 2; // brick + mortar gap
+    const w = tile * 2; // two courses wide for the half-brick offset
+    const h = (bh + 2) * 2;
+
+    const g = this.add.graphics();
+    g.fillStyle(mortar, 1).fillRect(0, 0, w, h);
+    g.fillStyle(brick, 1);
+    // Course 0: bricks flush to the left.
+    g.fillRect(0, 0, bw, bh).fillRect(tile, 0, bw, bh);
+    // Course 1: offset half a brick (wraps seamlessly across the tile edge).
+    g.fillRect(tile / 2, bh + 2, bw, bh);
+    g.fillRect(0, bh + 2, tile / 2 - 2, bh); // left partial
+    g.fillRect(tile / 2 + bw, bh + 2, tile / 2 - 2, bh); // right partial
+    g.generateTexture('brick', w, h);
+    g.destroy();
+  }
+
+  /**
+   * Short interior brick walls: a tiling-sprite visual plus a matching static
+   * Matter body for each entry in `Config.level.walls`. Labelled 'wall' so the
+   * collision router leaves them alone (they just deflect the balls).
+   *
+   * @returns {void}
+   */
+  _buildWalls() {
+    this._makeBrickTexture();
+    for (const wall of Config.level.walls) {
+      this.add.tileSprite(wall.x, wall.y, wall.width, wall.height, 'brick');
+      // A thin dark frame so the wall reads crisply against the background.
+      this.add
+        .rectangle(wall.x, wall.y, wall.width, wall.height)
+        .setStrokeStyle(2, 0x2a1d15, 0.9);
+      const body = this.matter.add.rectangle(wall.x, wall.y, wall.width, wall.height, {
+        isStatic: true,
+        restitution: Config.level.wallRestitution,
+      });
+      body.label = 'wall';
+    }
   }
 
   /**
