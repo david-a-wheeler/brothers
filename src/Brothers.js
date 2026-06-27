@@ -165,6 +165,7 @@ export class Brothers {
    */
   update() {
     this._applyPullOnlyTether();
+    this._containInArena();
 
     for (const b of [this.david, this.ken]) {
       b.face.setPosition(b.go.x, b.go.y);
@@ -197,6 +198,52 @@ export class Brothers {
       this.ken.go.y
     );
     this._tether.stiffness = gap > Config.tether.restLength ? Config.tether.stiffness : 0;
+  }
+
+  /**
+   * Hard safety net: keep both balls inside the arena no matter what. Matter's
+   * world-bounds walls can be tunnelled through at high launch speeds (a fast
+   * ball can jump clean past them in a single step), so each frame we clamp any
+   * dynamic ball back inside the play area and reflect the offending velocity
+   * component — matching the bounce the wall would have given — so it never
+   * escapes and still rebounds naturally.
+   *
+   * @returns {void}
+   */
+  _containInArena() {
+    const r = Config.ball.radius;
+    const e = Config.ball.restitution;
+    const { width, height } = Config.view;
+    for (const b of [this.david, this.ken]) {
+      const body = b.go.body;
+      if (body.isStatic) continue; // a frozen ball isn't moving anywhere
+
+      let { x, y } = b.go;
+      let { x: vx, y: vy } = body.velocity;
+      let hit = false;
+      if (x < r) {
+        x = r;
+        vx = Math.abs(vx) * e;
+        hit = true;
+      } else if (x > width - r) {
+        x = width - r;
+        vx = -Math.abs(vx) * e;
+        hit = true;
+      }
+      if (y < r) {
+        y = r;
+        vy = Math.abs(vy) * e;
+        hit = true;
+      } else if (y > height - r) {
+        y = height - r;
+        vy = -Math.abs(vy) * e;
+        hit = true;
+      }
+      if (hit) {
+        b.go.setPosition(x, y);
+        b.go.setVelocity(vx, vy);
+      }
+    }
   }
 
   /**

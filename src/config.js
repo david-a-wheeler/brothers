@@ -9,6 +9,19 @@ export const Config = {
   /** Logical resolution; the Scale manager fits this to the screen. */
   view: { width: 1024, height: 768, background: '#1b1b22' },
 
+  /**
+   * Camera zoom limits and step sizes. `min` of 1 keeps the whole arena in
+   * view (no zooming out into empty space); zooming in is clamped to `max`.
+   */
+  zoom: {
+    min: 1,
+    max: 3,
+    wheelStep: 0.1, // fraction of zoom changed per mouse-wheel notch
+  },
+
+  /** A faint reference grid on the arena floor, so zooming reads clearly. */
+  grid: { size: 64, color: 0xffffff, alpha: 0.06 },
+
   /** Shared rigid-body settings for both brothers. */
   ball: {
     radius: 30,

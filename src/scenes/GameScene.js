@@ -25,6 +25,7 @@ export class GameScene extends Phaser.Scene {
    */
   create() {
     this._buildArena();
+    this._buildFloorGrid();
     this._buildWalls();
     this._buildZones();
 
@@ -37,11 +38,55 @@ export class GameScene extends Phaser.Scene {
     this.isAiming = false;
     /** Wall-clock ms before which teleporter hits are ignored (debounce). */
     this.teleportLockUntil = 0;
+    /** Last finger-spread distance while pinch-zooming (0 = not pinching). */
+    this._pinchDist = 0;
+    /** Camera-pan drag state. */
+    this._isPanning = false;
+    this._panLast = { x: 0, y: 0 };
 
     this._buildHud();
     this._wireInput();
     this._wireCollisions();
+    this._setupCameras();
     this._refreshHud();
+  }
+
+  /**
+   * A faint grid on the arena floor. Drawn below everything (depth -1) so it
+   * reads as the ground and scales with the world when the camera zooms,
+   * giving the zoom a visible frame of reference.
+   *
+   * @returns {void}
+   */
+  _buildFloorGrid() {
+    const { width, height } = Config.view;
+    const g = Config.grid;
+    const gfx = this.add.graphics().setDepth(-1);
+    gfx.lineStyle(1, g.color, g.alpha);
+    for (let x = g.size; x < width; x += g.size) gfx.lineBetween(x, 0, x, height);
+    for (let y = g.size; y < height; y += g.size) gfx.lineBetween(0, y, width, y);
+  }
+
+  /**
+   * Split rendering between the zoomable world camera and a fixed UI camera so
+   * the HUD never zooms or scrolls with the arena. The main camera is bounded
+   * to the arena (so zooming in can't scroll past the edges) and renders
+   * everything except the HUD; the UI camera renders only the HUD.
+   *
+   * @returns {void}
+   */
+  _setupCameras() {
+    const { width, height } = Config.view;
+    const main = this.cameras.main;
+    main.setBounds(0, 0, width, height);
+    main.setZoom(1);
+
+    this.uiCamera = this.cameras.add(0, 0, width, height);
+
+    this.hudObjects = [this.turnText, this.movesText, this.restartButton, this.banner];
+    main.ignore(this.hudObjects);
+    // The UI camera shows only the HUD: ignore every other display object.
+    this.uiCamera.ignore(this.children.list.filter((o) => !this.hudObjects.includes(o)));
   }
 
   // --- Level construction -------------------------------------------------
@@ -203,6 +248,7 @@ export class GameScene extends Phaser.Scene {
    */
   _spawnRing(x, y, radius, color) {
     const ring = this.add.circle(x, y, radius).setStrokeStyle(3, color, 0.9).setDepth(5);
+    this.uiCamera?.ignore(ring); // world effect: keep it off the fixed HUD camera
     this.tweens.add({
       targets: ring,
       scale: Config.anim.ring.growScale,
@@ -256,9 +302,9 @@ export class GameScene extends Phaser.Scene {
   // --- Input --------------------------------------------------------------
 
   /**
-   * Slingshot input. A drag only counts as aiming if it *starts* on the
-   * current launcher (a hit-test), so stray clicks never fire a launch.
-   * This is also the gate that keeps a future camera-pan drag separate.
+   * Slingshot, pan, and zoom input. A drag only aims if it *starts* on the
+   * current launcher (a hit-test), so stray presses never fire a launch —
+   * those pan the camera instead. Wheel and pinch handle zoom.
    *
    * @returns {void}
    */
@@ -268,21 +314,46 @@ export class GameScene extends Phaser.Scene {
         this.scene.restart();
         return;
       }
-      if (this.state !== 'AIMING') return;
+      if (this._pinchDist) return; // a two-finger pinch owns the gesture
 
-      const l = this.brothers.launcher.go;
-      const reach = Config.ball.radius * 1.4; // forgiving for touch
-      if (Phaser.Math.Distance.Between(p.worldX, p.worldY, l.x, l.y) <= reach) {
-        this.isAiming = true;
-        this.brothers.beginAim();
+      // Pressing on the launcher (while aiming) starts a shot; pressing
+      // anywhere else on the board pans the camera instead.
+      if (this.state === 'AIMING') {
+        const l = this.brothers.launcher.go;
+        const reach = Config.ball.radius * 1.4; // forgiving for touch
+        const w = this.cameras.main.getWorldPoint(p.x, p.y);
+        if (Phaser.Math.Distance.Between(w.x, w.y, l.x, l.y) <= reach) {
+          this.isAiming = true;
+          this.brothers.beginAim();
+          return;
+        }
       }
+      this._isPanning = true;
+      this._panLast.x = p.x;
+      this._panLast.y = p.y;
     });
 
     this.input.on('pointermove', (p) => {
-      if (this.isAiming) this.brothers.dragTo(p.worldX, p.worldY);
+      if (this.isAiming) {
+        const w = this.cameras.main.getWorldPoint(p.x, p.y);
+        this.brothers.dragTo(w.x, w.y);
+        return;
+      }
+      if (this._isPanning) {
+        // Drag the world under the finger: scroll opposite to the move,
+        // scaled by zoom. Camera bounds clamp it to the arena.
+        const cam = this.cameras.main;
+        cam.setScroll(
+          cam.scrollX - (p.x - this._panLast.x) / cam.zoom,
+          cam.scrollY - (p.y - this._panLast.y) / cam.zoom
+        );
+        this._panLast.x = p.x;
+        this._panLast.y = p.y;
+      }
     });
 
     this.input.on('pointerup', () => {
+      this._isPanning = false;
       if (!this.isAiming) return;
       this.isAiming = false;
 
@@ -293,6 +364,61 @@ export class GameScene extends Phaser.Scene {
       this.state = 'MOVING';
       this._refreshHud();
     });
+
+    // Laptop: mouse wheel zooms toward the cursor.
+    this.input.on('wheel', (p, _over, _dx, dy) => {
+      const step = Config.zoom.wheelStep;
+      this._zoomBy(dy > 0 ? 1 - step : 1 + step, p.x, p.y);
+    });
+
+    // Mobile: make a second touch pointer available for pinch (handled in
+    // update() so we can track the changing finger spread frame to frame).
+    this.input.addPointer(1);
+  }
+
+  /**
+   * Multiply the camera zoom by `factor` (clamped) while keeping the world
+   * point under (`screenX`, `screenY`) fixed, so zoom homes in on the cursor
+   * or pinch midpoint rather than the screen centre. Camera bounds keep the
+   * view from scrolling past the arena edges.
+   *
+   * @param {number} factor   Zoom multiplier (>1 in, <1 out).
+   * @param {number} screenX  Focal point, screen pixels.
+   * @param {number} screenY
+   * @returns {void}
+   */
+  _zoomBy(factor, screenX, screenY) {
+    const cam = this.cameras.main;
+    const before = cam.getWorldPoint(screenX, screenY);
+    cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, Config.zoom.min, Config.zoom.max));
+    const after = cam.getWorldPoint(screenX, screenY);
+    cam.setScroll(cam.scrollX + (before.x - after.x), cam.scrollY + (before.y - after.y));
+  }
+
+  /**
+   * Two-finger pinch zoom. Tracks the spread between the two active touch
+   * pointers; the per-frame change in spread drives the zoom about their
+   * midpoint. Cancels any in-progress aim so a pinch never fires a shot.
+   *
+   * @returns {void}
+   */
+  _updatePinch() {
+    const p1 = this.input.pointer1;
+    const p2 = this.input.pointer2;
+    if (!(p1?.isDown && p2?.isDown)) {
+      this._pinchDist = 0;
+      return;
+    }
+    this._isPanning = false; // pinch takes over from a single-finger pan
+    if (this.isAiming) {
+      this.isAiming = false;
+      this.brothers.cancelAim();
+    }
+    const dist = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
+    if (this._pinchDist > 0 && dist > 0) {
+      this._zoomBy(dist / this._pinchDist, (p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+    }
+    this._pinchDist = dist;
   }
 
   /**
@@ -349,6 +475,7 @@ export class GameScene extends Phaser.Scene {
    */
   update() {
     this.brothers.update();
+    this._updatePinch();
 
     if (this.state === 'MOVING') {
       this.brothers.brakeSlowMotion();
