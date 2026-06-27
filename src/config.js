@@ -129,7 +129,7 @@ export const Config = {
     ken: { x: 440, y: 540 },
     destination: { x: 880, y: 160, radius: 60 },
     teleporter: {
-      source: { x: 512, y: 300, radius: 44 },
+      source: { x: 620, y: 300, radius: 44 }, // centred in the gap between the upper-left barrier and the goal-shield wall
       target: { x: 160, y: 160 },
       retainVelocity: 0.6, // keep 60% of speed coming out of the portal
     },
