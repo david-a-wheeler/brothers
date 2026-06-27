@@ -30,6 +30,11 @@ license.
 - **Fonts:** Default Phaser/browser fonts only; none bundled.
 - **Emoji:** Faces use standard Unicode emoji rendered by the system font; no
   emoji image assets are bundled.
+- **`favicon.ico`:** The smiling-face-with-sunglasses (😎, U+1F60E) icon was
+  rendered from the **Noto Color Emoji** font, which is licensed under the
+  **SIL Open Font License 1.1** (https://github.com/googlefonts/noto-emoji) —
+  a clearly open, royalty-free license. The font itself is not bundled; only
+  this one rendered raster icon is committed.
 
 If any third-party asset is ever added, prefer a clearly open, royalty-free
 license (e.g. CC0 1.0 / public domain), and add a row here documenting the
