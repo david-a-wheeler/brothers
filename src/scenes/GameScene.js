@@ -282,6 +282,12 @@ export class GameScene extends Phaser.Scene {
    */
   _wireCollisions() {
     this.matter.world.on('collisionstart', (event) => {
+      // Snap and teleport are only meaningful while a shot is in flight. The
+      // pull-only tether lets the pair rest in contact, so a contact during
+      // AIMING must NOT trigger the snap (it would unfreeze the anchor and let
+      // a drag move the brother that's supposed to be immobile).
+      if (this.state !== 'MOVING') return;
+
       for (const pair of event.pairs) {
         const labels = [pair.bodyA.label, pair.bodyB.label];
 
