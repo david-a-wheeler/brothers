@@ -350,8 +350,9 @@ export class GameScene extends Phaser.Scene {
   update() {
     this.brothers.update();
 
-    if (this.state === 'MOVING' && this.brothers.isSettled()) {
-      this._resolveTurn();
+    if (this.state === 'MOVING') {
+      this.brothers.brakeSlowMotion();
+      if (this.brothers.isSettled()) this._resolveTurn();
     }
   }
 

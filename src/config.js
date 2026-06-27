@@ -39,7 +39,16 @@ export const Config = {
    * "Settled" = both balls below `speedThreshold` for `frames` frames in a
    * row. Debounced so a momentary slow-down mid-bounce won't end the turn.
    */
-  settle: { speedThreshold: 0.15, frames: 30 },
+  settle: {
+    speedThreshold: 0.15,
+    frames: 30,
+    // The slow "crawl" at the end of a shot decays painfully slowly under air
+    // friction alone. Once a ball drops below `brakeSpeed`, actively bleed off
+    // its velocity (keep `brakeFactor` of it each frame) so it comes to rest
+    // quickly. Faster motion stays above the threshold and is untouched.
+    brakeSpeed: 1.4,
+    brakeFactor: 0.8,
+  },
 
   /**
    * Zone animation feel. Idle loops keep the goal/teleporter looking "alive";

@@ -350,6 +350,25 @@ export class Brothers {
   }
 
   /**
+   * Shorten the slow crawl at the end of a shot: any ball already moving
+   * slowly (below `brakeSpeed`) gets extra velocity damping each frame, so it
+   * reaches rest — and the turn ends — sooner. Faster motion is above the
+   * threshold and left alone, so launches and bounces feel unchanged. Call
+   * once per frame while the shot is in flight.
+   *
+   * @returns {void}
+   */
+  brakeSlowMotion() {
+    const { brakeSpeed, brakeFactor } = Config.settle;
+    for (const b of [this.david, this.ken]) {
+      const body = b.go.body;
+      if (body.isStatic || body.speed === 0 || body.speed >= brakeSpeed) continue;
+      b.go.setVelocity(body.velocity.x * brakeFactor, body.velocity.y * brakeFactor);
+      b.go.setAngularVelocity(body.angularVelocity * brakeFactor);
+    }
+  }
+
+  /**
    * Debounced settle test. Call once per frame while the balls are moving.
    *
    * @returns {boolean} true once both balls have stayed slow long enough.
