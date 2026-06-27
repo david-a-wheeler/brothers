@@ -1,0 +1,35 @@
+# Asset licensing
+
+This document records the provenance and license of every non-code asset in
+the game, so the project's licensing is unambiguous.
+
+## Audio
+
+All sound effects are **synthesised at runtime** in `src/Sfx.js` using the
+browser's Web Audio API. There are **no audio files** and **no third-party
+samples** bundled or downloaded — the waveforms are generated entirely by our
+own code.
+
+| Cue   | Trigger                          | How it's made                                            |
+| ----- | -------------------------------- | -------------------------------------------------------- |
+| `hit` | Two brothers collide             | Bandpassed white-noise burst + short tonal knock (click) |
+| `win` | Level cleared                    | Rising C-major arpeggio (C5–E5–G5–C6) + sparkle          |
+| `lose`| Out of moves                     | Two downward-bending lowpass tones ("awww")              |
+
+**License:** Not applicable / fully owned. Because these sounds are produced by
+original code at runtime rather than from recorded media, there is nothing to
+license: no royalties, no attribution requirements, and no usage restrictions.
+The generating code in `src/Sfx.js` is covered by this project's own software
+license.
+
+## Other assets
+
+- **Graphics:** All visuals (balls, walls' brick pattern, target, grid, HUD)
+  are drawn procedurally with Phaser's graphics primitives — no image files.
+- **Fonts:** Default Phaser/browser fonts only; none bundled.
+- **Emoji:** Faces use standard Unicode emoji rendered by the system font; no
+  emoji image assets are bundled.
+
+If any third-party asset is ever added, prefer a clearly open, royalty-free
+license (e.g. CC0 1.0 / public domain), and add a row here documenting the
+source URL and license before committing the file.

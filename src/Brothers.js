@@ -1,4 +1,5 @@
 import { Config } from './config.js';
+import { sfx } from './Sfx.js';
 
 /**
  * Emoji faces per game state. Faces float on top of the physics bodies and
@@ -311,6 +312,7 @@ export class Brothers {
     this._aiming = true;
     this.launcher.go.setStatic(true);
     this.setExpressions('drag');
+    sfx.startBand();
   }
 
   /**
@@ -330,6 +332,11 @@ export class Brothers {
       y = a.y + Math.sin(angle) * max;
     }
     this.launcher.go.setPosition(x, y);
+
+    // Drive the stretching-band sound from how far it's drawn past rest length.
+    const gap = Phaser.Math.Distance.Between(a.x, a.y, x, y);
+    const rest = Config.tether.restLength;
+    sfx.updateBand((gap - rest) / (max - rest));
   }
 
   /**
@@ -344,6 +351,7 @@ export class Brothers {
     }
     this._aiming = false;
     this._refusalX.setVisible(false);
+    sfx.stopBand();
     this.launcher.go.setStatic(false);
     this.launcher.go.setVelocity(0, 0);
     this.setExpressions('idle');
@@ -426,6 +434,7 @@ export class Brothers {
     const speed = s.maxSpeed * Math.pow(t, s.curve);
     this._aiming = false;
     this._refusalX.setVisible(false);
+    sfx.stopBand();
     l.setStatic(false);
     l.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     this.setExpressions('flight');

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Brothers - Turn Based MVP</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+
+<script>
+const config = {
+    type: Phaser.AUTO,
+    width: 1024,
+    height: 768,
+    backgroundColor: '#222222',
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+    physics: {
+        default: 'matter',
+        matter: {
+            gravity: { x: 0, y: 0 },
+            debug: true 
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+
+const game = new Phaser.Game(config);
+
+// --- Game Variables ---
+let davidBall, kenBall;
+let davidFace, kenFace;
+let elasticLine;
+let teleporterDestination;
+let statusText, turnText;
+
+// --- Turn State Machine Variables ---
+let gameState = 'AIMING'; // States: 'AIMING' or 'MOVING'
+let currentLauncher;
+let currentAnchor;
+let stopCheckTimer = 0; // Helps ensure balls are fully stopped before swapping turns
+
+function preload() {}
+
+function create() {
+    const world = this.matter.world;
+    
+    // 1. Boundaries
+    world.setBounds(0, 0, config.width, config.height, 32, true, true, true, true);
+
+    const physicsOptions = { 
+        shape: { type: 'circle', radius: 30 },
+        frictionAir: 0.04, // Slightly higher friction so they settle faster
+        restitution: 0.7   
+    };
+
+    // Blue David
+    davidBall = this.add.circle(300, 450, 30, 0x3498db);
+    this.matter.add.gameObject(davidBall, physicsOptions);
+    davidBall.body.label = 'brother';
+
+    // Red Ken
+    kenBall = this.add.circle(450, 450, 30, 0xe74c3c);
+    this.matter.add.gameObject(kenBall, physicsOptions);
+    kenBall.body.label = 'brother';
+
+    // 2. The Elastic Constraint (Stiffness 0.04 means a nice stretchy pull)
+    this.matter.add.constraint(davidBall.body, kenBall.body, 120, 0.04);
+
+    // 3. Faces
+    davidFace = this.add.text(300, 450, '😃', { fontSize: '32px' }).setOrigin(0.5);
+    kenFace = this.add.text(450, 450, '🤨', { fontSize: '32px' }).setOrigin(0.5);
+
+    // 4. Setup Initial Turn Roles
+    // David starts as the movable launcher; Ken starts as the immovable anchor.
+    currentLauncher = davidBall;
+    currentAnchor = kenBall;
+    currentAnchor.setStatic(true); // Matter ignores static objects for pointer drags automatically!
+
+    // 5. Environmental Elements
+    // Destination
+    this.add.circle(900, 150, 50, 0x2ecc71, 0.4); 
+    const destinationSensor = this.matter.add.circle(900, 150, 50, { isSensor: true, isStatic: true });
+    destinationSensor.label = 'destination';
+
+    // Teleporter
+    this.add.circle(512, 250, 40, 0x9b59b6, 0.5); 
+    const teleporterSource = this.matter.add.circle(512, 250, 40, { isSensor: true, isStatic: true });
+    teleporterSource.label = 'teleporter_source';
+
+    this.add.rectangle(150, 150, 80, 80, 0xe67e22, 0.3); 
+    teleporterDestination = { x: 150, y: 150 };
+
+    // UI Text Elements
+    statusText = this.add.text(config.width / 2, config.height / 2, '', { fontSize: '48px', color: '#ffffff' }).setOrigin(0.5);
+    turnText = this.add.text(20, 20, "David's Turn - Pull Blue!", { fontSize: '24px', color: '#3498db' });
+
+    elasticLine = this.add.graphics();
+
+    // 6. Pointer Constraint for Slingshotting
+    this.matter.add.pointerConstraint({
+        stiffness: 0.1,
+        damping: 0.1
+    });
+
+    // 7. Fire Layout Mechanics when player releases their drag
+    this.input.on('pointerup', () => {
+        if (gameState === 'AIMING') {
+            // Release the anchor so physics calculations take over completely
+            currentAnchor.setStatic(false);
+            gameState = 'MOVING';
+            turnText.setText("Balls in motion...");
+            turnText.setColor('#ffffff');
+            
+            // Expression changes during chaos!
+            davidFace.setText('😮');
+            kenFace.setText('😫');
+        }
+    });
+
+    // 8. Collisions
+    world.on('collisionstart', (event) => {
+        event.pairs.forEach(pair => {
+            const bodyA = pair.bodyA;
+            const bodyB = pair.bodyB;
+
+            if (bodyA.label === 'teleporter_source' || bodyB.label === 'teleporter_source') {
+                if (bodyA.label === 'brother' || bodyB.label === 'brother') {
+                    let offsetX = kenBall.x - davidBall.x;
+                    let offsetY = kenBall.y - davidBall.y;
+
+                    let dampenFactor = 0.6;
+                    let newVelDavid = { x: davidBall.body.velocity.x * dampenFactor, y: davidBall.body.velocity.y * dampenFactor };
+                    let newVelKen   = { x: kenBall.body.velocity.x * dampenFactor, y: kenBall.body.velocity.y * dampenFactor };
+
+                    davidBall.setPosition(teleporterDestination.x, teleporterDestination.y);
+                    kenBall.setPosition(teleporterDestination.x + offsetX, teleporterDestination.y + offsetY);
+
+                    davidBall.setVelocity(newVelDavid.x, newVelDavid.y);
+                    kenBall.setVelocity(newVelKen.x, newVelKen.y);
+                }
+            }
+
+            if (bodyA.label === 'destination' || bodyB.label === 'destination') {
+                if (bodyA.label === 'brother' || bodyB.label === 'brother') {
+                    statusText.setText('LEVEL CLEAR!');
+                    this.matter.world.pause();
+                    this.time.delayedCall(2000, () => { this.scene.restart(); });
+                }
+            }
+        });
+    });
+}
+
+function update() {
+    // Keep faces upright and glued to the balls
+    davidFace.x = davidBall.x;
+    davidFace.y = davidBall.y;
+    kenFace.x = kenBall.x;
+    kenFace.y = kenBall.y;
+
+    // Draw Elastic Band
+    elasticLine.clear();
+    elasticLine.lineStyle(4, 0xf1c40f, 0.8); 
+    elasticLine.beginPath();
+    elasticLine.moveTo(davidBall.x, davidBall.y);
+    elasticLine.lineTo(kenBall.x, kenBall.y);
+    elasticLine.strokePath();
+
+    // --- State Machine: Monitor for when movement stops ---
+    if (gameState === 'MOVING') {
+        // Check if both balls are moving slower than a tiny speed threshold
+        if (davidBall.body.speed < 0.15 && kenBall.body.speed < 0.15) {
+            stopCheckTimer++;
+            
+            // Require them to stay stopped for roughly 20 consecutive frames to avoid stutter triggers
+            if (stopCheckTimer > 20) {
+                // Force dead stop
+                davidBall.setVelocity(0, 0);
+                kenBall.setVelocity(0, 0);
+                
+                // Swap Roles
+                let temp = currentLauncher;
+                currentLauncher = currentAnchor;
+                currentAnchor = temp;
+                
+                // Lock the new anchor in place
+                currentAnchor.setStatic(true);
+                currentLauncher.setStatic(false);
+                
+                // Update UI and Reset State
+                gameState = 'AIMING';
+                stopCheckTimer = 0;
+
+                if (currentLauncher === davidBall) {
+                    turnText.setText("David's Turn - Pull Blue!");
+                    turnText.setColor('#3498db');
+                    davidFace.setText('😃');
+                    kenFace.setText('🤨');
+                } else {
+                    turnText.setText("Ken's Turn - Pull Red!");
+                    turnText.setColor('#e74c3c');
+                    davidFace.setText('🤨');
+                    kenFace.setText('😃');
+                }
+            }
+        } else {
+            // Reset timer if something is still sliding
+            stopCheckTimer = 0;
+        }
+    }
+}
+</script>
+
+</body>
+</html>

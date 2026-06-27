@@ -1,5 +1,6 @@
 import { Config } from '../config.js';
 import { Brothers, FACES } from '../Brothers.js';
+import { sfx } from '../Sfx.js';
 
 /**
  * High-level turn state.
@@ -310,6 +311,7 @@ export class GameScene extends Phaser.Scene {
    */
   _wireInput() {
     this.input.on('pointerdown', (p) => {
+      sfx.unlock(); // browsers need a user gesture to start audio
       if (this.state === 'OVER') {
         this.scene.restart();
         return;
@@ -440,9 +442,12 @@ export class GameScene extends Phaser.Scene {
         const labels = [pair.bodyA.label, pair.bodyB.label];
 
         if (labels[0] === 'brother' && labels[1] === 'brother') {
+          sfx.hit(); // billiard-style click on every brother-on-brother contact
           this.brothers.snap();
         } else if (labels.includes('brother') && labels.includes('teleporter')) {
           this._handleTeleport();
+        } else if (labels.includes('brother') && !(pair.bodyA.isSensor || pair.bodyB.isSensor)) {
+          sfx.hit(); // brother off a wall or the arena edge — same click, no debounce
         }
       }
     });
@@ -491,10 +496,12 @@ export class GameScene extends Phaser.Scene {
   _resolveTurn() {
     if (this.brothers.anyInside(Config.level.destination)) {
       this._winBurst();
+      sfx.win();
       this._endGame('LEVEL CLEAR!', FACES.win);
       return;
     }
     if (this.movesLeft <= 0) {
+      sfx.lose();
       this._endGame('OUT OF MOVES', FACES.lose);
       return;
     }
