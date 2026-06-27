@@ -25,6 +25,10 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   create() {
+    // Take over physics stepping so we can sub-step (see update()); Matter's
+    // own per-frame step would otherwise run once at the full frame delta.
+    this.matter.world.autoUpdate = false;
+
     this._buildArena();
     this._buildFloorGrid();
     this._buildWalls();
@@ -204,16 +208,51 @@ export class GameScene extends Phaser.Scene {
       yoyo: true,
       repeat: -1,
     });
-    // ...plus a slow-rotating ring so the swirl is actually visible.
-    const portalRing = this.add
-      .circle(teleporter.source.x, teleporter.source.y, teleporter.source.radius * A.teleporter.ringRadiusScale)
-      .setStrokeStyle(3, 0x9b59b6, 0.7);
-    this.tweens.add({
-      targets: portalRing,
-      angle: 360,
-      duration: A.teleporter.ringRotateDuration,
-      repeat: -1,
+    // ...plus motes that pop in at random points on the rim and are pulled
+    // straight into the centre, fading as they arrive — several active at once.
+    if (!this.textures.exists('portalSpark')) {
+      const g = this.add.graphics();
+      g.fillStyle(0xffffff, 1).fillCircle(4, 4, 3);
+      g.generateTexture('portalSpark', 8, 8);
+      g.destroy();
+    }
+    const T = A.teleporter;
+    const cx = teleporter.source.x;
+    const cy = teleporter.source.y;
+    const sr = teleporter.source.radius;
+    // Normalise a mote's spawn position to a centre-relative offset whether
+    // Phaser reports it local to the emitter or in world space.
+    const offset = (p) => ({
+      x: Math.abs(p.x) > sr + 1 ? p.x - cx : p.x,
+      y: Math.abs(p.y) > sr + 1 ? p.y - cy : p.y,
     });
+    this.add
+      .particles(cx, cy, 'portalSpark', {
+        lifespan: T.pullLifespan,
+        quantity: T.pullQuantity,
+        frequency: T.pullFrequency,
+        tint: 0xb37feb,
+        blendMode: 'ADD',
+        scale: { start: 0.85, end: 0 },
+        alpha: { start: 1, end: 0 },
+        // Spawn at a random point on the rim (a circle's getRandomPoint returns
+        // an interior point, so supply one that lands on the edge).
+        emitZone: {
+          type: 'random',
+          source: {
+            getRandomPoint: (point) => {
+              const a = Math.random() * Math.PI * 2;
+              point.x = Math.cos(a) * sr;
+              point.y = Math.sin(a) * sr;
+              return point;
+            },
+          },
+        },
+        // Pure inward velocity: straight toward the centre, no swirl.
+        speedX: { onEmit: (p) => -offset(p).x * T.pullSpeed },
+        speedY: { onEmit: (p) => -offset(p).y * T.pullSpeed },
+      })
+      .setDepth(2);
     const portal = this.matter.add.circle(
       teleporter.source.x,
       teleporter.source.y,
@@ -444,6 +483,7 @@ export class GameScene extends Phaser.Scene {
           this._handleTeleport();
         } else if (labels.includes('brother') && !(pair.bodyA.isSensor || pair.bodyB.isSensor)) {
           sfx.hit(); // brother off a wall or the arena edge — same click, no debounce
+          this.brothers.snap(); // hitting a solid also frees the anchor
         }
       }
     });
@@ -472,9 +512,19 @@ export class GameScene extends Phaser.Scene {
   // --- Per-frame loop -----------------------------------------------------
 
   /**
+   * @param {number} _time
+   * @param {number} delta  Milliseconds since the last frame.
    * @returns {void}
    */
-  update() {
+  update(_time, delta) {
+    // Advance Matter in fixed sub-steps so fast bodies can't tunnel through thin
+    // obstacles (autoUpdate is off; see create() and Config.physics). The frame
+    // delta is clamped so a stall doesn't produce huge, unstable steps. Stepping
+    // happens first so the rest of the frame sees post-step positions.
+    const n = Config.physics.substeps;
+    const sub = Math.min(delta, Config.physics.maxFrameDelta) / n;
+    for (let i = 0; i < n; i++) this.matter.world.step(sub);
+
     this.brothers.update();
     this._updatePinch();
 

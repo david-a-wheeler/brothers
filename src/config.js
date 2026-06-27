@@ -102,12 +102,14 @@ export const Config = {
       winBurstScale: 1.8, // one-shot pop of the whole target when cleared
       winBurstDuration: 320,
     },
-    /** Teleporter source: breathing fill + a slow counter-rotating ring. */
+    /** Teleporter source: breathing fill + motes pulled straight to the centre. */
     teleporter: {
       pulseAlpha: 0.8, // peak fill alpha of the idle breath (base is 0.5)
       pulseDuration: 1100,
-      ringRotateDuration: 6000, // ms per full rotation of the overlay ring
-      ringRadiusScale: 1.5, // overlay ring radius relative to source radius
+      pullSpeed: 2.5, // inward speed factor (per second); higher = swifter pull-in
+      pullLifespan: 450, // ms ≈ time to reach the centre, so a mote fades as it arrives
+      pullFrequency: 55, // ms between spawns (lower = more motes active at once)
+      pullQuantity: 1, // motes per spawn
     },
     /** Teleport target: calm idle breathe, arrival ring on warp-in. */
     target: {
