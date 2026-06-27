@@ -61,6 +61,8 @@ export class GameScene extends Phaser.Scene {
     this._panLast = { x: 0, y: 0 };
     /** True while the "Restart level?" confirmation modal is open. */
     this._modalOpen = false;
+    /** True once a launch has happened — i.e. the level is no longer pristine. */
+    this._launched = false;
 
     this._buildHud();
     this._wireInput();
@@ -446,14 +448,16 @@ export class GameScene extends Phaser.Scene {
       .setDepth(11)
       .setVisible(false);
 
+    // The tooltip always reveals on hover/press (even when reset is disabled);
+    // brightening and the actual restart only apply when reset is enabled.
     const showTip = () => this.restartTooltip.setVisible(true);
     const hideTip = () => this.restartTooltip.setVisible(false);
     this.restartButton.on('pointerover', () => {
-      this.restartButton.setAlpha(1);
+      if (this._resetEnabled()) this.restartButton.setAlpha(1);
       showTip();
     });
     this.restartButton.on('pointerout', () => {
-      this.restartButton.setAlpha(0.8);
+      this._refreshResetButton();
       hideTip();
     });
     this.restartButton.on('pointerdown', (_p, _x, _y, e) => {
@@ -462,7 +466,11 @@ export class GameScene extends Phaser.Scene {
     });
     this.restartButton.on('pointerup', () => {
       hideTip();
-      this._showRestartConfirm();
+      if (!this._resetEnabled()) return; // pristine level: nothing to reset
+      // After the level is over there's nothing else to do, so skip the
+      // confirmation and just restart; mid-play, confirm first.
+      if (this.state === 'OVER') this.scene.restart();
+      else this._showRestartConfirm();
     });
     this.banner = this.add
       .text(Config.view.width / 2, Config.view.height / 2, '', {
@@ -471,6 +479,26 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(10);
+  }
+
+  /**
+   * Reset only makes sense once the level has progressed: after a launch, or
+   * once it's over (won/lost). A pristine level can't be usefully reset.
+   *
+   * @returns {boolean}
+   */
+  _resetEnabled() {
+    return this.state === 'OVER' || this._launched;
+  }
+
+  /**
+   * Set the restart icon's resting look: dimmed (grayed) when reset is
+   * disabled, normal otherwise. Call whenever that state can change.
+   *
+   * @returns {void}
+   */
+  _refreshResetButton() {
+    this.restartButton.setAlpha(this._resetEnabled() ? 0.8 : 0.3);
   }
 
   /**
@@ -624,6 +652,7 @@ export class GameScene extends Phaser.Scene {
 
       this.movesLeft -= 1;
       this.state = 'MOVING';
+      this._launched = true; // level is no longer pristine — reset now allowed
       this._refreshHud();
     });
 
@@ -863,6 +892,7 @@ export class GameScene extends Phaser.Scene {
     this.state = 'OVER';
     this.brothers.setBothFaces(face);
     this.banner.setText(`${message}\nuse "Restart level" to play again`);
+    this._refreshResetButton(); // now over -> reset is enabled
   }
 
   /**
@@ -874,5 +904,6 @@ export class GameScene extends Phaser.Scene {
     const launcher = this.brothers.launcher;
     this.turnText.setText(`${launcher.name}'s turn — drag to aim`).setColor(launcher.color);
     this.movesText.setText(`Moves left: ${this.movesLeft}`);
+    this._refreshResetButton();
   }
 }
