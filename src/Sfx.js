@@ -14,9 +14,11 @@ export class Sfx {
     this._ctx = null;
     /** @type {GainNode|null} Master bus, so the whole mix is tamed in one spot. */
     this._master = null;
-    /** @type {AudioBuffer|null} Cached white-noise used by the click. */
+    /** @type {AudioBuffer|null} Cached short white-noise used by the click. */
     this._noise = null;
-    /** @type {{osc:OscillatorNode, lp:BiquadFilterNode, g:GainNode}|null} */
+    /** @type {AudioBuffer|null} Cached long looping noise used by the band. */
+    this._loopNoise = null;
+    /** @type {Object|null} Live nodes of the stretching-band sound, or null. */
     this._band = null;
     /** Flip to false to silence the game. */
     this.enabled = true;
@@ -133,33 +135,70 @@ export class Sfx {
   }
 
   /**
-   * Begin the looping "stretching rubber band" tone, held until
-   * {@link stopBand}. Starts silent; drive it with {@link updateBand}.
-   * No-op if audio isn't unlocked yet or a band is already playing.
+   * Begin the looping "stretching rubber band" sound, held until
+   * {@link stopBand}. Rather than a pure tone, this is *friction*: looping
+   * noise through a resonant bandpass (giving a pitched-but-noisy creak),
+   * modulated by two LFOs — a slow one sweeping the filter (the creak drifting
+   * in pitch) and a faster one stuttering the volume (stick-slip). Starts
+   * silent; drive it with {@link updateBand}. No-op if audio isn't unlocked
+   * yet or a band is already playing.
    *
    * @returns {void}
    */
   startBand() {
     if (!this._ctx || this._band) return;
     const ctx = this._ctx;
-    const osc = ctx.createOscillator();
-    const lp = ctx.createBiquadFilter();
+
+    // Friction texture: a long looping noise buffer so there's no audible loop
+    // pitch of its own.
+    if (!this._loopNoise) {
+      const len = Math.ceil(ctx.sampleRate * 2);
+      this._loopNoise = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = this._loopNoise.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = this._loopNoise;
+    src.loop = true;
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 350;
+    bp.Q.value = 8;
+
     const g = ctx.createGain();
-    osc.type = 'sawtooth'; // buzzy, so tightening reads as "creak under tension"
-    lp.type = 'lowpass';
-    lp.frequency.value = 400;
-    osc.frequency.value = 90;
     g.gain.value = 0.0001;
-    osc.connect(lp).connect(g).connect(/** @type {GainNode} */ (this._master));
-    osc.start();
-    this._band = { osc, lp, g };
+
+    // Slow wobble sweeps the filter centre -> the creak drifts in pitch.
+    const wob = ctx.createOscillator();
+    const wobAmt = ctx.createGain();
+    wob.type = 'sine';
+    wob.frequency.value = 6;
+    wobAmt.gain.value = 120;
+    wob.connect(wobAmt).connect(bp.frequency);
+
+    // Faster tremolo stutters the amplitude around its base -> stick-slip.
+    const trem = ctx.createOscillator();
+    const tremAmt = ctx.createGain();
+    trem.type = 'sine';
+    trem.frequency.value = 10;
+    tremAmt.gain.value = 0;
+    trem.connect(tremAmt).connect(g.gain);
+
+    src.connect(bp).connect(g).connect(/** @type {GainNode} */ (this._master));
+    src.start();
+    wob.start();
+    trem.start();
+
+    this._band = { src, bp, g, wob, wobAmt, trem, tremAmt };
     this.updateBand(0);
   }
 
   /**
-   * Update the rubber-band tone to a tension level: higher tension raises the
-   * pitch, opens the filter (brighter/creakier), and gets louder. Smoothed so
-   * dragging glides rather than steps. No-op if no band is playing.
+   * Update the rubber-band sound to a tension level: higher tension raises the
+   * creak's pitch and resonance, brightens and speeds up the wobble/stutter,
+   * and gets louder. Smoothed so dragging glides rather than steps. No-op if
+   * no band is playing.
    *
    * @param {number} tension  0 (slack) .. 1 (fully drawn).
    * @returns {void}
@@ -168,23 +207,35 @@ export class Sfx {
     if (!this._band || !this._ctx) return;
     const k = Math.max(0, Math.min(1, tension));
     const now = this._ctx.currentTime;
-    this._band.osc.frequency.setTargetAtTime(90 + k * 320, now, 0.03);
-    this._band.lp.frequency.setTargetAtTime(400 + k * 1600, now, 0.03);
-    this._band.g.gain.setTargetAtTime(0.05 + k * 0.18, now, 0.03);
+    const b = this._band;
+    const ramp = (param, v) => param.setTargetAtTime(v, now, 0.04);
+
+    const level = 0.05 + k * 0.16;
+    ramp(b.bp.frequency, 300 + k * 950); // creak pitch rises as it tightens
+    ramp(b.bp.Q, 6 + k * 9); // tighter = more resonant ring
+    ramp(b.wob.frequency, 5 + k * 7); // creak drifts faster under tension
+    ramp(b.wobAmt.gain, 90 + k * 220); // ...and over a wider range
+    ramp(b.trem.frequency, 8 + k * 16); // stick-slip stutters faster
+    ramp(b.tremAmt.gain, level * 0.8); // pronounced stutter, scaled to volume
+    ramp(b.g.gain, level);
   }
 
   /**
-   * Stop the rubber-band tone with a short fade so a release doesn't click.
+   * Stop the rubber-band sound with a short fade so a release doesn't click.
    *
    * @returns {void}
    */
   stopBand() {
     if (!this._band || !this._ctx) return;
-    const { osc, g } = this._band;
+    const b = this._band;
     const now = this._ctx.currentTime;
-    g.gain.cancelScheduledValues(now);
-    g.gain.setTargetAtTime(0.0001, now, 0.03);
-    osc.stop(now + 0.15);
+    b.g.gain.cancelScheduledValues(now);
+    b.tremAmt.gain.setTargetAtTime(0, now, 0.04); // kill stutter so fade is clean
+    b.g.gain.setTargetAtTime(0.0001, now, 0.04);
+    const stopAt = now + 0.2;
+    b.src.stop(stopAt);
+    b.wob.stop(stopAt);
+    b.trem.stop(stopAt);
     this._band = null;
   }
 

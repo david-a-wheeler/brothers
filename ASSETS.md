@@ -10,11 +10,12 @@ browser's Web Audio API. There are **no audio files** and **no third-party
 samples** bundled or downloaded — the waveforms are generated entirely by our
 own code.
 
-| Cue   | Trigger                          | How it's made                                            |
-| ----- | -------------------------------- | -------------------------------------------------------- |
-| `hit` | Two brothers collide             | Bandpassed white-noise burst + short tonal knock (click) |
-| `win` | Level cleared                    | Rising C-major arpeggio (C5–E5–G5–C6) + sparkle          |
-| `lose`| Out of moves                     | Two downward-bending lowpass tones ("awww")              |
+| Cue    | Trigger                         | How it's made                                                  |
+| ------ | ------------------------------- | -------------------------------------------------------------- |
+| `hit`  | Brother hits brother/wall/edge  | Bandpassed white-noise burst + short tonal knock (click)       |
+| `band` | While aiming (drag tension)     | Looping noise → resonant bandpass + wobble/tremolo LFOs (creak) |
+| `win`  | Level cleared                   | Rising C-major arpeggio (C5–E5–G5–C6) + sparkle                |
+| `lose` | Out of moves                    | Two downward-bending lowpass tones ("awww")                    |
 
 **License:** Not applicable / fully owned. Because these sounds are produced by
 original code at runtime rather than from recorded media, there is nothing to
