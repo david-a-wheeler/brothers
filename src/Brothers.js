@@ -207,6 +207,19 @@ export class Brothers {
     this._refusalX.setVisible(refuse);
     if (refuse) this._refusalX.setPosition(this.launcher.go.x, this.launcher.go.y);
 
+    // Drive the stretching-band friction sound every frame so a held draw goes
+    // silent (it only makes noise while the length is actually changing).
+    if (this._aiming) {
+      const gap = Phaser.Math.Distance.Between(
+        this.anchor.go.x,
+        this.anchor.go.y,
+        this.launcher.go.x,
+        this.launcher.go.y
+      );
+      const rest = Config.tether.restLength;
+      sfx.updateBand((gap - rest) / (Config.slingshot.maxPull - rest));
+    }
+
     this.band.clear();
     this.band.lineStyle(4, 0xf3c969, 0.85);
     this.band.lineBetween(this.david.go.x, this.david.go.y, this.ken.go.x, this.ken.go.y);
@@ -332,11 +345,6 @@ export class Brothers {
       y = a.y + Math.sin(angle) * max;
     }
     this.launcher.go.setPosition(x, y);
-
-    // Drive the stretching-band sound from how far it's drawn past rest length.
-    const gap = Phaser.Math.Distance.Between(a.x, a.y, x, y);
-    const rest = Config.tether.restLength;
-    sfx.updateBand((gap - rest) / (max - rest));
   }
 
   /**

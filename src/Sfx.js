@@ -148,9 +148,11 @@ export class Sfx {
   startBand() {
     if (!this._ctx || this._band) return;
     const ctx = this._ctx;
+    const master = /** @type {GainNode} */ (this._master);
 
-    // Friction texture: a long looping noise buffer so there's no audible loop
-    // pitch of its own.
+    // Pure friction: looping noise through two resonant bandpasses (a low
+    // "groan" + a high "squeak"). There is NO oscillator/tone, so it can never
+    // hum — when there's no motion, the gain is zero and it's silent.
     if (!this._loopNoise) {
       const len = Math.ceil(ctx.sampleRate * 2);
       this._loopNoise = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -161,44 +163,35 @@ export class Sfx {
     src.buffer = this._loopNoise;
     src.loop = true;
 
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 350;
-    bp.Q.value = 8;
+    const bpHi = ctx.createBiquadFilter();
+    bpHi.type = 'bandpass';
+    bpHi.frequency.value = 1500;
+    bpHi.Q.value = 12;
+    const bpLo = ctx.createBiquadFilter();
+    bpLo.type = 'bandpass';
+    bpLo.frequency.value = 320;
+    bpLo.Q.value = 5;
 
+    // Motion gate: gain follows how fast the length is changing (set per frame
+    // in updateBand). Starts at silence.
     const g = ctx.createGain();
     g.gain.value = 0.0001;
 
-    // Slow wobble sweeps the filter centre -> the creak drifts in pitch.
-    const wob = ctx.createOscillator();
-    const wobAmt = ctx.createGain();
-    wob.type = 'sine';
-    wob.frequency.value = 6;
-    wobAmt.gain.value = 120;
-    wob.connect(wobAmt).connect(bp.frequency);
-
-    // Faster tremolo stutters the amplitude around its base -> stick-slip.
-    const trem = ctx.createOscillator();
-    const tremAmt = ctx.createGain();
-    trem.type = 'sine';
-    trem.frequency.value = 10;
-    tremAmt.gain.value = 0;
-    trem.connect(tremAmt).connect(g.gain);
-
-    src.connect(bp).connect(g).connect(/** @type {GainNode} */ (this._master));
+    src.connect(bpHi).connect(g);
+    src.connect(bpLo).connect(g);
+    g.connect(master);
     src.start();
-    wob.start();
-    trem.start();
 
-    this._band = { src, bp, g, wob, wobAmt, trem, tremAmt };
-    this.updateBand(0);
+    this._band = { src, bpHi, bpLo, g, lastK: 0, lastT: ctx.currentTime };
   }
 
   /**
-   * Update the rubber-band sound to a tension level: higher tension raises the
-   * creak's pitch and resonance, brightens and speeds up the wobble/stutter,
-   * and gets louder. Smoothed so dragging glides rather than steps. No-op if
-   * no band is playing.
+   * Drive the rubber-band friction from the *current* draw tension. Call this
+   * every frame while aiming (not only when the pointer moves), so a held draw
+   * decays to silence. Loudness tracks the rate of length change — it only
+   * makes noise while stretching or relaxing; the squeak's pitch and a little
+   * motion-scaled jitter rise with tension for an organic creak. No-op if no
+   * band is playing.
    *
    * @param {number} tension  0 (slack) .. 1 (fully drawn).
    * @returns {void}
@@ -208,16 +201,18 @@ export class Sfx {
     const k = Math.max(0, Math.min(1, tension));
     const now = this._ctx.currentTime;
     const b = this._band;
-    const ramp = (param, v) => param.setTargetAtTime(v, now, 0.04);
+    const ramp = (param, v, tc = 0.02) => param.setTargetAtTime(v, now, tc);
 
-    const level = 0.05 + k * 0.16;
-    ramp(b.bp.frequency, 300 + k * 950); // creak pitch rises as it tightens
-    ramp(b.bp.Q, 6 + k * 9); // tighter = more resonant ring
-    ramp(b.wob.frequency, 5 + k * 7); // creak drifts faster under tension
-    ramp(b.wobAmt.gain, 90 + k * 220); // ...and over a wider range
-    ramp(b.trem.frequency, 8 + k * 16); // stick-slip stutters faster
-    ramp(b.tremAmt.gain, level * 0.8); // pronounced stutter, scaled to volume
-    ramp(b.g.gain, level);
+    // Rate of length change since the last frame; only this makes sound.
+    const dt = Math.max(1e-3, now - b.lastT);
+    const activity = Math.min(1, (Math.abs(k - b.lastK) / dt) * 0.35);
+    b.lastK = k;
+    b.lastT = now;
+
+    const jitter = (Math.random() - 0.5) * 500 * activity; // organic creak warble
+    ramp(b.bpHi.frequency, 1200 + k * 2400 + jitter);
+    ramp(b.bpLo.frequency, 260 + k * 320);
+    ramp(b.g.gain, 0.0001 + activity * 0.6, 0.025);
   }
 
   /**
@@ -230,12 +225,8 @@ export class Sfx {
     const b = this._band;
     const now = this._ctx.currentTime;
     b.g.gain.cancelScheduledValues(now);
-    b.tremAmt.gain.setTargetAtTime(0, now, 0.04); // kill stutter so fade is clean
-    b.g.gain.setTargetAtTime(0.0001, now, 0.04);
-    const stopAt = now + 0.2;
-    b.src.stop(stopAt);
-    b.wob.stop(stopAt);
-    b.trem.stop(stopAt);
+    b.g.gain.setTargetAtTime(0.0001, now, 0.03);
+    b.src.stop(now + 0.15);
     this._band = null;
   }
 
