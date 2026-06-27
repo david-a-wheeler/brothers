@@ -14,6 +14,7 @@ own code.
 | ------ | ------------------------------- | -------------------------------------------------------------- |
 | `hit`  | Brother hits brother/wall/edge  | Bandpassed white-noise burst + short tonal knock (click)       |
 | `band` | While aiming, when draw changes | Looping noise → two resonant bandpasses, gain gated by stretch speed (friction creak; silent when held) |
+| `teleport` | A teleport occurs           | Quick upward pitch sweep ("vwoop") — triangle + sine an octave below |
 | `win`  | Level cleared                   | Rising C-major arpeggio (C5–E5–G5–C6) + sparkle                |
 | `lose` | Out of moves                    | Two downward-bending lowpass tones ("awww")                    |
 

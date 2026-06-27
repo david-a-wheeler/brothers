@@ -129,6 +129,19 @@ export class Sfx {
   }
 
   /**
+   * Teleport: a quick upward pitch sweep ("vwoop") — the classic warp cue. A
+   * triangle lead with a sine an octave below for body, both gliding up fast.
+   *
+   * @returns {void}
+   */
+  teleport() {
+    if (!this._ctx) return;
+    const t = this._ctx.currentTime;
+    this._blip({ freq: 180, glideTo: 1500, dur: 0.26, type: 'triangle', gain: 0.3, at: t });
+    this._blip({ freq: 90, glideTo: 750, dur: 0.26, type: 'sine', gain: 0.16, at: t });
+  }
+
+  /**
    * Success: a quick rising major arpeggio (C5–E5–G5–C6) with a sparkle on
    * top — a bright, triumphant flourish.
    *

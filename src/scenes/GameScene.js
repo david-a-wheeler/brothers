@@ -505,6 +505,7 @@ export class GameScene extends Phaser.Scene {
     // ring blooming at the exit so the eye follows source -> target.
     this._spawnRing(source.x, source.y, source.radius, 0x9b59b6);
     this._spawnRing(target.x, target.y, 18, 0xe67e22);
+    sfx.teleport();
 
     this.brothers.teleport(target, retainVelocity);
   }
