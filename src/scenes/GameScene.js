@@ -127,10 +127,12 @@ export class GameScene extends Phaser.Scene {
       this.movesText,
       this.restartButton,
       this.restartTooltip,
+      this.restartGlow,
       this.prevButton,
       this.prevTooltip,
       this.nextButton,
       this.nextTooltip,
+      this.bannerPanel,
       this.banner,
     ];
     main.ignore(this.hudObjects);
@@ -499,13 +501,31 @@ export class GameScene extends Phaser.Scene {
       'Next level'
     );
 
+    // A glow ring behind the restart icon, pulsed on game-over to draw the eye
+    // there (see _attractRestart). Hidden during play.
+    this.restartGlow = this.add
+      .circle(Config.view.width / 2, h / 2, 22, 0xffffff, 0)
+      .setStrokeStyle(3, 0xffd479, 0.9)
+      .setDepth(9)
+      .setVisible(false);
+
+    // End-of-level banner: a dim backing panel plus bold, shadowed, coloured
+    // text. Both hidden until _endGame shows and animates them.
+    this.bannerPanel = this.add
+      .rectangle(Config.view.width / 2, Config.view.height / 2, 520, 110, 0x000000, 0.55)
+      .setOrigin(0.5)
+      .setDepth(9)
+      .setVisible(false);
     this.banner = this.add
       .text(Config.view.width / 2, Config.view.height / 2, '', {
-        fontSize: '48px',
+        fontSize: '52px',
+        fontStyle: 'bold',
         color: '#ffffff',
       })
       .setOrigin(0.5)
-      .setDepth(10);
+      .setDepth(10)
+      .setShadow(2, 3, '#000000', 6, true, true)
+      .setVisible(false);
   }
 
   /**
@@ -866,12 +886,12 @@ export class GameScene extends Phaser.Scene {
     if (this.brothers.anyInside(Config.level.destination)) {
       this._winBurst();
       sfx.win();
-      this._endGame('LEVEL CLEAR!', FACES.win);
+      this._endGame('LEVEL CLEAR!', FACES.win, '#7cfc8a');
       return;
     }
     if (this.movesLeft <= 0) {
       sfx.lose();
-      this._endGame('OUT OF MOVES', FACES.lose);
+      this._endGame('OUT OF MOVES', FACES.lose, '#ff7a6b');
       return;
     }
     this.brothers.swapRoles();
@@ -953,11 +973,61 @@ export class GameScene extends Phaser.Scene {
    * @param {string} face  Emoji shown on both brothers.
    * @returns {void}
    */
-  _endGame(message, face) {
+  _endGame(message, face, color) {
     this.state = 'OVER';
     this.brothers.setBothFaces(face);
-    this.banner.setText(`${message}\nuse "Restart level" to play again`);
     this._refreshResetButton(); // now over -> reset is enabled
+
+    // Banner: size the backing panel to the text, then pop both in and let the
+    // text gently breathe. No "restart" instruction text — the icon animates
+    // instead (see _attractRestart).
+    this.banner.setText(message).setColor(color);
+    for (const o of [this.bannerPanel, this.banner]) o.setScale(0).setVisible(true);
+    this.tweens.add({
+      targets: [this.bannerPanel, this.banner],
+      scale: 1,
+      duration: 460,
+      ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: this.banner,
+          scale: 1.05,
+          duration: 950,
+          ease: 'Sine.InOut',
+          yoyo: true,
+          repeat: -1,
+        });
+      },
+    });
+
+    this._attractRestart();
+  }
+
+  /**
+   * Draw the eye to the restart icon once the level is over: a glow ring that
+   * pulses outward behind it, plus a soft heartbeat on the icon itself. Both
+   * loop until the scene restarts (which kills the tweens).
+   *
+   * @returns {void}
+   */
+  _attractRestart() {
+    this.restartGlow.setVisible(true).setScale(1).setAlpha(0.9);
+    this.tweens.add({
+      targets: this.restartGlow,
+      scale: 2,
+      alpha: 0,
+      duration: 950,
+      ease: 'Sine.Out',
+      repeat: -1,
+    });
+    this.tweens.add({
+      targets: this.restartButton,
+      scale: 1.15,
+      duration: 600,
+      ease: 'Sine.InOut',
+      yoyo: true,
+      repeat: -1,
+    });
   }
 
   /**
