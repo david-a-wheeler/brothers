@@ -53,6 +53,11 @@ export class Brothers {
     this.david.face = this._createFace(Config.level.david, FACES.idle.launcher);
     this.ken.face = this._createFace(Config.level.ken, FACES.idle.anchor);
 
+    /** True while the player is dragging the launcher to aim. */
+    this._aiming = false;
+    /** Red "X" shown over the launcher when the current aim can't be fired. */
+    this._refusalX = this._createRefusalX();
+
     /** Consecutive slow frames, for debounced settle detection. */
     this._settleFrames = 0;
 
@@ -138,6 +143,27 @@ export class Brothers {
   }
 
   /**
+   * Build the red "X" overlay shown over the launcher while aiming whenever a
+   * launch would currently be refused. Drawn around its own origin (so it can
+   * be re-centred on the launcher each frame) and on top of everything; hidden
+   * until {@link update} decides to show it.
+   *
+   * @returns {Phaser.GameObjects.Graphics}
+   */
+  _createRefusalX() {
+    const d = Config.ball.radius * 0.8;
+    const g = this.scene.add.graphics().setDepth(20).setVisible(false);
+    g.lineStyle(5, 0xff2b2b, 1);
+    g.beginPath();
+    g.moveTo(-d, -d);
+    g.lineTo(d, d);
+    g.moveTo(-d, d);
+    g.lineTo(d, -d);
+    g.strokePath();
+    return g;
+  }
+
+  /**
    * Point the glow at the current launcher and (re)start its pulse.
    *
    * @returns {void}
@@ -174,6 +200,11 @@ export class Brothers {
 
     // Keep the glow ring centred on the movable ball (its scale is tweened).
     this._glow.setPosition(this.launcher.go.x, this.launcher.go.y);
+
+    // While aiming, flag an unlaunchable position with a red X over the ball.
+    const refuse = this._aiming && this._launcherBlocked();
+    this._refusalX.setVisible(refuse);
+    if (refuse) this._refusalX.setPosition(this.launcher.go.x, this.launcher.go.y);
 
     this.band.clear();
     this.band.lineStyle(4, 0xf3c969, 0.85);
@@ -277,6 +308,7 @@ export class Brothers {
     // Remember the resting spot so a blocked/aborted release can snap back to
     // it instead of leaving the ball wherever it was dragged.
     this._aimStart = { x: this.launcher.go.x, y: this.launcher.go.y };
+    this._aiming = true;
     this.launcher.go.setStatic(true);
     this.setExpressions('drag');
   }
@@ -310,22 +342,32 @@ export class Brothers {
     if (this._aimStart) {
       this.launcher.go.setPosition(this._aimStart.x, this._aimStart.y);
     }
+    this._aiming = false;
+    this._refusalX.setVisible(false);
     this.launcher.go.setStatic(false);
     this.launcher.go.setVelocity(0, 0);
     this.setExpressions('idle');
   }
 
   /**
-   * Would launching from the current pulled-back spot start the ball already
-   * overlapping something solid? Checked with plain geometry (no Matter query)
-   * against the three kinds of solid thing: the arena edges, the other
-   * brother, and the interior walls. The destination goal and teleporter are
-   * deliberately not checked — they're non-solid, so resting on them is fine.
+   * Is the current aim illegal to launch? Checked with plain geometry (no
+   * Matter query). Four ways a shot is refused:
+   *  - any part of the launcher is outside the arena;
+   *  - it's overlapping the other brother;
+   *  - it's sitting on a wall;
+   *  - the launch *path* (launcher -> anchor, i.e. the elastic) crosses an
+   *    interior wall. The ball flies roughly along the elastic, so a wall in
+   *    the line of fire would mean a clipped, chaotic shot — even though the
+   *    launcher itself sits in open space. Each wall is inflated by the ball
+   *    radius so a path that merely grazes a wall edge is caught too.
+   * The destination goal and teleporter aren't checked — they're non-solid,
+   * so resting on or firing across them is fine.
    *
    * @returns {boolean}
    */
   _launcherBlocked() {
     const l = this.launcher.go;
+    const a = this.anchor.go;
     const r = Config.ball.radius;
     const { width, height } = Config.view;
 
@@ -333,14 +375,26 @@ export class Brothers {
     if (l.x < r || l.x > width - r || l.y < r || l.y > height - r) return true;
 
     // Overlapping the other brother?
-    const a = this.anchor.go;
     if (Phaser.Math.Distance.Between(l.x, l.y, a.x, a.y) < r * 2) return true;
 
-    // Overlapping any interior wall (closest-point circle/rectangle test)?
-    return Config.level.walls.some((w) => {
+    // Sitting on a wall (closest-point circle/rectangle overlap)?
+    const onWall = Config.level.walls.some((w) => {
       const nx = Phaser.Math.Clamp(l.x, w.x - w.width / 2, w.x + w.width / 2);
       const ny = Phaser.Math.Clamp(l.y, w.y - w.height / 2, w.y + w.height / 2);
       return Phaser.Math.Distance.Between(l.x, l.y, nx, ny) < r;
+    });
+    if (onWall) return true;
+
+    // Elastic / flight path crossing a wall (rectangle inflated by the radius)?
+    const path = new Phaser.Geom.Line(l.x, l.y, a.x, a.y);
+    return Config.level.walls.some((w) => {
+      const rect = new Phaser.Geom.Rectangle(
+        w.x - w.width / 2 - r,
+        w.y - w.height / 2 - r,
+        w.width + r * 2,
+        w.height + r * 2
+      );
+      return Phaser.Geom.Intersects.LineToRectangle(path, rect);
     });
   }
 
@@ -370,6 +424,8 @@ export class Brothers {
     // pulls stay gentle while a full draw still hits hard.
     const t = Phaser.Math.Clamp((pull - s.minPull) / (s.maxPull - s.minPull), 0, 1);
     const speed = s.maxSpeed * Math.pow(t, s.curve);
+    this._aiming = false;
+    this._refusalX.setVisible(false);
     l.setStatic(false);
     l.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     this.setExpressions('flight');
