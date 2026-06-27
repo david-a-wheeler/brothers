@@ -46,7 +46,7 @@ export const Config = {
     minPull: 24, // shorter pulls are treated as a mis-click, not a launch
     maxSpeed: 220, // launch speed at a full-strength pull (the t=1 endpoint)
     minSpeed: 15, // floor: a tiny pull still nudges enough to reach the anchor
-    curve: 2.4, // >1 eases in; lower lifts the mid-pull impulse, ends unchanged
+    curve: 2.3, // >1 eases in; lower lifts the mid-pull impulse, ends unchanged
   },
 
   /**
