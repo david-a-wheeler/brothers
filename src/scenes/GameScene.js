@@ -27,8 +27,15 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   preload() {
-    if (!this.textures.exists('icon-restart')) {
-      this.load.svg('icon-restart', 'assets/icons/arrow-clockwise.svg', { width: 30, height: 30 });
+    const icons = {
+      'icon-restart': 'arrow-clockwise',
+      'icon-prev': 'chevron-left',
+      'icon-next': 'chevron-right',
+    };
+    for (const [key, name] of Object.entries(icons)) {
+      if (!this.textures.exists(key)) {
+        this.load.svg(key, `assets/icons/${name}.svg`, { width: 30, height: 30 });
+      }
     }
   }
 
@@ -120,6 +127,10 @@ export class GameScene extends Phaser.Scene {
       this.movesText,
       this.restartButton,
       this.restartTooltip,
+      this.prevButton,
+      this.prevTooltip,
+      this.nextButton,
+      this.nextTooltip,
       this.banner,
     ];
     main.ignore(this.hudObjects);
@@ -472,6 +483,22 @@ export class GameScene extends Phaser.Scene {
       if (this.state === 'OVER') this.scene.restart();
       else this._showRestartConfirm();
     });
+
+    // Previous / next level icons flanking reset. No other levels exist yet, so
+    // these are permanently grayed out — infrastructure for the future. Their
+    // tooltips still reveal on hover/press; releasing does nothing.
+    const gap = 44;
+    [this.prevButton, this.prevTooltip] = this._buildNavIcon(
+      Config.view.width / 2 - gap,
+      'icon-prev',
+      'Previous level'
+    );
+    [this.nextButton, this.nextTooltip] = this._buildNavIcon(
+      Config.view.width / 2 + gap,
+      'icon-next',
+      'Next level'
+    );
+
     this.banner = this.add
       .text(Config.view.width / 2, Config.view.height / 2, '', {
         fontSize: '48px',
@@ -479,6 +506,44 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(10);
+  }
+
+  /**
+   * Build a permanently-disabled (grayed) navigation icon plus its tooltip,
+   * centred at `x` in the ribbon. The tooltip reveals on hover/press and hides
+   * on release/out; releasing does nothing (no levels to navigate to yet).
+   *
+   * @param {number} x
+   * @param {string} key   Texture key.
+   * @param {string} tooltipText
+   * @returns {[Phaser.GameObjects.Image, Phaser.GameObjects.Text]}
+   */
+  _buildNavIcon(x, key, tooltipText) {
+    const icon = this.add
+      .image(x, this._hudHeight / 2, key)
+      .setDepth(10)
+      .setAlpha(0.3) // disabled look
+      .setInteractive(); // no hand cursor: it isn't actionable yet
+    const tip = this.add
+      .text(x, this._hudHeight + 12, tooltipText, {
+        fontSize: '15px',
+        color: '#ffffff',
+        backgroundColor: '#000000',
+        padding: { x: 8, y: 4 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(11)
+      .setVisible(false);
+    const show = () => tip.setVisible(true);
+    const hide = () => tip.setVisible(false);
+    icon.on('pointerover', show);
+    icon.on('pointerout', hide);
+    icon.on('pointerdown', (_p, _x, _y, e) => {
+      e?.stopPropagation();
+      show();
+    });
+    icon.on('pointerup', hide);
+    return [icon, tip];
   }
 
   /**

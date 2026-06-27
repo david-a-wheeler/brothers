@@ -1,4 +1,5 @@
-arrow-clockwise.svg is from Bootstrap Icons (https://icons.getbootstrap.com),
+The SVG icons in this directory (arrow-clockwise.svg, chevron-left.svg,
+chevron-right.svg) are from Bootstrap Icons (https://icons.getbootstrap.com),
 used under the MIT License. The only modification is setting the fill color to
 white. Full license below.
 
