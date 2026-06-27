@@ -54,6 +54,9 @@ export class Brothers {
     this.david.face = this._createFace(Config.level.david, FACES.idle.launcher);
     this.ken.face = this._createFace(Config.level.ken, FACES.idle.anchor);
 
+    /** David's rectangular glasses, overlaid on his face (see {@link update}). */
+    this._davidGlasses = this._createGlasses();
+
     /** True while the player is dragging the launcher to aim. */
     this._aiming = false;
     /** Red "X" shown over the launcher when the current aim can't be fired. */
@@ -112,6 +115,23 @@ export class Brothers {
     return this.scene.add
       .text(pos.x, pos.y, emoji, { fontSize: '34px' })
       .setOrigin(0.5);
+  }
+
+  /**
+   * Build David's glasses: two black rectangular lens frames (wider than tall)
+   * joined by a bridge, drawn around their own origin so {@link update} can sit
+   * them over the eyes. Lenses are open frames, so the emoji's eyes/eyebrows
+   * still show through. Hidden on the win face (it already has shades).
+   *
+   * @returns {Phaser.GameObjects.Graphics}
+   */
+  _createGlasses() {
+    const g = this.scene.add.graphics();
+    g.lineStyle(2, 0x000000, 1);
+    g.strokeRoundedRect(-12.5, -4, 11, 7, 2); // left lens
+    g.strokeRoundedRect(1.5, -4, 11, 7, 2); // right lens
+    g.lineBetween(-1.5, -0.5, 1.5, -0.5); // bridge
+    return g;
   }
 
   /**
@@ -198,6 +218,11 @@ export class Brothers {
       b.face.setPosition(b.go.x, b.go.y);
       b.face.rotation = 0;
     }
+
+    // David wears rectangular glasses over his eyes on every expression except
+    // the win face (😎), which already has shades.
+    this._davidGlasses.setPosition(this.david.go.x, this.david.go.y - 7);
+    this._davidGlasses.setVisible(this.david.face.text !== FACES.win);
 
     // Keep the glow ring centred on the movable ball (its scale is tweened).
     this._glow.setPosition(this.launcher.go.x, this.launcher.go.y);
