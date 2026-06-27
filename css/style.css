@@ -1,0 +1,22 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0e0e12;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+}
+
+#game {
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Phaser injects its <canvas> here; FIT-scaling centres it for us. */
+#game canvas {
+  display: block;
+  margin: 0 auto;
+  /* Let Phaser own touch drags instead of the browser scrolling/zooming. */
+  touch-action: none;
+}
