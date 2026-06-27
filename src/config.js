@@ -7,16 +7,25 @@
  */
 export const Config = {
   /** Logical resolution; the Scale manager fits this to the screen. */
-  view: { width: 1024, height: 768, background: '#1b1b22' },
+  view: {
+    width: 1024,
+    height: 768,
+    background: '#4d4d55', // "outside the arena" gray: canvas clear + page letterbox
+    arenaColor: 0x1b1b22, // the play-area floor, so anything gray reads as out of bounds
+  },
 
   /**
-   * Camera zoom limits and step sizes. `min` of 1 keeps the whole arena in
-   * view (no zooming out into empty space); zooming in is clamped to `max`.
+   * Camera zoom. The *minimum* zoom is computed at runtime so the whole arena
+   * fits in the world camera's area below the HUD (see GameScene._setupCameras);
+   * only the maximum and the wheel step live here.
    */
   zoom: {
-    min: 1,
     max: 3,
     wheelStep: 0.1, // fraction of zoom changed per mouse-wheel notch
+    // World-pixels of gray kept around the arena when fully zoomed out (so you
+    // can see it ends), and how far you may overscroll past an edge into gray
+    // when zoomed in. Higher = more breathing room / looser panning.
+    edgeMargin: 64,
   },
 
   /** A faint reference grid on the arena floor, so zooming reads clearly. */

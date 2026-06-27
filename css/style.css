@@ -3,7 +3,9 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #0e0e12;
+  /* Matches the in-canvas "outside the arena" gray, so the FIT letterbox
+     bars on odd-aspect screens read as the same out-of-bounds area. */
+  background: #4d4d55;
   overflow: hidden;
   font-family: system-ui, sans-serif;
 }

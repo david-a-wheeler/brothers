@@ -83,15 +83,72 @@ export class GameScene extends Phaser.Scene {
   _setupCameras() {
     const { width, height } = Config.view;
     const main = this.cameras.main;
-    main.setBounds(0, 0, width, height);
-    main.setZoom(1);
+
+    // The world camera occupies the screen strip *below* the HUD bar, so the
+    // arena is never hidden behind it. Minimum zoom fits the arena PLUS a gray
+    // margin (edgeMargin on all sides) so the fully-zoomed-out view shows the
+    // arena centred with a little gray border. _clampCamera does the
+    // centre/overscroll itself (not setBounds) because Phaser's built-in bounds
+    // clamp mixes pixel and world units and mis-centres at a fractional zoom.
+    const M = Config.zoom.edgeMargin;
+    main.setViewport(0, this._hudHeight, width, height - this._hudHeight);
+    this._minZoom = Math.min(main.width / (width + 2 * M), main.height / (height + 2 * M));
+    main.setZoom(this._minZoom);
+    this._clampCamera();
 
     this.uiCamera = this.cameras.add(0, 0, width, height);
 
-    this.hudObjects = [this.turnText, this.movesText, this.restartButton, this.banner];
+    this.hudObjects = [
+      this.hudBar,
+      this.hudBorder,
+      this.turnText,
+      this.movesText,
+      this.restartButton,
+      this.banner,
+    ];
     main.ignore(this.hudObjects);
     // The UI camera shows only the HUD: ignore every other display object.
     this.uiCamera.ignore(this.children.list.filter((o) => !this.hudObjects.includes(o)));
+  }
+
+  /**
+   * Constrain the world camera in world space (Phaser's setBounds clamp is
+   * unreliable at fractional zoom — see _setupCameras). The arena may be
+   * panned/zoomed freely, but only `edgeMargin` of gray can show past any edge.
+   * Per axis: if the view is wider than the arena + both margins (zoomed out),
+   * centre the arena; otherwise clamp scroll so the view stays within the arena
+   * expanded by the margin (allowing that much overscroll into the gray). Works
+   * at any zoom and for any arena size. Call after every zoom or pan change.
+   *
+   * @returns {void}
+   */
+  _clampCamera() {
+    const main = this.cameras.main;
+    const M = Config.zoom.edgeMargin;
+    const aw = Config.view.width;
+    const ah = Config.view.height;
+    // Phaser centres the view on midPoint = scroll + halfViewport (in pixels),
+    // spanning width/zoom of world. So we clamp the *midpoint*, then convert
+    // back to scroll. Per axis: if the visible span exceeds the arena+margins,
+    // centre on the arena; else keep the view edges within the arena expanded
+    // by the margin (so up to `M` of gray can show past any edge).
+    const halfVW = main.width / 2;
+    const halfVH = main.height / 2;
+    const halfSpanX = main.width / main.zoom / 2; // half the world width in view
+    const halfSpanY = main.height / main.zoom / 2;
+
+    let midX = main.scrollX + halfVW;
+    let midY = main.scrollY + halfVH;
+    midX =
+      halfSpanX * 2 >= aw + 2 * M
+        ? aw / 2
+        : Phaser.Math.Clamp(midX, -M + halfSpanX, aw + M - halfSpanX);
+    midY =
+      halfSpanY * 2 >= ah + 2 * M
+        ? ah / 2
+        : Phaser.Math.Clamp(midY, -M + halfSpanY, ah + M - halfSpanY);
+
+    main.setScroll(midX - halfVW, midY - halfVH);
   }
 
   // --- Level construction -------------------------------------------------
@@ -102,7 +159,12 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _buildArena() {
-    this.matter.world.setBounds(0, 0, Config.view.width, Config.view.height, 64);
+    const { width, height, arenaColor } = Config.view;
+    this.matter.world.setBounds(0, 0, width, height, 64);
+    // The play-area floor. Drawn below everything; wherever it isn't (the gray
+    // canvas clear) reads as "outside the arena" — e.g. the letterbox margins
+    // when the arena is fully zoomed out.
+    this.add.rectangle(width / 2, height / 2, width, height, arenaColor).setDepth(-2);
   }
 
   /**
@@ -329,6 +391,21 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _buildHud() {
+    // Opaque panel behind the HUD so the arena never shows through the top
+    // strip while panning/zooming. Created first (and at depth 9, under the
+    // depth-10 HUD text) and rendered by the fixed UI camera, so it always
+    // covers the same screen strip regardless of the world camera.
+    /** Height of the HUD strip; the world camera sits below it (see _setupCameras). */
+    this._hudHeight = 56;
+    const h = this._hudHeight;
+    this.hudBar = this.add
+      .rectangle(Config.view.width / 2, h / 2, Config.view.width, h, 0x0e0e12, 1)
+      .setDepth(9);
+    this.hudBorder = this.add
+      .rectangle(Config.view.width / 2, h, Config.view.width, 2, 0x3a3a44, 1)
+      .setOrigin(0.5, 1)
+      .setDepth(9);
+
     this.turnText = this.add.text(20, 18, '', { fontSize: '22px' }).setDepth(10);
     this.movesText = this.add
       .text(Config.view.width - 20, 18, '', { fontSize: '22px', color: '#dddddd' })
@@ -400,13 +477,14 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (this._isPanning) {
-        // Drag the world under the finger: scroll opposite to the move,
-        // scaled by zoom. Camera bounds clamp it to the arena.
+        // Drag the world under the finger: scroll opposite to the move, scaled
+        // by zoom, then clamp/centre to the arena.
         const cam = this.cameras.main;
         cam.setScroll(
           cam.scrollX - (p.x - this._panLast.x) / cam.zoom,
           cam.scrollY - (p.y - this._panLast.y) / cam.zoom
         );
+        this._clampCamera();
         this._panLast.x = p.x;
         this._panLast.y = p.y;
       }
@@ -450,9 +528,10 @@ export class GameScene extends Phaser.Scene {
   _zoomBy(factor, screenX, screenY) {
     const cam = this.cameras.main;
     const before = cam.getWorldPoint(screenX, screenY);
-    cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, Config.zoom.min, Config.zoom.max));
+    cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, this._minZoom, Config.zoom.max));
     const after = cam.getWorldPoint(screenX, screenY);
     cam.setScroll(cam.scrollX + (before.x - after.x), cam.scrollY + (before.y - after.y));
+    this._clampCamera();
   }
 
   /**
