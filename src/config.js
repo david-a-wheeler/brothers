@@ -40,6 +40,40 @@ export const Config = {
    */
   settle: { speedThreshold: 0.15, frames: 30 },
 
+  /**
+   * Zone animation feel. Idle loops keep the goal/teleporter looking "alive";
+   * the one-shot bursts fire on win and on teleport. All subtle by design so
+   * the motion never competes with aiming. Tune freely.
+   */
+  anim: {
+    /** Destination: slow scale + alpha "beckoning" pulse, plus win burst. */
+    destination: {
+      pulseScale: 1.12, // peak scale of the idle breath
+      pulseAlpha: 0.55, // peak fill alpha of the idle breath (base is 0.35)
+      pulseDuration: 1400, // ms for one half of the yoyo
+      winBurstScale: 1.8, // one-shot pop when the level is cleared
+      winBurstDuration: 320,
+    },
+    /** Teleporter source: breathing fill + a slow counter-rotating ring. */
+    teleporter: {
+      pulseAlpha: 0.8, // peak fill alpha of the idle breath (base is 0.5)
+      pulseDuration: 1100,
+      ringRotateDuration: 6000, // ms per full rotation of the overlay ring
+      ringRadiusScale: 1.5, // overlay ring radius relative to source radius
+    },
+    /** Teleport target: calm idle breathe, arrival ring on warp-in. */
+    target: {
+      idleAlphaLow: 0.3,
+      idleAlphaHigh: 0.75,
+      idleDuration: 1300,
+    },
+    /** Shared expanding-ring effect (teleport out/in, reusable). */
+    ring: {
+      growScale: 2.6, // how far the ring expands from its start radius
+      duration: 480,
+    },
+  },
+
   /** Per-level data (placeholder until Tiled map loading lands). */
   level: {
     moves: 6,

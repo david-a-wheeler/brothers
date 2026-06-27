@@ -61,17 +61,57 @@ export class GameScene extends Phaser.Scene {
    */
   _buildZones() {
     const { destination, teleporter } = Config.level;
+    const A = Config.anim;
 
-    // Destination goal.
-    this.add.circle(destination.x, destination.y, destination.radius, 0x2ecc71, 0.35);
+    // Destination goal — a slow "beckoning" breath (scale + fill alpha).
+    this.destinationGfx = this.add.circle(
+      destination.x,
+      destination.y,
+      destination.radius,
+      0x2ecc71,
+      0.35
+    );
+    this.tweens.add({
+      targets: this.destinationGfx,
+      scale: A.destination.pulseScale,
+      fillAlpha: A.destination.pulseAlpha,
+      duration: A.destination.pulseDuration,
+      ease: 'Sine.InOut',
+      yoyo: true,
+      repeat: -1,
+    });
     const goal = this.matter.add.circle(destination.x, destination.y, destination.radius, {
       isSensor: true,
       isStatic: true,
     });
     goal.label = 'destination';
 
-    // Teleporter source (entrance).
-    this.add.circle(teleporter.source.x, teleporter.source.y, teleporter.source.radius, 0x9b59b6, 0.5);
+    // Teleporter source (entrance) — breathing fill...
+    this.teleporterGfx = this.add.circle(
+      teleporter.source.x,
+      teleporter.source.y,
+      teleporter.source.radius,
+      0x9b59b6,
+      0.5
+    );
+    this.tweens.add({
+      targets: this.teleporterGfx,
+      fillAlpha: A.teleporter.pulseAlpha,
+      duration: A.teleporter.pulseDuration,
+      ease: 'Sine.InOut',
+      yoyo: true,
+      repeat: -1,
+    });
+    // ...plus a slow-rotating ring so the swirl is actually visible.
+    const portalRing = this.add
+      .circle(teleporter.source.x, teleporter.source.y, teleporter.source.radius * A.teleporter.ringRadiusScale)
+      .setStrokeStyle(3, 0x9b59b6, 0.7);
+    this.tweens.add({
+      targets: portalRing,
+      angle: 360,
+      duration: A.teleporter.ringRotateDuration,
+      repeat: -1,
+    });
     const portal = this.matter.add.circle(
       teleporter.source.x,
       teleporter.source.y,
@@ -80,10 +120,41 @@ export class GameScene extends Phaser.Scene {
     );
     portal.label = 'teleporter';
 
-    // Teleporter target (exit) — visual marker only.
-    this.add
+    // Teleporter target (exit) — visual marker with a calm idle breathe.
+    this.targetGfx = this.add
       .rectangle(teleporter.target.x, teleporter.target.y, 70, 70)
-      .setStrokeStyle(2, 0xe67e22, 0.6);
+      .setStrokeStyle(2, 0xe67e22, 0.6)
+      .setAlpha(A.target.idleAlphaLow);
+    this.tweens.add({
+      targets: this.targetGfx,
+      alpha: A.target.idleAlphaHigh,
+      duration: A.target.idleDuration,
+      ease: 'Sine.InOut',
+      yoyo: true,
+      repeat: -1,
+    });
+  }
+
+  /**
+   * One-shot expanding-and-fading ring, used to punctuate teleport-out,
+   * teleport-in, and (in a brighter form) a level win.
+   *
+   * @param {number} x
+   * @param {number} y
+   * @param {number} radius  Starting radius of the ring.
+   * @param {number} color   Stroke colour.
+   * @returns {void}
+   */
+  _spawnRing(x, y, radius, color) {
+    const ring = this.add.circle(x, y, radius).setStrokeStyle(3, color, 0.9).setDepth(5);
+    this.tweens.add({
+      targets: ring,
+      scale: Config.anim.ring.growScale,
+      alpha: 0,
+      duration: Config.anim.ring.duration,
+      ease: 'Cubic.Out',
+      onComplete: () => ring.destroy(),
+    });
   }
 
   /**
@@ -179,7 +250,13 @@ export class GameScene extends Phaser.Scene {
     if (this.time.now < this.teleportLockUntil) return;
     this.teleportLockUntil = this.time.now + 600;
 
-    const { target, retainVelocity } = Config.level.teleporter;
+    const { source, target, retainVelocity } = Config.level.teleporter;
+
+    // Punctuate the warp: a ring collapsing out of the entrance and a fresh
+    // ring blooming at the exit so the eye follows source -> target.
+    this._spawnRing(source.x, source.y, source.radius, 0x9b59b6);
+    this._spawnRing(target.x, target.y, 18, 0xe67e22);
+
     this.brothers.teleport(target, retainVelocity);
   }
 
@@ -203,6 +280,7 @@ export class GameScene extends Phaser.Scene {
    */
   _resolveTurn() {
     if (this.brothers.anyInside(Config.level.destination)) {
+      this._winBurst();
       this._endGame('LEVEL CLEAR!', FACES.win);
       return;
     }
@@ -213,6 +291,27 @@ export class GameScene extends Phaser.Scene {
     this.brothers.swapRoles();
     this.state = 'AIMING';
     this._refreshHud();
+  }
+
+  /**
+   * Celebratory one-shot at the destination when the level is cleared:
+   * a quick scale pop on the goal plus an expanding ring.
+   *
+   * @returns {void}
+   */
+  _winBurst() {
+    const d = Config.level.destination;
+    const a = Config.anim.destination;
+    this.tweens.killTweensOf(this.destinationGfx); // stop the idle breath first
+    this.destinationGfx.setScale(1);
+    this.tweens.add({
+      targets: this.destinationGfx,
+      scale: a.winBurstScale,
+      duration: a.winBurstDuration,
+      ease: 'Back.Out',
+      yoyo: true,
+    });
+    this._spawnRing(d.x, d.y, d.radius, 0x2ecc71);
   }
 
   /**
