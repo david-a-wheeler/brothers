@@ -117,23 +117,25 @@ export class GameScene extends Phaser.Scene {
     const { destination, teleporter } = Config.level;
     const A = Config.anim;
 
-    // Destination goal — a slow "beckoning" breath (scale + fill alpha).
-    this.destinationGfx = this.add.circle(
+    // Destination goal — an archery target: concentric green rings at a fixed
+    // size (so it reads as a goal, not a collectible) plus a slow-rotating
+    // crosshair overlay for life. Rings live in a container so the win burst
+    // can pop the whole target at once.
+    const R = destination.radius;
+    const ringBands = [
+      { r: R, color: 0x145a32 }, // dark
+      { r: R * 0.78, color: 0x2ecc71 }, // bright
+      { r: R * 0.55, color: 0x145a32 }, // dark
+      { r: R * 0.33, color: 0x2ecc71 }, // bright
+      { r: R * 0.14, color: 0xeafff2 }, // bullseye
+    ];
+    this.destinationGfx = this.add.container(
       destination.x,
       destination.y,
-      destination.radius,
-      0x2ecc71,
-      0.35
+      ringBands.map((b) => this.add.circle(0, 0, b.r, b.color))
     );
-    this.tweens.add({
-      targets: this.destinationGfx,
-      scale: A.destination.pulseScale,
-      fillAlpha: A.destination.pulseAlpha,
-      duration: A.destination.pulseDuration,
-      ease: 'Sine.InOut',
-      yoyo: true,
-      repeat: -1,
-    });
+    this.destinationReticle = this._buildReticle(destination.x, destination.y, R);
+    this._startDestinationPulse();
     const goal = this.matter.add.circle(destination.x, destination.y, destination.radius, {
       isSensor: true,
       isStatic: true,
@@ -362,8 +364,9 @@ export class GameScene extends Phaser.Scene {
   _winBurst() {
     const d = Config.level.destination;
     const a = Config.anim.destination;
-    this.tweens.killTweensOf(this.destinationGfx); // stop the idle breath first
+    this.tweens.killTweensOf(this.destinationGfx);
     this.destinationGfx.setScale(1);
+    // Pop the whole target once. The reticle keeps spinning independently.
     this.tweens.add({
       targets: this.destinationGfx,
       scale: a.winBurstScale,
@@ -372,6 +375,50 @@ export class GameScene extends Phaser.Scene {
       yoyo: true,
     });
     this._spawnRing(d.x, d.y, d.radius, 0x2ecc71);
+  }
+
+  /**
+   * Build the rotating crosshair/reticle overlay for the target: four ticks
+   * around the rim with a gap over the bullseye, plus a thin outer ring. Drawn
+   * around its own origin so it rotates cleanly about the target's center.
+   *
+   * @param {number} x
+   * @param {number} y
+   * @param {number} radius  The target's outer radius.
+   * @returns {Phaser.GameObjects.Graphics}
+   */
+  _buildReticle(x, y, radius) {
+    const inner = radius * 0.85;
+    const outer = radius * 1.25;
+    const g = this.add.graphics({ x, y });
+    g.lineStyle(2, 0xffffff, 0.6);
+    g.beginPath();
+    g.moveTo(0, -outer);
+    g.lineTo(0, -inner);
+    g.moveTo(0, inner);
+    g.lineTo(0, outer);
+    g.moveTo(-outer, 0);
+    g.lineTo(-inner, 0);
+    g.moveTo(inner, 0);
+    g.lineTo(outer, 0);
+    g.strokePath();
+    g.strokeCircle(0, 0, outer);
+    return g;
+  }
+
+  /**
+   * Start the destination's idle motion: a slow, continuous rotation of the
+   * reticle overlay. The target rings themselves stay fixed in size.
+   *
+   * @returns {void}
+   */
+  _startDestinationPulse() {
+    this.tweens.add({
+      targets: this.destinationReticle,
+      angle: 360,
+      duration: Config.anim.destination.reticleRotateDuration,
+      repeat: -1,
+    });
   }
 
   /**
@@ -395,6 +442,6 @@ export class GameScene extends Phaser.Scene {
   _refreshHud() {
     const launcher = this.brothers.launcher;
     this.turnText.setText(`${launcher.name}'s turn — drag to aim`).setColor(launcher.color);
-    this.movesText.setText(`Moves: ${this.movesLeft}`);
+    this.movesText.setText(`Moves left: ${this.movesLeft}`);
   }
 }

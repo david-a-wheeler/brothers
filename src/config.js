@@ -47,12 +47,15 @@ export const Config = {
    * the motion never competes with aiming. Tune freely.
    */
   anim: {
-    /** Destination: slow scale + alpha "beckoning" pulse, plus win burst. */
+    /**
+     * Destination: an archery target (concentric rings) that stays a fixed
+     * size so it reads as a goal, not a collectible. Motion comes from a slow-
+     * rotating reticle/crosshair overlay; the rings themselves never move,
+     * except for a one-shot pop on win.
+     */
     destination: {
-      pulseScale: 1.12, // peak scale of the idle breath
-      pulseAlpha: 0.55, // peak fill alpha of the idle breath (base is 0.35)
-      pulseDuration: 1400, // ms for one half of the yoyo
-      winBurstScale: 1.8, // one-shot pop when the level is cleared
+      reticleRotateDuration: 9000, // ms per full rotation of the crosshair
+      winBurstScale: 1.8, // one-shot pop of the whole target when cleared
       winBurstDuration: 320,
     },
     /** Teleporter source: breathing fill + a slow counter-rotating ring. */
