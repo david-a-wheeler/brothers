@@ -3,12 +3,19 @@ import { Brothers, FACES } from '../Brothers.js';
 import { sfx } from '../Sfx.js';
 
 /**
- * High-level turn state.
- * - AIMING: waiting for the player to drag the launcher.
- * - MOVING: balls are in motion; we watch for them to settle.
- * - OVER:   level won or lost; a click restarts.
+ * Level state is tracked along two axes.
  *
- * @typedef {'AIMING'|'MOVING'|'OVER'} GameState
+ * `status` — the level lifecycle:
+ * - READY:   not started yet; the board is pristine (no launch made).
+ * - PLAYING: in progress.
+ * - ENDED:   finished, by a win or a loss.
+ *
+ * `phase` — the turn phase, only meaningful while PLAYING:
+ * - AIMING: waiting for the player to drag/release the launcher.
+ * - MOVING: balls are in flight; we watch for them to settle.
+ *
+ * @typedef {'READY'|'PLAYING'|'ENDED'} LevelStatus
+ * @typedef {'AIMING'|'MOVING'} TurnPhase
  */
 
 /**
@@ -54,8 +61,10 @@ export class GameScene extends Phaser.Scene {
 
     this.brothers = new Brothers(this);
 
-    /** @type {GameState} */
-    this.state = 'AIMING';
+    /** @type {LevelStatus} */
+    this.status = 'READY';
+    /** @type {TurnPhase} */
+    this.phase = 'AIMING';
     this.movesLeft = Config.level.moves;
     /** True between pointerdown-on-launcher and pointerup. */
     this.isAiming = false;
@@ -68,8 +77,6 @@ export class GameScene extends Phaser.Scene {
     this._panLast = { x: 0, y: 0 };
     /** True while the "Restart level?" confirmation modal is open. */
     this._modalOpen = false;
-    /** True once a launch has happened — i.e. the level is no longer pristine. */
-    this._launched = false;
 
     this._buildHud();
     this._wireInput();
@@ -482,7 +489,7 @@ export class GameScene extends Phaser.Scene {
       if (!this._resetEnabled()) return; // pristine level: nothing to reset
       // After the level is over there's nothing else to do, so skip the
       // confirmation and just restart; mid-play, confirm first.
-      if (this.state === 'OVER') this.scene.restart();
+      if (this.status === 'ENDED') this.scene.restart();
       else this._showRestartConfirm();
     });
 
@@ -567,13 +574,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Reset only makes sense once the level has progressed: after a launch, or
-   * once it's over (won/lost). A pristine level can't be usefully reset.
+   * Reset only makes sense once the level has progressed past READY (i.e. it's
+   * PLAYING or ENDED). A pristine, not-yet-started level can't be usefully reset.
    *
    * @returns {boolean}
    */
   _resetEnabled() {
-    return this.state === 'OVER' || this._launched;
+    return this.status !== 'READY';
   }
 
   /**
@@ -688,9 +695,9 @@ export class GameScene extends Phaser.Scene {
       if (this._pinchDist) return; // a two-finger pinch owns the gesture
       if (p.y < this._hudHeight) return; // press is on the HUD ribbon, not the arena
 
-      // Pressing on the launcher (while aiming) starts a shot; pressing
-      // anywhere else on the board pans the camera instead.
-      if (this.state === 'AIMING') {
+      // Pressing on the launcher (while aiming, and not after the level ends)
+      // starts a shot; pressing anywhere else on the board pans the camera.
+      if (this.status !== 'ENDED' && this.phase === 'AIMING') {
         const l = this.brothers.launcher.go;
         const reach = Config.ball.radius * 1.4; // forgiving for touch
         const w = this.cameras.main.getWorldPoint(p.x, p.y);
@@ -736,8 +743,8 @@ export class GameScene extends Phaser.Scene {
       if (pull < Config.slingshot.minPull) return; // mis-click: no move spent
 
       this.movesLeft -= 1;
-      this.state = 'MOVING';
-      this._launched = true; // level is no longer pristine — reset now allowed
+      this.status = 'PLAYING'; // first launch leaves READY; later launches keep PLAYING
+      this.phase = 'MOVING';
       this._refreshHud();
     });
 
@@ -810,10 +817,10 @@ export class GameScene extends Phaser.Scene {
   _wireCollisions() {
     this.matter.world.on('collisionstart', (event) => {
       // Snap and teleport are only meaningful while a shot is in flight. The
-      // pull-only tether lets the pair rest in contact, so a contact during
+      // pull-only tether lets the pair rest in contact, so a contact while
       // AIMING must NOT trigger the snap (it would unfreeze the anchor and let
       // a drag move the brother that's supposed to be immobile).
-      if (this.state !== 'MOVING') return;
+      if (this.status !== 'PLAYING' || this.phase !== 'MOVING') return;
 
       for (const pair of event.pairs) {
         const labels = [pair.bodyA.label, pair.bodyB.label];
@@ -871,7 +878,7 @@ export class GameScene extends Phaser.Scene {
     this.brothers.update();
     this._updatePinch();
 
-    if (this.state === 'MOVING') {
+    if (this.status === 'PLAYING' && this.phase === 'MOVING') {
       this.brothers.brakeSlowMotion();
       if (this.brothers.isSettled()) this._resolveTurn();
     }
@@ -895,7 +902,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.brothers.swapRoles();
-    this.state = 'AIMING';
+    this.phase = 'AIMING';
     this._refreshHud();
   }
 
@@ -974,9 +981,9 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _endGame(message, face, color) {
-    this.state = 'OVER';
+    this.status = 'ENDED';
     this.brothers.setBothFaces(face);
-    this._refreshResetButton(); // now over -> reset is enabled
+    this._refreshResetButton(); // now ended -> reset is enabled
 
     // Banner: size the backing panel to the text, then pop both in and let the
     // text gently breathe. No "restart" instruction text — the icon animates
