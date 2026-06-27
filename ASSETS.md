@@ -31,6 +31,9 @@ license.
 | `assets/icons/arrow-clockwise.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`arrow-clockwise`) | MIT — see `assets/icons/LICENSE` |
 | `assets/icons/chevron-left.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`chevron-left`) | MIT — see `assets/icons/LICENSE` |
 | `assets/icons/chevron-right.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`chevron-right`) | MIT — see `assets/icons/LICENSE` |
+| `assets/icons/flag.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`flag`) | MIT — see `assets/icons/LICENSE` |
+| `assets/icons/flag-fill.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`flag-fill`) | MIT — see `assets/icons/LICENSE` |
+| `assets/icons/controller.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`controller`) | MIT — see `assets/icons/LICENSE` |
 
 The only modification is setting the fill color to white so it reads on the dark
 HUD ribbon. The MIT license text and copyright are preserved in

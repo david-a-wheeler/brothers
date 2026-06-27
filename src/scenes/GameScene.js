@@ -38,6 +38,9 @@ export class GameScene extends Phaser.Scene {
       'icon-restart': 'arrow-clockwise',
       'icon-prev': 'chevron-left',
       'icon-next': 'chevron-right',
+      'icon-ready': 'flag',
+      'icon-playing': 'controller',
+      'icon-ended': 'flag-fill',
     };
     for (const [key, name] of Object.entries(icons)) {
       if (!this.textures.exists(key)) {
@@ -139,6 +142,8 @@ export class GameScene extends Phaser.Scene {
       this.prevTooltip,
       this.nextButton,
       this.nextTooltip,
+      this.statusIcon,
+      this.statusTooltip,
       this.bannerPanel,
       this.banner,
     ];
@@ -508,6 +513,32 @@ export class GameScene extends Phaser.Scene {
       'Next level'
     );
 
+    // Read-only lifecycle indicator, right of "next". Its glyph/colour reflect
+    // `status` (see _refreshStatusIcon); hover/press reveals the label. It's
+    // interactive only for the tooltip — NO hand cursor, so it reads as a
+    // status light rather than a button.
+    this.statusIcon = this.add
+      .image(Config.view.width / 2 + 2 * gap, h / 2, 'icon-ready')
+      .setDepth(10)
+      .setInteractive();
+    this.statusTooltip = this.add
+      .text(Config.view.width / 2 + 2 * gap, h + 12, '', {
+        fontSize: '15px',
+        color: '#ffffff',
+        backgroundColor: '#000000',
+        padding: { x: 8, y: 4 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(11)
+      .setVisible(false);
+    this.statusIcon.on('pointerover', () => this.statusTooltip.setVisible(true));
+    this.statusIcon.on('pointerout', () => this.statusTooltip.setVisible(false));
+    this.statusIcon.on('pointerdown', (_p, _x, _y, e) => {
+      e?.stopPropagation();
+      this.statusTooltip.setVisible(true);
+    });
+    this.statusIcon.on('pointerup', () => this.statusTooltip.setVisible(false));
+
     // A glow ring behind the restart icon, pulsed on game-over to draw the eye
     // there (see _attractRestart). Hidden during play.
     this.restartGlow = this.add
@@ -591,6 +622,23 @@ export class GameScene extends Phaser.Scene {
    */
   _refreshResetButton() {
     this.restartButton.setAlpha(this._resetEnabled() ? 0.8 : 0.3);
+  }
+
+  /**
+   * Update the read-only lifecycle indicator (glyph, colour, tooltip) to match
+   * `this.status`. Called wherever the status can change.
+   *
+   * @returns {void}
+   */
+  _refreshStatusIcon() {
+    const byStatus = {
+      READY: { key: 'icon-ready', tint: 0xd6b25e, label: 'Ready — not started' },
+      PLAYING: { key: 'icon-playing', tint: 0x7cfc8a, label: 'Playing — in progress' },
+      ENDED: { key: 'icon-ended', tint: 0x9aa0a6, label: 'Ended — level finished' },
+    };
+    const s = byStatus[this.status];
+    this.statusIcon.setTexture(s.key).setTint(s.tint);
+    this.statusTooltip.setText(s.label);
   }
 
   /**
@@ -988,6 +1036,7 @@ export class GameScene extends Phaser.Scene {
     // Banner: size the backing panel to the text, then pop both in and let the
     // text gently breathe. No "restart" instruction text — the icon animates
     // instead (see _attractRestart).
+    this._refreshStatusIcon(); // -> ENDED
     this.banner.setText(message).setColor(color);
     for (const o of [this.bannerPanel, this.banner]) o.setScale(0).setVisible(true);
     this.tweens.add({
@@ -1047,5 +1096,6 @@ export class GameScene extends Phaser.Scene {
     this.turnText.setText(`${launcher.name}'s turn — drag to aim`).setColor(launcher.color);
     this.movesText.setText(`Moves left: ${this.movesLeft}`);
     this._refreshResetButton();
+    this._refreshStatusIcon();
   }
 }
