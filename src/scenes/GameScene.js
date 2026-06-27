@@ -274,6 +274,29 @@ export class GameScene extends Phaser.Scene {
       yoyo: true,
       repeat: -1,
     });
+
+    // Exit motes: the mirror of the source — they burst from the centre in a
+    // random direction, then decelerate (drag opposing their velocity, sized so
+    // they stop exactly as they fade) and vanish about halfway out. Reusing the
+    // source's frequency/quantity keeps the exit rate matched to the intake.
+    const exitDrag = 1000 / T.exitLifespan; // px/s² per px/s -> v hits 0 at lifespan
+    this.add
+      .particles(teleporter.target.x, teleporter.target.y, 'portalSpark', {
+        lifespan: T.exitLifespan,
+        quantity: T.pullQuantity,
+        frequency: T.pullFrequency,
+        tint: 0xe67e22, // orange, matching the destination marker
+        blendMode: 'ADD',
+        scale: { start: 0.85, end: 0 },
+        alpha: { start: 1, end: 0 },
+        angle: { min: 0, max: 360 }, // random outward direction
+        speed: T.exitSpeed,
+        // Friction: accelerate opposite to each mote's velocity so it slows to a
+        // stop. accel = -v * (1000/lifespan) reaches zero speed at lifespan end.
+        accelerationX: { onEmit: (p) => -p.velocityX * exitDrag },
+        accelerationY: { onEmit: (p) => -p.velocityY * exitDrag },
+      })
+      .setDepth(2);
   }
 
   /**

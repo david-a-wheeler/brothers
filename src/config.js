@@ -110,6 +110,12 @@ export const Config = {
       pullLifespan: 450, // ms ≈ time to reach the centre, so a mote fades as it arrives
       pullFrequency: 55, // ms between spawns (lower = more motes active at once)
       pullQuantity: 1, // motes per spawn
+      // Destination exit motes: burst out of the centre, decelerate (friction)
+      // to a stop, and fade — mirroring the source. They reuse pullFrequency /
+      // pullQuantity so the exit rate matches the intake rate. Stop distance ≈
+      // exitSpeed * exitLifespan / 2000 px (here ~18px, about halfway out).
+      exitSpeed: 72, // initial outward speed (px/s)
+      exitLifespan: 500, // ms; a mote decelerates to a stop and fades out by here
     },
     /** Teleport target: calm idle breathe, arrival ring on warp-in. */
     target: {
