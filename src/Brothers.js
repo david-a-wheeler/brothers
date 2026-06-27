@@ -227,6 +227,9 @@ export class Brothers {
    * @returns {void}
    */
   beginAim() {
+    // Remember the resting spot so a blocked/aborted release can snap back to
+    // it instead of leaving the ball wherever it was dragged.
+    this._aimStart = { x: this.launcher.go.x, y: this.launcher.go.y };
     this.launcher.go.setStatic(true);
     this.setExpressions('drag');
   }
@@ -257,8 +260,41 @@ export class Brothers {
    * @returns {void}
    */
   cancelAim() {
+    if (this._aimStart) {
+      this.launcher.go.setPosition(this._aimStart.x, this._aimStart.y);
+    }
     this.launcher.go.setStatic(false);
+    this.launcher.go.setVelocity(0, 0);
     this.setExpressions('idle');
+  }
+
+  /**
+   * Would launching from the current pulled-back spot start the ball already
+   * overlapping something solid? Checked with plain geometry (no Matter query)
+   * against the three kinds of solid thing: the arena edges, the other
+   * brother, and the interior walls. The destination goal and teleporter are
+   * deliberately not checked — they're non-solid, so resting on them is fine.
+   *
+   * @returns {boolean}
+   */
+  _launcherBlocked() {
+    const l = this.launcher.go;
+    const r = Config.ball.radius;
+    const { width, height } = Config.view;
+
+    // Poking past an arena edge?
+    if (l.x < r || l.x > width - r || l.y < r || l.y > height - r) return true;
+
+    // Overlapping the other brother?
+    const a = this.anchor.go;
+    if (Phaser.Math.Distance.Between(l.x, l.y, a.x, a.y) < r * 2) return true;
+
+    // Overlapping any interior wall (closest-point circle/rectangle test)?
+    return Config.level.walls.some((w) => {
+      const nx = Phaser.Math.Clamp(l.x, w.x - w.width / 2, w.x + w.width / 2);
+      const ny = Phaser.Math.Clamp(l.y, w.y - w.height / 2, w.y + w.height / 2);
+      return Phaser.Math.Distance.Between(l.x, l.y, nx, ny) < r;
+    });
   }
 
   /**
@@ -274,12 +310,12 @@ export class Brothers {
     const s = Config.slingshot;
     const pull = Phaser.Math.Distance.Between(l.x, l.y, a.x, a.y);
 
-    // Block too-short pulls AND any release while the balls overlap: a launch
-    // is only valid once they're at least touching (centres >= two radii).
-    const minLaunch = Math.max(s.minPull, Config.ball.radius * 2);
-    if (pull < minLaunch) {
+    // Block a too-short pull, OR a release where the ball would start already
+    // overlapping something solid (the other brother, a wall, or the board
+    // edge). Either way it's not a real launch and costs the player no move.
+    if (pull < s.minPull || this._launcherBlocked()) {
       this.cancelAim();
-      return 0; // not a real launch — scene spends no move
+      return 0;
     }
 
     const angle = Phaser.Math.Angle.Between(l.x, l.y, a.x, a.y);
