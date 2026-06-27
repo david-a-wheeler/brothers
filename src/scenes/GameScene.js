@@ -69,6 +69,9 @@ export class GameScene extends Phaser.Scene {
     /** @type {TurnPhase} */
     this.phase = 'AIMING';
     this.movesLeft = Config.level.moves;
+    // Best winning result = the most moves ever left over on a win. Kept in the
+    // registry so it survives scene restarts (replays); null until first won.
+    if (!this.registry.has('bestMovesLeft')) this.registry.set('bestMovesLeft', null);
     /** True between pointerdown-on-launcher and pointerup. */
     this.isAiming = false;
     /** Wall-clock ms before which teleporter hits are ignored (debounce). */
@@ -939,6 +942,10 @@ export class GameScene extends Phaser.Scene {
    */
   _resolveTurn() {
     if (this.brothers.anyInside(Config.level.destination)) {
+      // Record best (most moves left) — note 0 is a real result, distinct from
+      // "never won" (null).
+      const best = this.registry.get('bestMovesLeft');
+      if (best == null || this.movesLeft > best) this.registry.set('bestMovesLeft', this.movesLeft);
       this._winBurst();
       sfx.win();
       this._endGame('LEVEL CLEAR!', FACES.win, '#7cfc8a');
@@ -1107,7 +1114,8 @@ export class GameScene extends Phaser.Scene {
       color = launcher.color;
     }
     this.turnText.setText(text).setColor(color);
-    this.movesText.setText(`Moves left: ${this.movesLeft}`);
+    const best = this.registry.get('bestMovesLeft');
+    this.movesText.setText(`Best: ${best == null ? '-' : best}    #Left: ${this.movesLeft}`);
     this._refreshResetButton();
     this._refreshStatusIcon();
   }
