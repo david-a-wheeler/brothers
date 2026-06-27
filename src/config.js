@@ -31,7 +31,8 @@ export const Config = {
   slingshot: {
     maxPull: 260, // furthest the launcher can be stretched from the anchor
     minPull: 24, // shorter pulls are treated as a mis-click, not a launch
-    power: 0.8, // launch speed applied per pixel of pull
+    maxSpeed: 170, // launch speed at a full-strength pull
+    curve: 2, // >1 eases in: small pulls give proportionally less, for fine control
   },
 
   /**

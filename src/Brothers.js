@@ -56,11 +56,18 @@ export class Brothers {
     /** Consecutive slow frames, for debounced settle detection. */
     this._settleFrames = 0;
 
-    // The tether: a soft, damped spring with a non-zero rest length.
+    // The tether: a soft, damped spring with a non-zero rest length. Kept as
+    // a reference because we make it *pull-only* each frame (see {@link update}):
+    // a Matter constraint normally pushes when squeezed below its rest length,
+    // which would fling the brothers apart when placed close together.
     const t = Config.tether;
-    scene.matter.add.constraint(this.david.go.body, this.ken.go.body, t.restLength, t.stiffness, {
-      damping: t.damping,
-    });
+    this._tether = scene.matter.add.constraint(
+      this.david.go.body,
+      this.ken.go.body,
+      t.restLength,
+      t.stiffness,
+      { damping: t.damping }
+    );
 
     this.anchor.go.setStatic(true);
     this.setExpressions('idle');
@@ -157,6 +164,8 @@ export class Brothers {
    * @returns {void}
    */
   update() {
+    this._applyPullOnlyTether();
+
     for (const b of [this.david, this.ken]) {
       b.face.setPosition(b.go.x, b.go.y);
       b.face.rotation = 0;
@@ -168,6 +177,26 @@ export class Brothers {
     this.band.clear();
     this.band.lineStyle(4, 0xf3c969, 0.85);
     this.band.lineBetween(this.david.go.x, this.david.go.y, this.ken.go.x, this.ken.go.y);
+  }
+
+  /**
+   * Make the tether behave like an elastic band / rope instead of a two-sided
+   * spring: it should resist *stretching* past its rest length but never push
+   * the brothers apart when they're closer than that. A Matter constraint is
+   * symmetric, so we simply zero its stiffness whenever the current gap is at
+   * or below the rest length, and restore it once they're stretched apart.
+   * (Solid-body collision already keeps the balls from overlapping up close.)
+   *
+   * @returns {void}
+   */
+  _applyPullOnlyTether() {
+    const gap = Phaser.Math.Distance.Between(
+      this.david.go.x,
+      this.david.go.y,
+      this.ken.go.x,
+      this.ken.go.y
+    );
+    this._tether.stiffness = gap > Config.tether.restLength ? Config.tether.stiffness : 0;
   }
 
   /**
@@ -242,15 +271,22 @@ export class Brothers {
   release() {
     const l = this.launcher.go;
     const a = this.anchor.go;
+    const s = Config.slingshot;
     const pull = Phaser.Math.Distance.Between(l.x, l.y, a.x, a.y);
 
-    if (pull < Config.slingshot.minPull) {
+    // Block too-short pulls AND any release while the balls overlap: a launch
+    // is only valid once they're at least touching (centres >= two radii).
+    const minLaunch = Math.max(s.minPull, Config.ball.radius * 2);
+    if (pull < minLaunch) {
       this.cancelAim();
-      return pull;
+      return 0; // not a real launch — scene spends no move
     }
 
     const angle = Phaser.Math.Angle.Between(l.x, l.y, a.x, a.y);
-    const speed = pull * Config.slingshot.power;
+    // Eased launch: normalise the pull, then apply a >1 exponent so gentle
+    // pulls stay gentle while a full draw still hits hard.
+    const t = Phaser.Math.Clamp((pull - s.minPull) / (s.maxPull - s.minPull), 0, 1);
+    const speed = s.maxSpeed * Math.pow(t, s.curve);
     l.setStatic(false);
     l.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     this.setExpressions('flight');
