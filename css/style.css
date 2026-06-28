@@ -12,7 +12,13 @@ body {
 
 #game {
   width: 100vw;
+  /* 100dvh = the *currently visible* viewport height. Plain 100vh on mobile is
+     the height with the browser toolbars retracted, so the canvas (and the
+     arena's bottom margin) would spill below the address bar and be unreachable.
+     dvh tracks toolbar show/hide; Scale.RESIZE reflows the scene to match. The
+     vh line is a fallback for the rare browser without dvh support. */
   height: 100vh;
+  height: 100dvh;
 }
 
 /* Phaser injects its <canvas> here; FIT-scaling centres it for us. */
