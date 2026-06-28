@@ -17,9 +17,6 @@
 const DEFAULTS = {
   moves: 6,
   wallRestitution: 0.6,
-  goalRadius: 60,
-  teleporterRadius: 44,
-  retainVelocity: 0.6,
   // Per-brother size/mass multipliers a level can override (e.g. "David goes on
   // a diet"). Applied on top of the global defaults; 1 = no change. Ken's are
   // relative to Config.ball.radius/mass; David's are relative to Ken (so they
@@ -31,15 +28,24 @@ const DEFAULTS = {
 };
 
 /**
+ * A placed world object, kept type-agnostic on purpose: the loader doesn't know
+ * what a "goal" or "teleporter" is — it just records the Tiled `kind` (class),
+ * centre position, size, name, and any custom properties. `src/world` owns all
+ * type behaviour and per-type defaults, so adding an object type needs no loader
+ * change.
+ *
+ * @typedef {{kind:string, x:number, y:number, width:number, height:number,
+ *   name:string, [prop:string]:any}} WorldObjectDef
+ */
+
+/**
  * @typedef {Object} Level
  * @property {{width:number, height:number}} arena
  * @property {number} moves
  * @property {number} wallRestitution
  * @property {{x:number,y:number}|null} david
  * @property {{x:number,y:number}|null} ken
- * @property {{x:number,y:number,radius:number}|null} goal
- * @property {{source:{x:number,y:number,radius:number}, target:{x:number,y:number}, retainVelocity:number}|null} teleporter
- * @property {{x:number,y:number,width:number,height:number}[]} walls
+ * @property {WorldObjectDef[]} objects  Every placed object (goals, teleporters, walls, …).
  * @property {number} kenRadiusMult
  * @property {number} kenMassMult
  * @property {number} davidRadiusMult
@@ -87,9 +93,7 @@ export function loadTiledLevel(map) {
     davidMassMult: mapProps.davidMassMult ?? DEFAULTS.davidMassMult,
     david: null,
     ken: null,
-    goal: null,
-    teleporter: null,
-    walls: [],
+    objects: [],
   };
 
   // Collect objects across every object layer (ignore tile/image/group layers).
@@ -98,46 +102,28 @@ export function loadTiledLevel(map) {
     if (layer.type === 'objectgroup') objects.push(...(layer.objects || []));
   }
 
-  let source = null;
-  let target = null;
+  // The loader is type-agnostic: spawns are pulled out (the pair needs them up
+  // front), and every other classed object is recorded generically for the
+  // world layer to interpret. Rect objects (e.g. walls) are converted from
+  // Tiled's top-left to centre coordinates; points have zero size so their
+  // centre is just their x,y. Unclassed objects are skipped.
   for (const o of objects) {
     const cls = o.class ?? o.type ?? '';
     const p = propsToObject(o.properties);
-    switch (cls) {
-      case 'wall':
-        // Tiled rects are top-left; our walls are centre-based.
-        level.walls.push({
-          x: o.x + (o.width || 0) / 2,
-          y: o.y + (o.height || 0) / 2,
-          width: o.width || 0,
-          height: o.height || 0,
-        });
-        break;
-      case 'spawn':
-        if (p.who === 'ken') level.ken = { x: o.x, y: o.y };
-        else level.david = { x: o.x, y: o.y };
-        break;
-      case 'goal':
-        level.goal = { x: o.x, y: o.y, radius: p.radius ?? DEFAULTS.goalRadius };
-        break;
-      case 'teleporter-source':
-        source = { x: o.x, y: o.y, radius: p.radius ?? DEFAULTS.teleporterRadius, retain: p.retain };
-        break;
-      case 'teleporter-target':
-        target = { x: o.x, y: o.y };
-        break;
-      default:
-        break; // unknown class — ignored for forward-compatibility
+    if (cls === 'spawn') {
+      if (p.who === 'ken') level.ken = { x: o.x, y: o.y };
+      else level.david = { x: o.x, y: o.y };
+    } else if (cls) {
+      level.objects.push({
+        ...p, // custom props (radius, retain, dest, …)
+        kind: cls,
+        name: o.name || '',
+        x: o.x + (o.width || 0) / 2,
+        y: o.y + (o.height || 0) / 2,
+        width: o.width || 0,
+        height: o.height || 0,
+      });
     }
-  }
-
-  // A teleporter needs both ends; otherwise the level simply has none.
-  if (source && target) {
-    level.teleporter = {
-      source: { x: source.x, y: source.y, radius: source.radius },
-      target: { x: target.x, y: target.y },
-      retainVelocity: source.retain ?? DEFAULTS.retainVelocity,
-    };
   }
 
   return level;

@@ -14,6 +14,7 @@ import {
   loadPack,
 } from '../levels.js';
 import * as scores from '../scores.js';
+import { WorldObjects } from '../world/WorldObjects.js';
 
 /**
  * Level state is tracked along two axes.
@@ -82,8 +83,8 @@ export class GameScene extends Phaser.Scene {
 
     this._buildArena();
     this._buildFloorGrid();
-    this._buildWalls();
-    this._buildZones();
+    /** All level world objects (goals, teleporters, walls); see src/world. */
+    this.world = new WorldObjects(this, this.level);
 
     this.brothers = new Brothers(this, this.level);
 
@@ -98,8 +99,6 @@ export class GameScene extends Phaser.Scene {
     // scene restart.
     /** True between pointerdown-on-launcher and pointerup. */
     this.isAiming = false;
-    /** Wall-clock ms before which teleporter hits are ignored (debounce). */
-    this.teleportLockUntil = 0;
     /** Last finger-spread distance while pinch-zooming (0 = not pinching). */
     this._pinchDist = 0;
     /** Camera-pan drag state. */
@@ -394,229 +393,6 @@ export class GameScene extends Phaser.Scene {
     // canvas clear) reads as "outside the arena" — e.g. the letterbox margins
     // when the arena is fully zoomed out.
     this.add.rectangle(width / 2, height / 2, width, height, Config.view.arenaColor).setDepth(-2);
-  }
-
-  /**
-   * Generate a small, seamless brick-pattern texture once (offset courses of
-   * bricks separated by mortar), so walls can be drawn as tiling sprites at
-   * any size without an image asset.
-   *
-   * @returns {void}
-   */
-  _makeBrickTexture() {
-    if (this.textures.exists('brick')) return;
-    const mortar = 0x4a3327;
-    const brick = 0xb5651d;
-    const bw = 24;
-    const bh = 11;
-    const tile = bw + 2; // brick + mortar gap
-    const w = tile * 2; // two courses wide for the half-brick offset
-    const h = (bh + 2) * 2;
-
-    const g = this.add.graphics();
-    g.fillStyle(mortar, 1).fillRect(0, 0, w, h);
-    g.fillStyle(brick, 1);
-    // Course 0: bricks flush to the left.
-    g.fillRect(0, 0, bw, bh).fillRect(tile, 0, bw, bh);
-    // Course 1: offset half a brick (wraps seamlessly across the tile edge).
-    g.fillRect(tile / 2, bh + 2, bw, bh);
-    g.fillRect(0, bh + 2, tile / 2 - 2, bh); // left partial
-    g.fillRect(tile / 2 + bw, bh + 2, tile / 2 - 2, bh); // right partial
-    g.generateTexture('brick', w, h);
-    g.destroy();
-  }
-
-  /**
-   * Short interior brick walls: a tiling-sprite visual plus a matching static
-   * Matter body for each wall in the level. Labelled 'wall' so the collision
-   * router leaves them alone (they just deflect the balls).
-   *
-   * @returns {void}
-   */
-  _buildWalls() {
-    this._makeBrickTexture();
-    for (const wall of this.level.walls) {
-      this.add.tileSprite(wall.x, wall.y, wall.width, wall.height, 'brick');
-      // A thin dark frame so the wall reads crisply against the background.
-      this.add
-        .rectangle(wall.x, wall.y, wall.width, wall.height)
-        .setStrokeStyle(2, 0x2a1d15, 0.9);
-      const body = this.matter.add.rectangle(wall.x, wall.y, wall.width, wall.height, {
-        isStatic: true,
-        restitution: this.level.wallRestitution,
-      });
-      body.label = 'wall';
-    }
-  }
-
-  /**
-   * Build the level's zones. Each is optional — a level may omit either the
-   * goal or the teleporter.
-   *
-   * @returns {void}
-   */
-  _buildZones() {
-    if (this.level.goal) this._buildGoal(this.level.goal);
-    if (this.level.teleporter) this._buildTeleporter(this.level.teleporter);
-  }
-
-  /**
-   * Goal — an archery target (concentric rings + a slow-rotating
-   * reticle) plus a sensor body, all centred on the goal.
-   *
-   * @param {{x:number, y:number, radius:number}} goalDef
-   * @returns {void}
-   */
-  _buildGoal(goalDef) {
-    const R = goalDef.radius;
-    const ringBands = [
-      { r: R, color: 0x145a32 }, // dark
-      { r: R * 0.78, color: 0x2ecc71 }, // bright
-      { r: R * 0.55, color: 0x145a32 }, // dark
-      { r: R * 0.33, color: 0x2ecc71 }, // bright
-      { r: R * 0.14, color: 0xeafff2 }, // bullseye
-    ];
-    this.goalGfx = this.add.container(
-      goalDef.x,
-      goalDef.y,
-      ringBands.map((b) => this.add.circle(0, 0, b.r, b.color))
-    );
-    this.goalReticle = this._buildReticle(goalDef.x, goalDef.y, R);
-    this._startGoalPulse();
-    const goalBody = this.matter.add.circle(goalDef.x, goalDef.y, goalDef.radius, {
-      isSensor: true,
-      isStatic: true,
-    });
-    goalBody.label = 'goal';
-  }
-
-  /**
-   * Teleporter — a breathing source with inward-pulled motes and a portal
-   * sensor, plus an exit marker with outward motes that mirror the source rate.
-   *
-   * @param {{source:{x:number,y:number,radius:number}, target:{x:number,y:number}}} teleporter
-   * @returns {void}
-   */
-  _buildTeleporter(teleporter) {
-    const T = Config.anim.teleporter;
-    const { source, target } = teleporter;
-
-    // Source (entrance) — breathing fill...
-    this.teleporterGfx = this.add.circle(source.x, source.y, source.radius, 0x9b59b6, 0.5);
-    this.tweens.add({
-      targets: this.teleporterGfx,
-      fillAlpha: T.pulseAlpha,
-      duration: T.pulseDuration,
-      ease: 'Sine.InOut',
-      yoyo: true,
-      repeat: -1,
-    });
-
-    // ...plus motes that pop in at random rim points and are pulled to centre.
-    if (!this.textures.exists('portalSpark')) {
-      const g = this.add.graphics();
-      g.fillStyle(0xffffff, 1).fillCircle(4, 4, 3);
-      g.generateTexture('portalSpark', 8, 8);
-      g.destroy();
-    }
-    const cx = source.x;
-    const cy = source.y;
-    const sr = source.radius;
-    // Normalise a mote's spawn position to a centre-relative offset whether
-    // Phaser reports it local to the emitter or in world space.
-    const offset = (p) => ({
-      x: Math.abs(p.x) > sr + 1 ? p.x - cx : p.x,
-      y: Math.abs(p.y) > sr + 1 ? p.y - cy : p.y,
-    });
-    this.add
-      .particles(cx, cy, 'portalSpark', {
-        lifespan: T.pullLifespan,
-        quantity: T.pullQuantity,
-        frequency: T.pullFrequency,
-        tint: 0xb37feb,
-        blendMode: 'ADD',
-        scale: { start: 0.85, end: 0 },
-        alpha: { start: 1, end: 0 },
-        // Spawn at a random point on the rim (a circle's getRandomPoint returns
-        // an interior point, so supply one that lands on the edge).
-        emitZone: {
-          type: 'random',
-          source: {
-            getRandomPoint: (point) => {
-              const a = Math.random() * Math.PI * 2;
-              point.x = Math.cos(a) * sr;
-              point.y = Math.sin(a) * sr;
-              return point;
-            },
-          },
-        },
-        // Pure inward velocity: straight toward the centre, no swirl.
-        speedX: { onEmit: (p) => -offset(p).x * T.pullSpeed },
-        speedY: { onEmit: (p) => -offset(p).y * T.pullSpeed },
-      })
-      .setDepth(2);
-    const portal = this.matter.add.circle(source.x, source.y, source.radius, {
-      isSensor: true,
-      isStatic: true,
-    });
-    portal.label = 'teleporter';
-
-    // Target (exit) — visual marker with a calm idle breathe.
-    this.targetGfx = this.add
-      .rectangle(target.x, target.y, 70, 70)
-      .setStrokeStyle(2, 0xe67e22, 0.6)
-      .setAlpha(Config.anim.target.idleAlphaLow);
-    this.tweens.add({
-      targets: this.targetGfx,
-      alpha: Config.anim.target.idleAlphaHigh,
-      duration: Config.anim.target.idleDuration,
-      ease: 'Sine.InOut',
-      yoyo: true,
-      repeat: -1,
-    });
-
-    // Exit motes: the mirror of the source — burst out, decelerate (friction
-    // sized to stop as they fade), vanish ~halfway out. Reusing the source's
-    // frequency/quantity keeps the exit rate matched to the intake.
-    const exitDrag = 1000 / T.exitLifespan; // px/s² per px/s -> v hits 0 at lifespan
-    this.add
-      .particles(target.x, target.y, 'portalSpark', {
-        lifespan: T.exitLifespan,
-        quantity: T.pullQuantity,
-        frequency: T.pullFrequency,
-        tint: 0xe67e22, // orange, matching the goal marker
-        blendMode: 'ADD',
-        scale: { start: 0.85, end: 0 },
-        alpha: { start: 1, end: 0 },
-        angle: { min: 0, max: 360 }, // random outward direction
-        speed: T.exitSpeed,
-        accelerationX: { onEmit: (p) => -p.velocityX * exitDrag },
-        accelerationY: { onEmit: (p) => -p.velocityY * exitDrag },
-      })
-      .setDepth(2);
-  }
-
-  /**
-   * One-shot expanding-and-fading ring, used to punctuate teleport-out,
-   * teleport-in, and (in a brighter form) a level win.
-   *
-   * @param {number} x
-   * @param {number} y
-   * @param {number} radius  Starting radius of the ring.
-   * @param {number} color   Stroke colour.
-   * @returns {void}
-   */
-  _spawnRing(x, y, radius, color) {
-    const ring = this.add.circle(x, y, radius).setStrokeStyle(3, color, 0.9).setDepth(5);
-    this.uiCamera?.ignore(ring); // world effect: keep it off the fixed HUD camera
-    this.tweens.add({
-      targets: ring,
-      scale: Config.anim.ring.growScale,
-      alpha: 0,
-      duration: Config.anim.ring.duration,
-      ease: 'Cubic.Out',
-      onComplete: () => ring.destroy(),
-    });
   }
 
   /**
@@ -1898,9 +1674,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Collision routing: brother-on-brother triggers the Hybrid Snap, and a
-   * brother touching the teleporter warps the pair. The win check happens at
-   * settle time (distance-based), not here, so a fast fly-through doesn't win.
+   * Collision routing: brother-on-brother triggers the Hybrid Snap; a brother
+   * touching a solid (wall/edge) also snaps; a brother entering a trigger object
+   * is dispatched to that object via its body's `worldObject` back-reference
+   * (e.g. a teleporter warps the pair). The win check happens at settle time
+   * (distance-based, see WorldObjects.firstReachedGoal), not here, so a fast
+   * fly-through doesn't win.
    *
    * @returns {void}
    */
@@ -1913,40 +1692,27 @@ export class GameScene extends Phaser.Scene {
       if (this.status !== 'PLAYING' || this.phase !== 'MOVING') return;
 
       for (const pair of event.pairs) {
-        const labels = [pair.bodyA.label, pair.bodyB.label];
+        const aBro = pair.bodyA.label === 'brother';
+        const bBro = pair.bodyB.label === 'brother';
 
-        if (labels[0] === 'brother' && labels[1] === 'brother') {
+        if (aBro && bBro) {
           sfx.hit(); // billiard-style click on every brother-on-brother contact
           this.brothers.snap();
-        } else if (labels.includes('brother') && labels.includes('teleporter')) {
-          this._handleTeleport();
-        } else if (labels.includes('brother') && !(pair.bodyA.isSensor || pair.bodyB.isSensor)) {
+          continue;
+        }
+        const other = aBro ? pair.bodyB : bBro ? pair.bodyA : null;
+        if (!other) continue; // neither is a brother
+
+        if (other.isSensor) {
+          // A trigger object (e.g. teleporter) handles itself; goals are
+          // checked at settle, so their no-op handler does nothing here.
+          other.worldObject?.onBrotherContact();
+        } else {
           sfx.hit(); // brother off a wall or the arena edge — same click, no debounce
           this.brothers.snap(); // hitting a solid also frees the anchor
         }
       }
     });
-  }
-
-  /**
-   * Warp the pair, debounced so overlapping the sensor for several frames
-   * fires only once.
-   *
-   * @returns {void}
-   */
-  _handleTeleport() {
-    if (this.time.now < this.teleportLockUntil) return;
-    this.teleportLockUntil = this.time.now + 600;
-
-    const { source, target, retainVelocity } = this.level.teleporter;
-
-    // Punctuate the warp: a ring collapsing out of the entrance and a fresh
-    // ring blooming at the exit so the eye follows source -> target.
-    this._spawnRing(source.x, source.y, source.radius, 0x9b59b6);
-    this._spawnRing(target.x, target.y, 18, 0xe67e22);
-    sfx.teleport();
-
-    this.brothers.teleport(target, retainVelocity);
   }
 
   // --- Per-frame loop -----------------------------------------------------
@@ -1966,6 +1732,9 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < n; i++) this.matter.world.step(sub);
 
     this.brothers.update();
+    // Tick any dynamic world objects (culled to the view). No-op today, since
+    // all current objects are static/tween-driven; here for future types.
+    this.world.update({ brothers: this.brothers, view: this.cameras.main.worldView });
     this._updatePinch();
 
     if (this.status === 'PLAYING' && this.phase === 'MOVING') {
@@ -1980,8 +1749,8 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _resolveTurn() {
-    if (this.level.goal &&
-	this.brothers.anyInside(this.level.goal)) {
+    const goal = this.world.firstReachedGoal(this.brothers);
+    if (goal) {
       // Record best score (most moves left) if we beat it.
       // Note that "0" is a real best score result, distinct from
       // "never won" (null).
@@ -1995,7 +1764,7 @@ export class GameScene extends Phaser.Scene {
         this.registry.set(this._bestKey, this.movesLeft);
       }
       scores.recordBest(currentLevelKey(), this.movesLeft); // persist across reloads
-      this._winBurst();
+      goal.celebrate();
       sfx.win();
       this._endGame(message, FACES.win, '#7cfc8a', true);
       return;
@@ -2008,72 +1777,6 @@ export class GameScene extends Phaser.Scene {
     this.brothers.swapRoles();
     this.phase = 'AIMING';
     this._refreshHud();
-  }
-
-  /**
-   * Celebratory one-shot at the goal when the level is cleared:
-   * a quick scale pop on the goal plus an expanding ring.
-   *
-   * @returns {void}
-   */
-  _winBurst() {
-    const d = this.level.goal;
-    const a = Config.anim.goal;
-    this.tweens.killTweensOf(this.goalGfx);
-    this.goalGfx.setScale(1);
-    // Pop the whole target once. The reticle keeps spinning independently.
-    this.tweens.add({
-      targets: this.goalGfx,
-      scale: a.winBurstScale,
-      duration: a.winBurstDuration,
-      ease: 'Back.Out',
-      yoyo: true,
-    });
-    this._spawnRing(d.x, d.y, d.radius, 0x2ecc71);
-  }
-
-  /**
-   * Build the rotating crosshair/reticle overlay for the target: four ticks
-   * around the rim with a gap over the bullseye, plus a thin outer ring. Drawn
-   * around its own origin so it rotates cleanly about the target's center.
-   *
-   * @param {number} x
-   * @param {number} y
-   * @param {number} radius  The target's outer radius.
-   * @returns {Phaser.GameObjects.Graphics}
-   */
-  _buildReticle(x, y, radius) {
-    const inner = radius * 0.85;
-    const outer = radius * 1.25;
-    const g = this.add.graphics({ x, y });
-    g.lineStyle(2, 0xffffff, 0.6);
-    g.beginPath();
-    g.moveTo(0, -outer);
-    g.lineTo(0, -inner);
-    g.moveTo(0, inner);
-    g.lineTo(0, outer);
-    g.moveTo(-outer, 0);
-    g.lineTo(-inner, 0);
-    g.moveTo(inner, 0);
-    g.lineTo(outer, 0);
-    g.strokePath();
-    g.strokeCircle(0, 0, outer);
-    return g;
-  }
-
-  /**
-   * Start the goal's idle motion: a slow, continuous rotation of the
-   * reticle overlay. The target rings themselves stay fixed in size.
-   *
-   * @returns {void}
-   */
-  _startGoalPulse() {
-    this.tweens.add({
-      targets: this.goalReticle,
-      angle: 360,
-      duration: Config.anim.goal.reticleRotateDuration,
-      repeat: -1,
-    });
   }
 
   /**

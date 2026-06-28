@@ -68,11 +68,16 @@ Set each object's **Class** (older Tiled: **Type**) to one of:
 
 | Class                | Shape  | Properties                          | Meaning |
 | -------------------- | ------ | ----------------------------------- | ------- |
-| `wall`               | rect   | —                                   | A solid wall (deflects balls). |
+| `wall`               | rect   | —                                   | A solid wall (deflects balls). Any number. |
 | `spawn`              | point  | `who` = `"david"` \| `"ken"`        | A brother's start position. |
-| `goal`               | point  | `radius` (number)                   | The goal zone. |
-| `teleporter-source`  | point  | `radius` (number), `retain` (0–1)   | Portal entrance (optional). |
-| `teleporter-target`  | point  | —                                   | Portal exit (optional). |
+| `goal`               | point  | `radius` (number)                   | A goal zone. **Any number — reaching any one wins.** |
+| `teleporter-source`  | point  | `radius` (number), `retain` (0–1), `dest` (target name) | Portal entrance. Any number. |
+| `teleporter-target`  | point  | (Tiled **Name**)                    | Portal exit. Any number. |
+
+Goals, sources, and targets are each independent — a level may have as many as
+you like. A source sends the pair to the `teleporter-target` whose Tiled **Name**
+matches its `dest` property; if `dest` is omitted (or names no target), it uses
+the **first** target. One target may be the destination of many sources.
 
 Map-level custom properties:
 
@@ -83,23 +88,30 @@ Map-level custom properties:
 
 Arena size = the map's pixel dimensions. Rectangle objects use Tiled's top-left
 coordinates; the adapter converts walls to center coordinates. Point objects use
-their `x,y` directly. A teleporter exists only if **both** source and target are
-present.
+their `x,y` directly. A source with no reachable target is simply inert.
 
 ## Adding a new object type later
 
-Because everything funnels through the adapter, adding an object type is small:
+Each world-object type is a small class in `src/world/` (a subclass of
+`WorldObject`) that owns its visuals, physics body, and behaviour; the manager
+`src/world/WorldObjects.js` builds them from the level model and the scene stays
+generic. Adding a type is three small steps:
 
 1. In Tiled, place an object and set its **Class** to the new name (+ any
    properties). No project/types file is required — a plain class string works
    in every Tiled version (the adapter reads `class`/`type`). A Tiled
    `.tiled-project` defining the classes is *optional* and is intentionally
    avoided here because that feature is version-specific.
-2. Add a `case` for the class in `loadTiledLevel` that maps it into the level
-   model.
-3. Add the build code in the scene that turns that model data into game objects.
+2. Add a `case` in `loadTiledLevel` that collects the object into the level
+   model (an array of plain data).
+3. Add a `WorldObject` subclass that builds it, and one line in `WorldObjects`
+   to instantiate it. Override only the hooks it needs: `onBrotherContact()`
+   (trigger sensors), `isReached(brothers)` (win conditions), or
+   `needsUpdate`+`update(ctx)` (per-frame dynamics; culled to the view).
 
-Nothing else changes — old levels without the new type still load.
+A sensor body is tagged `body.worldObject = this`, so the scene's collision
+router dispatches contacts to the right instance without label strings. Nothing
+else changes — old levels without the new type still load.
 
 ## Loading architecture
 
