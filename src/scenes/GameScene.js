@@ -100,8 +100,9 @@ export class GameScene extends Phaser.Scene {
     this._panLast = { x: 0, y: 0 };
     /** True while the "Restart level?" confirmation modal is open. */
     this._modalOpen = false;
-    /** True while the dev parameter-tuning panel is open. */
-    this._devOpen = false;
+    /** True while the dev parameter-tuning panel is open. Persisted in the
+     *  registry so "Restart level" leaves an open lab panel in place. */
+    this._devOpen = this.registry.get('devOpen') || false;
     /** HUD icon the attract glow is tracking (null = not attracting). */
     this._attractTarget = null;
 
@@ -917,7 +918,8 @@ export class GameScene extends Phaser.Scene {
     ];
     const n = this._devParams.length;
     const helpY = y0 + 38 + n * rowH;
-    const resetY = helpY + 54;
+    const moreTurnsY = helpY + 54;
+    const resetY = moreTurnsY + 36;
     const h = resetY - y0 + 26;
     this._devBounds = { x: x0, y: y0, w, h };
 
@@ -959,10 +961,13 @@ export class GameScene extends Phaser.Scene {
     });
 
     parts.push(this._devHelp);
-    parts.push(this._devButton(x0 + w / 2, resetY, 'Reset', () => this._resetParams()));
+    // "More turns" lets us keep experimenting past a win/loss (see _moreTurns).
+    parts.push(this._devButton(x0 + w / 2, moreTurnsY, 'More turns', () => this._moreTurns()));
+    parts.push(this._devButton(x0 + w / 2, resetY, 'Reset parameters', () => this._resetParams()));
 
     this.devPanelParts = parts;
-    for (const p of parts) p.setVisible(false);
+    // Honour a persisted open state (e.g. after a "Restart level").
+    for (const p of parts) p.setVisible(this._devOpen);
   }
 
   /**
@@ -1017,6 +1022,42 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Dev helper ("More turns"): grant 6 extra moves so tuning can continue. If
+   * the level has already ended, resume play — drop the end banner and attract
+   * glow, then hand off to a fresh aiming turn — so we can keep experimenting
+   * in the same layout instead of restarting.
+   *
+   * @returns {void}
+   */
+  _moreTurns() {
+    this.movesLeft += 6;
+    if (this.status === 'ENDED') {
+      this.status = 'PLAYING';
+      this.phase = 'AIMING';
+      this._clearEndDisplay();
+      this.brothers.swapRoles(); // clean next-turn handoff: faces, glow, refreeze
+    }
+    this._refreshHud();
+  }
+
+  /**
+   * Tear down the end-of-level display: stop and hide the banner, its backing
+   * panel, and the attract glow/heartbeat, restoring the highlighted icon to
+   * its normal size. Used when resuming play via {@link _moreTurns}.
+   *
+   * @returns {void}
+   */
+  _clearEndDisplay() {
+    this.tweens.killTweensOf([this.banner, this.bannerPanel, this.attractGlow]);
+    if (this._attractTarget) {
+      this.tweens.killTweensOf(this._attractTarget);
+      this._attractTarget = null;
+    }
+    for (const o of [this.banner, this.bannerPanel, this.attractGlow]) o.setVisible(false);
+    this._layoutHud(); // restore the heart-beated icon to its normal size
+  }
+
+  /**
    * Update one dev row's "key: value" label from the live Config value.
    *
    * @param {{param: {obj: object, key: string, dp: number}, value: Phaser.GameObjects.Text}} row
@@ -1047,6 +1088,7 @@ export class GameScene extends Phaser.Scene {
    */
   _toggleDevPanel() {
     this._devOpen = !this._devOpen;
+    this.registry.set('devOpen', this._devOpen); // survive scene restarts
     this._devRows.forEach((r) => this._setDevRowText(r));
     this._devHelp.setText(''); // no stale explanation on open/close
     for (const p of this.devPanelParts) p.setVisible(this._devOpen);
