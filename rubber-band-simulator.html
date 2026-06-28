@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cartoon Rubber Band Synth Laboratory</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: row;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #canvas-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #111;
+        }
+        #control-panel {
+            width: 380px;
+            background-color: #222;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            border-left: 4px solid #333;
+        }
+        h2 {
+            margin-top: 0;
+            color: #ff4757;
+            font-size: 1.4rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+        .param-group {
+            margin-bottom: 18px;
+        }
+        label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #ffa502;
+        }
+        .description {
+            font-size: 0.75rem;
+            color: #aaa;
+            margin-bottom: 5px;
+            font-style: italic;
+        }
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        input[type=range] {
+            flex: 1;
+            accent-color: #ff4757;
+        }
+        .value-display {
+            width: 50px;
+            text-align: right;
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #2ed573;
+        }
+        .instruction-flash {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            pointer-events: none;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <div class="instruction-flash">⚠️ Click canvas first to enable Audio, then drag the red handle!</div>
+    </div>
+    
+    <div id="control-panel">
+        <h2>Band Parameters</h2>
+        
+        <div class="param-group">
+            <label for="basePitch">Base Pitch (Hz)</label>
+            <div class="description">The starting frequency of the rubber band before stretching.</div>
+            <div class="slider-row">
+                <input type="range" id="basePitch" min="40" max="300" value="85">
+                <span class="value-display" id="basePitch-val">85</span>
+            </div>
+        </div>
+
+        <div class="param-group">
+            <label for="pitchBend">Tension Pitch Bend</label>
+            <div class="description">How aggressively the pitch skyrockets as you stretch the band wider.</div>
+            <div class="slider-row">
+                <input type="range" id="pitchBend" min="0.5" max="5" step="0.1" value="2.5">
+                <span class="value-display" id="pitchBend-val">2.5</span>
+            </div>
+        </div>
+
+        <div class="param-group">
+            <label for="modRatio">Friction Harmonic (FM Ratio)</label>
+            <div class="description">Multiplies the timbre frequency. Non-integers (like 1.4) create chaotic, rubbery grit.</div>
+            <div class="slider-row">
+                <input type="range" id="modRatio" min="0.5" max="4.0" step="0.1" value="1.4">
+                <span class="value-display" id="modRatio-val">1.4</span>
+            </div>
+        </div>
+
+        <div class="param-group">
+            <label for="modGain">Squeak Intensity (FM Depth)</label>
+            <div class="description">How 'rubbery' or plastic-sounding the texture gets during movement.</div>
+            <div class="slider-row">
+                <input type="range" id="modGain" min="10" max="500" value="280">
+                <span class="value-display" id="modGain-val">280</span>
+            </div>
+        </div>
+
+        <div class="param-group">
+            <label for="filterQ">Balloon Squelch (Filter Resonance)</label>
+            <div class="description">Creates a sharp, hollow resonance mimicry of an enclosed rubber balloon.</div>
+            <div class="slider-row">
+                <input type="range" id="filterQ" min="1" max="25" value="14">
+                <span class="value-display" id="filterQ-val">14</span>
+            </div>
+        </div>
+
+        <div class="param-group">
+            <label for="motionSens">Friction Volume Sensitivity</label>
+            <div class="description">How loud the rubber squeaks in response to fast mouse movements.</div>
+            <div class="slider-row">
+                <input type="range" id="motionSens" min="0.1" max="3" step="0.1" value="1.5">
+                <span class="value-display" id="motionSens-val">1.5</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- AUDIO SYNTH ENGINE (Web Audio API) ---
+        let audioCtx = null;
+        let carrierOsc, modulatorOsc, modulatorGain, filterNode, mainGain;
+        let audioInitialized = false;
+
+        function initAudio() {
+            if (audioInitialized) return;
+            
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Carrier creates the primary tone (Triangle wave offers a hollow, elastic texture)
+            carrierOsc = audioCtx.createOscillator();
+            carrierOsc.type = 'triangle';
+            
+            // Modulator alters carrier frequency rapidly to inject rubber friction artifacts
+            modulatorOsc = audioCtx.createOscillator();
+            modulatorOsc.type = 'sawtooth'; 
+            
+            modulatorGain = audioCtx.createGain();
+            
+            // Resonant filter simulates the hollow cavity of a balloon shell
+            filterNode = audioCtx.createBiquadFilter();
+            filterNode.type = 'lowpass';
+            
+            mainGain = audioCtx.createGain();
+            mainGain.gain.value = 0; // Silent until moved
+
+            // Connections: Modulator -> ModGain -> Carrier Pitch -> Filter -> Main Output
+            modulatorOsc.connect(modulatorGain);
+            modulatorGain.connect(carrierOsc.frequency);
+            carrierOsc.connect(filterNode);
+            filterNode.connect(mainGain);
+            mainGain.connect(audioCtx.destination);
+
+            // Start background oscillators instantly
+            carrierOsc.start();
+            modulatorOsc.start();
+            
+            audioInitialized = true;
+            document.querySelector('.instruction-flash').style.display = 'none';
+        }
+
+        // Helper to grab live DOM values
+        const getParam = (id) => parseFloat(document.getElementById(id).value);
+
+        // Update UI dynamic value text
+        document.querySelectorAll('input[type=range]').forEach(slider => {
+            slider.addEventListener('input', (e) => {
+                document.getElementById(`${e.target.id}-val`).innerText = e.target.value;
+            });
+        });
+
+        // --- PHASER 3 INTERACTIVE VISUALS ---
+        const config = {
+            type: Phaser.AUTO,
+            width: 600,
+            height: 600,
+            parent: 'canvas-container',
+            scene: { preload: preload, create: create, update: update }
+        };
+
+        const game = new Phaser.Game(config);
+        let bandHandle, anchorLeft, anchorRight, graphics;
+        let restX = 300, restY = 300;
+        let lastX = 300, lastY = 300;
+
+        function preload() {}
+
+        function create() {
+            graphics = this.add.graphics();
+
+            // Set up stationary structural anchors
+            anchorLeft = { x: 100, y: 300 };
+            anchorRight = { x: 500, y: 300 };
+
+            // Interactive pull node
+            bandHandle = this.add.circle(restX, restY, 20, 0xff4757)
+                .setInteractive({ useHandCursor: true });
+            this.input.setDraggable(bandHandle);
+
+            // Audio unlock listener
+            this.input.on('pointerdown', () => { if (!audioInitialized) initAudio(); });
+
+            // Drag mechanics
+            this.input.on('drag', (pointer, gameObject, dragX, dragY) => {
+                // Constrain drawing to practical limits
+                gameObject.x = Phaser.Math.Clamp(dragX, 50, 550);
+                gameObject.y = Phaser.Math.Clamp(dragY, 50, 550);
+            });
+
+            // Snap back behavior on release
+            this.input.on('dragend', (pointer, gameObject) => {
+                this.tweens.add({
+                    targets: gameObject,
+                    x: restX,
+                    y: restY,
+                    duration: 250,
+                    ease: 'Bounce.easeOut'
+                });
+            });
+        }
+
+        function update(time, delta) {
+            graphics.clear();
+
+            // Draw stylized rubber bands
+            graphics.lineStyle(8, 0xffa502, 1);
+            graphics.lineBetween(anchorLeft.x, anchorLeft.y, bandHandle.x, bandHandle.y);
+            graphics.lineBetween(anchorRight.x, anchorRight.y, bandHandle.x, bandHandle.y);
+
+            if (!audioInitialized) return;
+
+            // 1. Calculate Pull Distance (Tension)
+            let distToRest = Phaser.Math.Distance.Between(bandHandle.x, bandHandle.y, restX, restY);
+            
+            // 2. Calculate Handle Velocity (Friction/Movement Speed)
+            let distMoved = Phaser.Math.Distance.Between(bandHandle.x, bandHandle.y, lastX, lastY);
+            let velocity = distMoved / delta; // Pixels per millisecond
+
+            // Track state for next cycle
+            lastX = bandHandle.x;
+            lastY = bandHandle.y;
+
+            // Fetch live GUI configurations
+            const basePitch = getParam('basePitch');
+            const pitchBend = getParam('pitchBend');
+            const modRatio = getParam('modRatio');
+            const modGainScale = getParam('modGain');
+            const filterQ = getParam('filterQ');
+            const motionSens = getParam('motionSens');
+
+            if (velocity > 0.02) {
+                // Synthesize calculation variables based on stretch length
+                let calculatedPitch = basePitch + (distToRest * pitchBend);
+                let currentModGain = distToRest * (modGainScale / 100) * (calculatedPitch * 0.1);
+
+                // Audio Parameter Smooth Updates (To eliminate digital audio pops)
+                let now = audioCtx.currentTime;
+                
+                carrierOsc.frequency.setTargetAtTime(calculatedPitch, now, 0.02);
+                modulatorOsc.frequency.setTargetAtTime(calculatedPitch * modRatio, now, 0.02);
+                modulatorGain.gain.setTargetAtTime(currentModGain, now, 0.02);
+                
+                // Open lowpass cutoff to make it punchier and brighter the further it scales out
+                filterNode.frequency.setTargetAtTime(calculatedPitch * 2.5, now, 0.03);
+                filterNode.Q.setTargetAtTime(filterQ, now, 0.02);
+
+                // Velocity controls audio amplitude
+                let targetVolume = Phaser.Math.Clamp(velocity * motionSens, 0, 0.8);
+                mainGain.gain.setTargetAtTime(targetVolume, now, 0.01);
+            } else {
+                // If the rubber band stops moving, smoothly quiet the friction noise
+                mainGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+            }
+        }
+    </script>
+</body>
+</html>
