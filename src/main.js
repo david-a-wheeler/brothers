@@ -29,7 +29,7 @@ const gameConfig = {
   physics: {
     default: 'matter',
     matter: {
-      gravity: { x: 0, y: 0 }, // top-down arena: nothing falls
+      gravity: { x: 0, y: 0 }, // we use a top-down arena: nothing falls
       debug: false, // flip to true to see physics bodies while tuning
     },
   },
@@ -39,10 +39,11 @@ const gameConfig = {
 const game = new Phaser.Game(gameConfig);
 
 // Don't burn CPU while the page isn't being shown (hidden tab / minimized
-// window). Browsers already throttle requestAnimationFrame for hidden tabs, but
-// the Web Audio thread keeps running, so we suspend it; we also sleep Phaser's
-// loop explicitly to cover browsers that still fire a throttled rAF. The
-// visibilitychange event fires regardless of rAF, so we can always wake back up.
+// window). Browsers already throttle requestAnimationFrame for hidden
+// tabs, but the Web Audio thread keeps running, so we suspend it; we
+// also sleep Phaser's loop explicitly to cover browsers that still fire
+// a throttled rAF. The visibilitychange event fires regardless of rAF,
+// so we can always wake back up.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     sfx.suspend();

@@ -1,10 +1,16 @@
 /**
  * Level loading from Tiled JSON maps, grouped into "packs". See tiled-plan.md.
  *
+ * We presume that the levels are in the format saved by the "Tiled" program.
  * `loadTiledLevel` is the single adapter that knows Tiled's JSON shape; it is
- * written to be insensitive to the Tiled version (object layers only; tolerant
- * of `type` vs `class`, array vs map `properties`; unknown fields ignored;
- * every field defaulted) and to "just work" on imperfect input.
+ * written to be relatively insensitive to the version of Tiled
+ * (the format stored by Tiled has varied over time). In particular:
+ * - it considers the object layers only
+ * - it is tolerant of the word `type` vs `class`
+ * - array vs map `properties`
+ * - unknown fields are ignored;
+ * - every field defaulted.
+ * - it tries to "just work" on imperfect input.
  */
 
 /** Defaults applied when a level omits something. */
@@ -29,8 +35,8 @@ const DEFAULTS = {
  */
 
 /**
- * Normalise a Tiled `properties` value (modern array `[{name,value}]` or legacy
- * object map) into a plain `{ name: value }` object.
+ * Normalise a Tiled `properties` value (modern array `[{name,value}]` or
+ * legacy object map) into a plain `{ name: value }` object.
  *
  * @param {Array|Object|undefined} props
  * @returns {Object}
@@ -126,8 +132,9 @@ let activePack = null;
 let activeIndex = 0;
 
 /**
- * Fetch a pack's manifest and all its level files, adapting each. Sets it as the
- * active pack. Throws if a file can't be fetched/parsed (the resilient bootstrap
+ * Fetch a pack's manifest and all its level files, adapting each.
+ * Sets it as the active pack.
+ * Throws if a file can't be fetched/parsed (the resilient bootstrap
  * in boot.js turns that into a retry).
  *
  * @param {string} packId  Directory name under `levels/`.
@@ -174,9 +181,10 @@ export function setLevelIndex(i) {
 }
 
 /**
- * Stable identity for the current level: pack id + the level's file id (not its
- * ordinal index, so reordering a pack doesn't reassign per-level state like best
- * scores). Used to key the per-level "best" value (which is nil until first won).
+ * Stable identity for the current level: pack id + the level's file id
+ * (not its ordinal index, so reordering a pack doesn't reassign
+ * per-level state like best scores).
+ * Used to key the per-level "best" value (which is nil until first won).
  *
  * @returns {string}
  */
