@@ -43,20 +43,10 @@ export const Config = {
    * A small non-zero rest length keeps them from grinding together at the
    * same point, and damping bleeds spring energy so a turn can settle.
    */
-  tether: {
-    restLength: 90, // preferred resting gap (~1.5x ball diameter)
-    stiffness: 0.02, // soft, slingshot-like restoring force
-    damping: 0.08, // energy lost per oscillation (0 = a perpetual spring)
-  },
+  tether: {}, // populated by applyRubberBandDefaults() — the single source
 
-  /** Slingshot feel. */
-  slingshot: {
-    maxPull: 260, // furthest the launcher can be stretched from the anchor
-    minPull: 24, // shorter pulls are treated as a mis-click, not a launch
-    maxSpeed: 220, // launch speed at a full-strength pull (the t=1 endpoint)
-    minSpeed: 15, // floor: a tiny pull still nudges enough to reach the anchor
-    curve: 2.3, // >1 eases in; lower lifts the mid-pull impulse, ends unchanged
-  },
+  /** Slingshot feel; populated by applyRubberBandDefaults() — the single source. */
+  slingshot: {},
 
   /**
    * "Settled" = both balls below `speedThreshold` for `frames` frames in a
@@ -163,3 +153,28 @@ export const Config = {
     wallRestitution: 0.6,
   },
 };
+
+/**
+ * The single source of truth for the tunable "rubber band" defaults (slingshot
+ * + tether). Called once at load to populate Config, and again by the dev
+ * panel's Reset button. To change a default, change it here — it then applies
+ * to both startup and reset.
+ *
+ * @returns {void}
+ */
+export function applyRubberBandDefaults() {
+  Object.assign(Config.slingshot, {
+    maxPull: 260, // furthest the launcher can be stretched from the anchor
+    minPull: 24, // shorter pulls are treated as a mis-click, not a launch
+    maxSpeed: 220, // launch speed at a full-strength pull (the t=1 endpoint)
+    minSpeed: 15, // floor: a tiny pull still nudges enough to reach the anchor
+    curve: 2.3, // >1 eases in; lower lifts the mid-pull impulse, ends unchanged
+  });
+  Object.assign(Config.tether, {
+    restLength: 90, // preferred resting gap (~1.5x ball diameter)
+    stiffness: 0.02, // soft, slingshot-like restoring force
+    damping: 0.08, // energy lost per oscillation (0 = a perpetual spring)
+  });
+}
+
+applyRubberBandDefaults(); // initialise Config.slingshot / Config.tether at load

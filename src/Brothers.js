@@ -281,13 +281,18 @@ export class Brothers {
    * @returns {void}
    */
   _applyPullOnlyTether() {
+    const t = Config.tether;
     const gap = Phaser.Math.Distance.Between(
       this.david.go.x,
       this.david.go.y,
       this.ken.go.x,
       this.ken.go.y
     );
-    this._tether.stiffness = gap > Config.tether.restLength ? Config.tether.stiffness : 0;
+    // Re-sync length/damping from Config each frame so live dev-panel tweaks
+    // (and not just stiffness) take effect on the existing constraint.
+    this._tether.length = t.restLength;
+    this._tether.damping = t.damping;
+    this._tether.stiffness = gap > t.restLength ? t.stiffness : 0;
   }
 
   /**

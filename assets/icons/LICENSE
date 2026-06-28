@@ -1,10 +1,17 @@
-The SVG icons in this directory are from Bootstrap Icons
-(https://icons.getbootstrap.com), used under the MIT License. The only
-modification is setting the fill color to white. Full license below.
+The SVG icons in this directory come from two MIT-licensed sets; the only
+modification is setting the fill color to white.
+
+- arrow-clockwise.svg, chevron-left.svg, chevron-right.svg, flag.svg,
+  flag-fill.svg, controller.svg
+  Bootstrap Icons (https://icons.getbootstrap.com)
+  Copyright (c) 2019-2024 The Bootstrap Authors
+- beaker.svg
+  Heroicons (https://github.com/tailwindlabs/heroicons)
+  Copyright (c) Tailwind Labs, Inc.
+
+Both are released under the MIT License (below).
 
 The MIT License (MIT)
-
-Copyright (c) 2019-2024 The Bootstrap Authors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

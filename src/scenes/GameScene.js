@@ -1,4 +1,4 @@
-import { Config } from '../config.js';
+import { Config, applyRubberBandDefaults } from '../config.js';
 import { Brothers, FACES } from '../Brothers.js';
 import { sfx } from '../Sfx.js';
 
@@ -41,6 +41,7 @@ export class GameScene extends Phaser.Scene {
       'icon-ready': 'flag',
       'icon-playing': 'controller',
       'icon-ended': 'flag-fill',
+      'icon-beaker': 'beaker',
     };
     for (const [key, name] of Object.entries(icons)) {
       if (!this.textures.exists(key)) {
@@ -83,6 +84,8 @@ export class GameScene extends Phaser.Scene {
     this._panLast = { x: 0, y: 0 };
     /** True while the "Restart level?" confirmation modal is open. */
     this._modalOpen = false;
+    /** True while the dev parameter-tuning panel is open. */
+    this._devOpen = false;
 
     this._buildHud();
     this._wireInput();
@@ -147,6 +150,9 @@ export class GameScene extends Phaser.Scene {
       this.nextTooltip,
       this.statusIcon,
       this.statusTooltip,
+      this.beakerButton,
+      this.beakerTooltip,
+      ...this.devPanelParts,
       this.bannerPanel,
       this.banner,
     ];
@@ -542,6 +548,42 @@ export class GameScene extends Phaser.Scene {
     });
     this.statusIcon.on('pointerup', () => this.statusTooltip.setVisible(false));
 
+    // Dev "beaker": toggles a live parameter-tuning panel. Actionable, so it
+    // gets a hand cursor (unlike the read-only status icon).
+    this.beakerButton = this.add
+      .image(Config.view.width / 2 + 3 * gap, h / 2, 'icon-beaker')
+      .setDepth(10)
+      .setAlpha(0.8)
+      .setInteractive({ useHandCursor: true });
+    this.beakerTooltip = this.add
+      .text(Config.view.width / 2 + 3 * gap, h + 12, 'Tweak parameters', {
+        fontSize: '15px',
+        color: '#ffffff',
+        backgroundColor: '#000000',
+        padding: { x: 8, y: 4 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(11)
+      .setVisible(false);
+    this.beakerButton.on('pointerover', () => {
+      this.beakerButton.setAlpha(1);
+      this.beakerTooltip.setVisible(true);
+    });
+    this.beakerButton.on('pointerout', () => {
+      this.beakerButton.setAlpha(0.8);
+      this.beakerTooltip.setVisible(false);
+    });
+    this.beakerButton.on('pointerdown', (_p, _x, _y, e) => {
+      e?.stopPropagation();
+      this.beakerTooltip.setVisible(true);
+    });
+    this.beakerButton.on('pointerup', () => {
+      this.beakerTooltip.setVisible(false);
+      this._toggleDevPanel();
+    });
+
+    this._buildDevPanel();
+
     // A glow ring behind the restart icon, pulsed on game-over to draw the eye
     // there (see _attractRestart). Hidden during play.
     this.restartGlow = this.add
@@ -605,6 +647,179 @@ export class GameScene extends Phaser.Scene {
     });
     icon.on('pointerup', hide);
     return [icon, tip];
+  }
+
+  /**
+   * Build the (hidden) dev tuning panel: rows of -/+ steppers for the slingshot
+   * and tether parameters, edited live. Mutating these Config values takes
+   * effect immediately — the slingshot reads Config per shot, and the tether is
+   * re-synced from Config each frame (see Brothers._applyPullOnlyTether).
+   * Values persist across restarts (Config is a module object) but reset on a
+   * full page reload, which is the point: find good numbers, then bake them in.
+   *
+   * @returns {void}
+   */
+  _buildDevPanel() {
+    const x0 = 12;
+    const y0 = this._hudHeight + 10;
+    const w = 250;
+    const rowH = 30;
+    this._devParams = [
+      { obj: Config.slingshot, key: 'maxSpeed', step: 10, dp: 0, min: 0, desc: 'Launch speed at a full-strength pull.' },
+      { obj: Config.slingshot, key: 'minSpeed', step: 5, dp: 0, min: 0, desc: 'Launch-speed floor for the shortest valid pull.' },
+      { obj: Config.slingshot, key: 'curve', step: 0.1, dp: 2, min: 0.1, desc: 'Easing exponent; higher softens short/mid pulls (ends fixed).' },
+      { obj: Config.slingshot, key: 'maxPull', step: 10, dp: 0, min: 10, desc: 'Furthest the launcher can be stretched from the anchor.' },
+      { obj: Config.slingshot, key: 'minPull', step: 2, dp: 0, min: 0, desc: 'Pulls shorter than this count as a mis-click, not a launch.' },
+      { obj: Config.tether, key: 'restLength', step: 5, dp: 0, min: 0, desc: 'Tether resting length; beyond it the band pulls them together.' },
+      { obj: Config.tether, key: 'stiffness', step: 0.005, dp: 3, min: 0, desc: 'Tether spring strength once stretched past rest length.' },
+      { obj: Config.tether, key: 'damping', step: 0.02, dp: 2, min: 0, desc: 'How quickly tether oscillations settle.' },
+    ];
+    const n = this._devParams.length;
+    const helpY = y0 + 38 + n * rowH;
+    const resetY = helpY + 54;
+    const h = resetY - y0 + 26;
+    this._devBounds = { x: x0, y: y0, w, h };
+
+    const parts = [
+      this.add.rectangle(x0, y0, w, h, 0x000000, 0.72).setOrigin(0, 0).setDepth(20),
+      this.add
+        .text(x0 + 10, y0 + 8, 'Rubber-band tuning', { fontSize: '14px', color: '#ffd479' })
+        .setDepth(21),
+      // Close: red, to read differently from the gray "+" steppers.
+      this._devButton(x0 + w - 20, y0 + 14, '×', () => this._toggleDevPanel(), '#c0392b', '#e74c3c'),
+    ];
+
+    // Shared explanation line, updated on hover/press of a parameter's controls.
+    this._devHelp = this.add
+      .text(x0 + 10, helpY, '', { fontSize: '12px', color: '#cccccc', wordWrap: { width: w - 20 } })
+      .setDepth(21);
+
+    this._devRows = this._devParams.map((param, i) => {
+      const rowY = y0 + 38 + i * rowH;
+      const minus = this._devButton(x0 + 24, rowY, '-', () => this._adjustParam(param, -1));
+      const plus = this._devButton(x0 + w - 24, rowY, '+', () => this._adjustParam(param, 1));
+      // Click the value to type one directly (prompt works desktop + mobile).
+      const value = this.add
+        .text(x0 + 44, rowY, '', { fontSize: '14px', color: '#ffffff' })
+        .setOrigin(0, 0.5)
+        .setDepth(21);
+      const row = { param, value };
+      this._setDevRowText(row); // set text before setInteractive so the hit area fits
+      value.setInteractive({ useHandCursor: true }).on('pointerup', () => this._promptParam(param));
+      // Show this parameter's explanation while hovering or pressing its controls.
+      const showHelp = () => this._devHelp.setText(param.desc);
+      const hideHelp = () => this._devHelp.setText('');
+      for (const ctrl of [minus, value, plus]) {
+        ctrl.on('pointerover', showHelp).on('pointerout', hideHelp);
+        ctrl.on('pointerdown', showHelp).on('pointerup', hideHelp);
+      }
+      parts.push(minus, value, plus);
+      return row;
+    });
+
+    parts.push(this._devHelp);
+    parts.push(this._devButton(x0 + w / 2, resetY, 'Reset', () => this._resetParams()));
+
+    this.devPanelParts = parts;
+    for (const p of parts) p.setVisible(false);
+  }
+
+  /**
+   * Prompt for a direct numeric value for a dev parameter (clamped to its min).
+   * Uses window.prompt so it works on desktop and mobile without a DOM input.
+   *
+   * @param {{obj: object, key: string, min: number}} param
+   * @returns {void}
+   */
+  _promptParam(param) {
+    const input = window.prompt(`Set ${param.key}`, String(param.obj[param.key]));
+    if (input === null) return; // cancelled
+    const v = parseFloat(input);
+    if (!Number.isFinite(v)) return; // not a number
+    param.obj[param.key] = Math.max(param.min, v);
+    this._devRows.forEach((r) => this._setDevRowText(r));
+  }
+
+  /**
+   * A small button for the dev panel (steppers, close, reset).
+   *
+   * @param {number} x @param {number} y @param {string} label @param {() => void} onClick
+   * @param {string} [bg] Background colour. @param {string} [bgHover] Hover colour.
+   * @returns {Phaser.GameObjects.Text}
+   */
+  _devButton(x, y, label, onClick, bg = '#444444', bgHover = '#666666') {
+    const btn = this.add
+      .text(x, y, label, {
+        fontSize: '16px',
+        color: '#ffffff',
+        backgroundColor: bg,
+        padding: { x: 8, y: 2 },
+      })
+      .setOrigin(0.5, 0.5)
+      .setDepth(21)
+      .setInteractive({ useHandCursor: true });
+    btn.on('pointerover', () => btn.setBackgroundColor(bgHover));
+    btn.on('pointerout', () => btn.setBackgroundColor(bg));
+    btn.on('pointerup', onClick);
+    return btn;
+  }
+
+  /**
+   * Reset the tunable parameters to their defaults (the single source in
+   * config.js), then refresh the panel rows.
+   *
+   * @returns {void}
+   */
+  _resetParams() {
+    applyRubberBandDefaults();
+    this._devRows.forEach((r) => this._setDevRowText(r));
+  }
+
+  /**
+   * Update one dev row's "key: value" label from the live Config value.
+   *
+   * @param {{param: {obj: object, key: string, dp: number}, value: Phaser.GameObjects.Text}} row
+   * @returns {void}
+   */
+  _setDevRowText(row) {
+    const { obj, key, dp } = row.param;
+    row.value.setText(`${key}: ${obj[key].toFixed(dp)}`);
+  }
+
+  /**
+   * Step a parameter by ±its step (clamped to its min), then refresh the rows.
+   *
+   * @param {{obj: object, key: string, step: number, dp: number, min: number}} param
+   * @param {number} dir  -1 or +1.
+   * @returns {void}
+   */
+  _adjustParam(param, dir) {
+    const raw = param.obj[param.key] + dir * param.step;
+    param.obj[param.key] = Math.max(param.min, Number(raw.toFixed(param.dp)));
+    this._devRows.forEach((r) => this._setDevRowText(r));
+  }
+
+  /**
+   * Show/hide the dev panel (toggled by the beaker icon).
+   *
+   * @returns {void}
+   */
+  _toggleDevPanel() {
+    this._devOpen = !this._devOpen;
+    this._devRows.forEach((r) => this._setDevRowText(r));
+    this._devHelp.setText(''); // no stale explanation on open/close
+    for (const p of this.devPanelParts) p.setVisible(this._devOpen);
+  }
+
+  /**
+   * @param {Phaser.Input.Pointer} p
+   * @returns {boolean} true if the open dev panel sits under the pointer (so the
+   *   game's aim/pan router should ignore the press).
+   */
+  _overDevPanel(p) {
+    if (!this._devOpen) return false;
+    const b = this._devBounds;
+    return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
   }
 
   /**
@@ -745,6 +960,7 @@ export class GameScene extends Phaser.Scene {
       if (this._modalOpen) return; // modal owns input; its buttons handle themselves
       if (this._pinchDist) return; // a two-finger pinch owns the gesture
       if (p.y < this._hudHeight) return; // press is on the HUD ribbon, not the arena
+      if (this._overDevPanel(p)) return; // press is on the dev panel
 
       // Pressing on the launcher (while aiming, and not after the level ends)
       // starts a shot; pressing anywhere else on the board pans the camera.
