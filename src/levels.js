@@ -155,6 +155,45 @@ export async function loadPack(packId) {
   return activePack;
 }
 
+/** @returns {string} Human-readable name of the active pack. */
+export function activePackName() {
+  return activePack.name;
+}
+
+/** @returns {string} Id of the active pack. */
+export function activePackId() {
+  return activePack.id;
+}
+
+/** @type {Array<{id:string, name?:string}>|null} Cached pack registry. */
+let packList = null;
+
+/**
+ * The list of available packs from `levels/packs.json` (cached after first
+ * fetch). Each entry has at least an `id`; names come from each pack's own
+ * `pack.json` (see {@link loadPackManifest}).
+ *
+ * @returns {Promise<Array<{id:string, name?:string}>>}
+ */
+export async function listPacks() {
+  if (packList) return packList;
+  packList = await (await fetch('levels/packs.json')).json();
+  return packList;
+}
+
+/**
+ * Fetch only a pack's manifest (its `pack.json`) — NOT its level files — so the
+ * menu can show a pack's name, level list, and per-level best scores without
+ * disturbing the active pack/level. Level keys are `${id}/${levelId}`.
+ *
+ * @param {string} packId
+ * @returns {Promise<{id:string, name:string, levelIds:string[]}>}
+ */
+export async function loadPackManifest(packId) {
+  const manifest = await (await fetch(`levels/${packId}/pack.json`)).json();
+  return { id: packId, name: manifest.name || packId, levelIds: manifest.levels || [] };
+}
+
 /** @returns {Level} The current level model. */
 export function currentLevel() {
   return activePack.levels[activeIndex];

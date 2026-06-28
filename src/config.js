@@ -6,6 +6,13 @@
  */
 export const Config = {
   /**
+   * Show developer-only tools (the Lab parameter panel and Test mode) in the
+   * menu. Always on for now; this is the single switch to flip (or wire to a
+   * production check) when we want to hide them in the deployed build.
+   */
+  devTools: true,
+
+  /**
    * Design reference size. The canvas now uses Scale.RESIZE (fills the window),
    * so width/height are only a starting/default size — the live size comes from
    * the window (see GameScene._computeLayout). Colors are still used.

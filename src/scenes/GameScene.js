@@ -7,7 +7,13 @@ import {
   levelCount,
   currentIndex,
   setLevelIndex,
+  activePackName,
+  activePackId,
+  listPacks,
+  loadPackManifest,
+  loadPack,
 } from '../levels.js';
+import * as scores from '../scores.js';
 
 /**
  * Level state is tracked along two axes.
@@ -50,7 +56,7 @@ export class GameScene extends Phaser.Scene {
       'icon-ready': 'flag',
       'icon-playing': 'controller',
       'icon-ended': 'flag-fill',
-      'icon-beaker': 'beaker',
+      'icon-menu': 'list',
     };
     for (const [key, name] of Object.entries(icons)) {
       if (!this.textures.exists(key)) {
@@ -86,9 +92,10 @@ export class GameScene extends Phaser.Scene {
     /** @type {TurnPhase} */
     this.phase = 'AIMING';
     this.movesLeft = this.level.moves;
-    // Best winning result = the most moves ever left over on a win. Kept in the
-    // registry (keyed per level) so it survives scene restarts; null until won.
-    if (!this.registry.has(this._bestKey)) this.registry.set(this._bestKey, null);
+    // Best winning result = the most moves ever left over on a win. Mirrored in
+    // the registry (keyed per level) for fast access during play; seeded from
+    // persistent storage below so it survives a full page reload, not just a
+    // scene restart.
     /** True between pointerdown-on-launcher and pointerup. */
     this.isAiming = false;
     /** Wall-clock ms before which teleporter hits are ignored (debounce). */
@@ -103,8 +110,19 @@ export class GameScene extends Phaser.Scene {
     /** True while the dev parameter-tuning panel is open. Persisted in the
      *  registry so "Restart level" leaves an open lab panel in place. */
     this._devOpen = this.registry.get('devOpen') || false;
+    /** True while the menu/scoreboard panel is open. */
+    this._menuOpen = false;
+    /** Test mode: relaxes menu click-to-jump to allow any level. Persisted in
+     *  the registry so it survives scene restarts within a session. */
+    this._testMode = this.registry.get('testMode') || false;
     /** HUD icon the attract glow is tracking (null = not attracting). */
     this._attractTarget = null;
+
+    // Seed this level's best from persistent storage so "Best:" and the
+    // win-to-advance nav rule survive a page reload (registry is per-session).
+    if (!this.registry.has(this._bestKey)) {
+      this.registry.set(this._bestKey, scores.bestFor(currentLevelKey()));
+    }
 
     this._computeLayout(); // sets this._layout + this._hudHeight for the build
     this._buildHud();
@@ -182,20 +200,20 @@ export class GameScene extends Phaser.Scene {
     this.hudBar.setPosition(cx, L.hudHeight / 2).setSize(L.w, L.hudHeight);
     this.hudBorder.setPosition(cx, L.hudHeight).setSize(L.w, 2);
 
-    // Icon cluster (prev, restart, next, status, beaker) on the last row.
+    // Icon cluster (menu, prev, restart, next, status) on the last row.
     const icons = [
+      this.menuButton,
       this.prevButton,
       this.restartButton,
       this.nextButton,
       this.statusIcon,
-      this.beakerButton,
     ];
     const tips = [
+      this.menuTooltip,
       this.prevTooltip,
       this.restartTooltip,
       this.nextTooltip,
       this.statusTooltip,
-      this.beakerTooltip,
     ];
     // Icons sit on a full-height row below any compact text rows (in wide mode
     // there are none, so the icons share the single row with the edge text).
@@ -274,8 +292,8 @@ export class GameScene extends Phaser.Scene {
       this.nextTooltip,
       this.statusIcon,
       this.statusTooltip,
-      this.beakerButton,
-      this.beakerTooltip,
+      this.menuButton,
+      this.menuTooltip,
       ...this.devPanelParts,
       this.bannerPanel,
       this.banner,
@@ -717,15 +735,16 @@ export class GameScene extends Phaser.Scene {
     });
     this.statusIcon.on('pointerup', () => this.statusTooltip.setVisible(false));
 
-    // Dev "beaker": toggles a live parameter-tuning panel. Actionable, so it
-    // gets a hand cursor (unlike the read-only status icon).
-    this.beakerButton = this.add
-      .image(Config.view.width / 2 + 3 * gap, h / 2, 'icon-beaker')
+    // Menu button (hamburger): opens the dropdown of less-used options and the
+    // pack/level scoreboard. Laid out at the FRONT of the cluster in _layoutHud.
+    // Actionable, so it gets a hand cursor.
+    this.menuButton = this.add
+      .image(Config.view.width / 2 - 2 * gap, h / 2, 'icon-menu')
       .setDepth(10)
       .setAlpha(0.8)
       .setInteractive({ useHandCursor: true });
-    this.beakerTooltip = this.add
-      .text(Config.view.width / 2 + 3 * gap, h + 12, 'Tweak parameters', {
+    this.menuTooltip = this.add
+      .text(Config.view.width / 2 - 2 * gap, h + 12, 'Menu', {
         fontSize: '15px',
         color: '#ffffff',
         backgroundColor: '#000000',
@@ -734,21 +753,21 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(11)
       .setVisible(false);
-    this.beakerButton.on('pointerover', () => {
-      this.beakerButton.setAlpha(1);
-      this.beakerTooltip.setVisible(true);
+    this.menuButton.on('pointerover', () => {
+      this.menuButton.setAlpha(1);
+      this.menuTooltip.setVisible(true);
     });
-    this.beakerButton.on('pointerout', () => {
-      this.beakerButton.setAlpha(0.8);
-      this.beakerTooltip.setVisible(false);
+    this.menuButton.on('pointerout', () => {
+      this.menuButton.setAlpha(0.8);
+      this.menuTooltip.setVisible(false);
     });
-    this.beakerButton.on('pointerdown', (_p, _x, _y, e) => {
+    this.menuButton.on('pointerdown', (_p, _x, _y, e) => {
       e?.stopPropagation();
-      this.beakerTooltip.setVisible(true);
+      this.menuTooltip.setVisible(true);
     });
-    this.beakerButton.on('pointerup', () => {
-      this.beakerTooltip.setVisible(false);
-      this._toggleDevPanel();
+    this.menuButton.on('pointerup', () => {
+      this.menuTooltip.setVisible(false);
+      this._toggleMenu(); // open, or close if already showing (button is raised above the backdrop)
     });
 
     this._buildDevPanel();
@@ -1082,7 +1101,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Show/hide the dev panel (toggled by the beaker icon).
+   * Show/hide the dev panel (toggled by the Lab control in the menu).
    *
    * @returns {void}
    */
@@ -1227,6 +1246,348 @@ export class GameScene extends Phaser.Scene {
     this._modalOpen = false;
   }
 
+  // --- Menu / scoreboard --------------------------------------------------
+
+  /** @returns {string} Lab toggle button label. */
+  _labLabel() {
+    return `Lab: ${this._devOpen ? 'On' : 'Off'}`;
+  }
+
+  /** @returns {string} Test-mode toggle button label. */
+  _testLabel() {
+    return `Test: ${this._testMode ? 'On' : 'Off'}`;
+  }
+
+  /**
+   * Toggle the menu from the menu button: open if closed, close if showing.
+   *
+   * @returns {void}
+   */
+  _toggleMenu() {
+    if (this._modalOpen) return; // a confirm is up; let it resolve first
+    if (this._menuOpen) this._closeMenu();
+    else this._openMenu();
+  }
+
+  /**
+   * Open the menu/scoreboard overlay (no-op if a modal or the menu is up). The
+   * menu button is raised above the backdrop so clicking it again closes the
+   * menu (see _toggleMenu); _closeMenu restores its normal depth.
+   *
+   * @returns {void}
+   */
+  _openMenu() {
+    if (this._menuOpen || this._modalOpen) return;
+    this._menuOpen = true;
+    this._isPanning = false;
+    this._menuDragging = false;
+    this._buildMenuPanel();
+    this.menuButton.setDepth(33); // above the depth-30 backdrop so it stays clickable
+    this._showPackList();
+  }
+
+  /**
+   * Build the menu chrome (modal-style, depth 30-32): a dimming backdrop, a
+   * rounded card, a fixed header (title + close, plus Lab/Test toggles when
+   * Config.devTools), a hidden Back button, and a mask-clipped scrollable
+   * content container. Mirrors _showConfirm's camera/cleanup pattern. The list
+   * itself is filled by _showPackList / _showPackDetail.
+   *
+   * @returns {void}
+   */
+  _buildMenuPanel() {
+    const L = this._layout;
+    const cw = Math.min(440, L.w - 2 * L.pad);
+    const ch = Math.min(L.h - 2 * L.pad, 560);
+    const cx0 = (L.w - cw) / 2;
+    const cy0 = (L.h - ch) / 2;
+    this._menuCard = { x: cx0, y: cy0, w: cw, h: ch };
+
+    const backdrop = this.add
+      .rectangle(L.w / 2, L.h / 2, L.w, L.h, 0x000000, 0.6)
+      .setDepth(30)
+      .setInteractive(); // swallow clicks on the dimmed area
+    const card = this.add.graphics().setDepth(31);
+    card.fillStyle(0x23232c, 1).fillRoundedRect(cx0, cy0, cw, ch, 14);
+    card.lineStyle(2, 0x4d4d55, 1).strokeRoundedRect(cx0, cy0, cw, ch, 14);
+    const title = this.add
+      .text(
+        cx0 + 16,
+        cy0 + 16,
+        `${activePackName()} — Level ${currentIndex() + 1}/${levelCount()}`,
+        { fontSize: '18px', color: '#ffffff', fontStyle: 'bold' }
+      )
+      .setDepth(32);
+    const close = this._devButton(
+      cx0 + cw - 20,
+      cy0 + 22,
+      '×',
+      () => this._closeMenu(),
+      '#c0392b',
+      '#e74c3c'
+    ).setDepth(32);
+
+    this._menuParts = [backdrop, card, title, close];
+
+    let headerBottom = cy0 + 46;
+    if (Config.devTools) {
+      const ty = cy0 + 64;
+      const lab = this._devButton(cx0 + 16, ty, this._labLabel(), () => {
+        this._toggleDevPanel();
+        lab.setText(this._labLabel());
+      })
+        .setOrigin(0, 0.5)
+        .setDepth(32);
+      const test = this._devButton(cx0 + 150, ty, this._testLabel(), () => {
+        this._testMode = !this._testMode;
+        this.registry.set('testMode', this._testMode);
+        test.setText(this._testLabel());
+        if (this._menuView === 'detail') this._showPackDetail(this._menuDetail);
+      })
+        .setOrigin(0, 0.5)
+        .setDepth(32);
+      this._menuParts.push(lab, test);
+      headerBottom = ty + 18;
+    }
+
+    // Back affordance (only shown in a pack's level view).
+    this._menuBackBtn = this._devButton(cx0 + 16, headerBottom + 16, '‹ Back', () =>
+      this._showPackList()
+    )
+      .setOrigin(0, 0.5)
+      .setDepth(32)
+      .setVisible(false);
+    this._menuParts.push(this._menuBackBtn);
+
+    // Scroll viewport: a geometry mask (off-display-list make.graphics) clips a
+    // content container we shift vertically. The uiCamera is at scroll 0/zoom 1,
+    // so screen px == mask px == container-local px (no coordinate conversion).
+    const listTop = headerBottom + 34;
+    this._menuListX = cx0 + 16;
+    this._menuListW = cw - 32;
+    this._menuListTop = listTop;
+    // The card is already clamped to the viewport; floor the list height so an
+    // extremely short screen can't collapse it to zero/negative (which would
+    // break the mask) — at worst it shows ~one row and stays scrollable.
+    this._menuListH = Math.max(44, cy0 + ch - 14 - listTop);
+    this._menuScroll = 0;
+    this._menuScrollMax = 0;
+
+    this._menuMaskGfx = this.make.graphics();
+    this._menuMaskGfx
+      .fillStyle(0xffffff)
+      .fillRect(this._menuListX, listTop, this._menuListW, this._menuListH);
+    this._menuContent = this.add.container(this._menuListX, listTop).setDepth(32);
+    this._menuContent.setMask(this._menuMaskGfx.createGeometryMask());
+    this._menuParts.push(this._menuContent);
+
+    this.cameras.main.ignore(this._menuParts); // HUD-camera only (like _showConfirm)
+
+    for (const part of this._menuParts) {
+      const to = part === backdrop ? 0.6 : 1;
+      part.setAlpha(0);
+      this.tweens.add({ targets: part, alpha: to, duration: 130, ease: 'Sine.Out' });
+    }
+  }
+
+  /**
+   * View A: list the available packs, each with the player's total score and
+   * completed/total count. Tapping a pack opens its per-level view.
+   *
+   * @returns {Promise<void>}
+   */
+  async _showPackList() {
+    this._menuView = 'packs';
+    this._menuBackBtn.setVisible(false);
+    this._menuScroll = 0;
+    this._clearMenuContent();
+    const packs = await listPacks();
+    if (!this._menuOpen || this._menuView !== 'packs') return; // closed/changed mid-fetch
+    let y = 0;
+    for (const { id } of packs) {
+      const m = await loadPackManifest(id);
+      if (!this._menuOpen || this._menuView !== 'packs') return;
+      const { total, completed } = this._packTotal(m);
+      this._menuRow(y, m.name, `${total} ★   ${completed}/${m.levelIds.length}`, {
+        onTap: () => this._showPackDetail(m),
+      });
+      y += 44;
+    }
+    this._finishMenuContent(y);
+  }
+
+  /**
+   * View B: per-level best scores for a pack. Tapping a level jumps to it,
+   * subject to the gating rules (see _canJump); disallowed levels show a lock.
+   *
+   * @param {{id:string, name:string, levelIds:string[]}} manifest
+   * @returns {void}
+   */
+  _showPackDetail(manifest) {
+    this._menuView = 'detail';
+    this._menuDetail = manifest;
+    this._menuBackBtn.setVisible(true);
+    this._menuScroll = 0;
+    this._clearMenuContent();
+    let y = 0;
+    manifest.levelIds.forEach((file, i) => {
+      const best = scores.bestFor(`${manifest.id}/${file}`);
+      const allowed = this._canJump(manifest, i);
+      const value = best != null ? `✓  ${best} ★` : allowed ? '—' : '🔒';
+      this._menuRow(y, `Level ${i + 1}`, value, {
+        enabled: allowed,
+        valueColor: best != null ? '#ffd479' : '#7a7a85',
+        onTap: allowed ? () => this._jumpToLevel(manifest, i) : null,
+      });
+      y += 44;
+    });
+    this._finishMenuContent(y);
+  }
+
+  /**
+   * Total (sum of bests) and completed count for a pack.
+   *
+   * @param {{id:string, levelIds:string[]}} manifest
+   * @returns {{total:number, completed:number}}
+   */
+  _packTotal(manifest) {
+    let total = 0;
+    let completed = 0;
+    for (const file of manifest.levelIds) {
+      const b = scores.bestFor(`${manifest.id}/${file}`);
+      if (b != null) {
+        total += b;
+        completed += 1;
+      }
+    }
+    return { total, completed };
+  }
+
+  /**
+   * May the player jump to level `i` of `manifest`? Test mode allows any level;
+   * otherwise only the first level or one whose predecessor has a best score.
+   *
+   * @param {{id:string, levelIds:string[]}} manifest
+   * @param {number} i
+   * @returns {boolean}
+   */
+  _canJump(manifest, i) {
+    if (this._testMode) return true;
+    if (i === 0) return true;
+    return scores.bestFor(`${manifest.id}/${manifest.levelIds[i - 1]}`) != null;
+  }
+
+  /**
+   * Jump to a level: confirm first if a game is in progress, then load the pack
+   * (only if different) and restart the scene at the chosen level.
+   *
+   * @param {{id:string}} manifest
+   * @param {number} index
+   * @returns {void}
+   */
+  _jumpToLevel(manifest, index) {
+    const proceed = async () => {
+      this._closeMenu();
+      if (manifest.id !== activePackId()) await loadPack(manifest.id);
+      setLevelIndex(index);
+      this.scene.restart();
+    };
+    if (this.status === 'PLAYING') this._showConfirm('Abandon current game?', proceed);
+    else proceed();
+  }
+
+  /**
+   * One menu list row (added to the scrollable content container): a subtle
+   * background, a left label, and a right-aligned value. If `onTap` is given the
+   * row is interactive (with an off-clip guard, since masks don't clip input).
+   *
+   * @param {number} localY  Top of the row in container-local space.
+   * @param {string} label
+   * @param {string} value
+   * @param {{onTap?:(()=>void)|null, enabled?:boolean, valueColor?:string}} [opts]
+   * @returns {void}
+   */
+  _menuRow(localY, label, value, opts = {}) {
+    const { onTap = null, enabled = true, valueColor = '#ffd479' } = opts;
+    const rowH = 44;
+    const w = this._menuListW;
+    const top = this._menuListTop;
+    const midY = localY + (rowH - 6) / 2;
+    const bg = this.add.rectangle(0, localY, w, rowH - 6, 0xffffff, 0.06).setOrigin(0, 0);
+    const labelTxt = this.add
+      .text(12, midY, label, { fontSize: '17px', color: enabled ? '#ffffff' : '#7a7a85' })
+      .setOrigin(0, 0.5);
+    const valueTxt = this.add
+      .text(w - 12, midY, value, { fontSize: '17px', color: valueColor })
+      .setOrigin(1, 0.5);
+    this._menuContent.add([bg, labelTxt, valueTxt]);
+    if (onTap) {
+      bg.setInteractive({ useHandCursor: true });
+      bg.on('pointerover', () => bg.setFillStyle(0xffffff, 0.14));
+      bg.on('pointerout', () => bg.setFillStyle(0xffffff, 0.06));
+      bg.on('pointerup', (p) => {
+        if (p.y < top || p.y > top + this._menuListH) return; // row scrolled out of view
+        if (Math.abs(p.y - this._menuDownY) > 6) return; // this was a drag-scroll, not a tap
+        onTap();
+      });
+    }
+  }
+
+  /** Destroy the current list rows (keeps the container + mask). */
+  _clearMenuContent() {
+    if (this._menuContent) this._menuContent.removeAll(true);
+  }
+
+  /**
+   * Finalise a populated list: set the scroll range, keep the world camera off
+   * the new rows, and fade them in.
+   *
+   * @param {number} contentH  Total height of the rows just added.
+   * @returns {void}
+   */
+  _finishMenuContent(contentH) {
+    if (!this._menuContent) return; // menu closed mid-populate
+    this._menuScrollMax = Math.max(0, contentH - this._menuListH);
+    this._menuScroll = Phaser.Math.Clamp(this._menuScroll, 0, this._menuScrollMax);
+    this._menuContent.y = this._menuListTop - this._menuScroll;
+    this.cameras.main.ignore(this._menuContent); // re-walk: new children too
+    this._menuContent.setAlpha(0);
+    this.tweens.add({ targets: this._menuContent, alpha: 1, duration: 150, ease: 'Sine.Out' });
+  }
+
+  /**
+   * Scroll the list by `delta` screen pixels, clamped to its range.
+   *
+   * @param {number} delta
+   * @returns {void}
+   */
+  _menuScrollBy(delta) {
+    this._menuScroll = Phaser.Math.Clamp(this._menuScroll + delta, 0, this._menuScrollMax);
+    this._menuContent.y = this._menuListTop - this._menuScroll;
+  }
+
+  /**
+   * @param {Phaser.Input.Pointer} p
+   * @returns {boolean} true if the pointer is over the open menu card.
+   */
+  _overMenuPanel(p) {
+    const c = this._menuCard;
+    return p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h;
+  }
+
+  /** Tear down the menu overlay (mirrors _hideConfirm). */
+  _closeMenu() {
+    if (!this._menuOpen) return;
+    this._menuContent.clearMask(true);
+    this._menuMaskGfx.destroy();
+    for (const part of this._menuParts) part.destroy();
+    this._menuParts = null;
+    this._menuContent = null;
+    this._menuOpen = false;
+    this._menuDragging = false;
+    this.menuButton.setDepth(10).setAlpha(0.8); // restore normal HUD depth/look
+  }
+
   // --- Input --------------------------------------------------------------
 
   /**
@@ -1240,6 +1601,17 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', (p) => {
       sfx.unlock(); // browsers need a user gesture to start audio
       if (this._modalOpen) return; // modal owns input; its buttons handle themselves
+      if (this._menuOpen) {
+        // The menu backdrop swallows game input; a press on the list starts a
+        // drag-scroll (its own buttons handle their taps). _menuDownY lets a row
+        // tell a tap from a drag (see _menuRow).
+        this._menuDownY = p.y;
+        if (this._overMenuPanel(p)) {
+          this._menuDragging = true;
+          this._menuDragLastY = p.y;
+        }
+        return;
+      }
       if (this._pinchDist) return; // a two-finger pinch owns the gesture
       if (p.y < this._hudHeight) return; // press is on the HUD ribbon, not the arena
       if (this._overDevPanel(p)) return; // press is on the dev panel
@@ -1263,6 +1635,13 @@ export class GameScene extends Phaser.Scene {
 
     this.input.on('pointermove', (p) => {
       if (this._modalOpen) return;
+      if (this._menuOpen) {
+        if (this._menuDragging) {
+          this._menuScrollBy(this._menuDragLastY - p.y);
+          this._menuDragLastY = p.y;
+        }
+        return;
+      }
       if (this.isAiming) {
         const w = this.cameras.main.getWorldPoint(p.x, p.y);
         this.brothers.dragTo(w.x, w.y);
@@ -1284,6 +1663,10 @@ export class GameScene extends Phaser.Scene {
 
     this.input.on('pointerup', () => {
       if (this._modalOpen) return;
+      if (this._menuOpen) {
+        this._menuDragging = false;
+        return;
+      }
       this._isPanning = false;
       if (!this.isAiming) return;
       this.isAiming = false;
@@ -1300,6 +1683,10 @@ export class GameScene extends Phaser.Scene {
     // Laptop: mouse wheel zooms toward the cursor.
     this.input.on('wheel', (p, _over, _dx, dy) => {
       if (this._modalOpen) return;
+      if (this._menuOpen) {
+        this._menuScrollBy(dy); // wheel scrolls the menu list, not the arena
+        return;
+      }
       const step = Config.zoom.wheelStep;
       this._zoomBy(dy > 0 ? 1 - step : 1 + step, p.x, p.y);
     });
@@ -1453,6 +1840,7 @@ export class GameScene extends Phaser.Scene {
         message = 'New best score!';
         this.registry.set(this._bestKey, this.movesLeft);
       }
+      scores.recordBest(currentLevelKey(), this.movesLeft); // persist across reloads
       this._winBurst();
       sfx.win();
       this._endGame(message, FACES.win, '#7cfc8a', true);

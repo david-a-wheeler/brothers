@@ -34,7 +34,8 @@ license.
 | `assets/icons/flag.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`flag`) | MIT — see `assets/icons/LICENSE` |
 | `assets/icons/flag-fill.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`flag-fill`) | MIT — see `assets/icons/LICENSE` |
 | `assets/icons/controller.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`controller`) | MIT — see `assets/icons/LICENSE` |
-| `assets/icons/beaker.svg` | [Heroicons](https://github.com/tailwindlabs/heroicons) (`beaker`, solid) | MIT — see `assets/icons/LICENSE` |
+| `assets/icons/list.svg` | [Bootstrap Icons](https://icons.getbootstrap.com) (`list`) | MIT — see `assets/icons/LICENSE` |
+| `assets/icons/beaker.svg` | [Heroicons](https://github.com/tailwindlabs/heroicons) (`beaker`, solid; no longer used) | MIT — see `assets/icons/LICENSE` |
 
 The only modification is setting the fill color to white so it reads on the dark
 HUD ribbon. The MIT license text and copyright are preserved in
