@@ -38,8 +38,22 @@ export class Brothers {
     /** Level data this pair lives in (spawns/walls/arena). */
     this._level = level;
 
-    this.david = this._createBrother('David', '#3aa0ff', 0x3aa0ff, level.david);
-    this.ken = this._createBrother('Ken', '#ff5a4d', 0xff5a4d, level.ken);
+    // Ken is the baseline; David is sized/massed relative to him. Radii are set
+    // at creation; masses (and live lab tweaks to David) are applied just below.
+    const kenRadius = Config.ball.radius * (level.kenRadiusMult ?? 1);
+    const davidRadius = kenRadius * Config.ball.davidRadiusMult * (level.davidRadiusMult ?? 1);
+    this.david = this._createBrother('David', '#3aa0ff', 0x3aa0ff, level.david, davidRadius);
+    this.ken = this._createBrother('Ken', '#ff5a4d', 0xff5a4d, level.ken, kenRadius);
+
+    // Ken's mass: his natural (area-based) mass, scaled by the level. David's
+    // mass is derived from Ken's in _applyDavidPhysique (called here + per frame
+    // so the lab's David sliders take effect live).
+    this._kenRadius = kenRadius;
+    this._kenMass = this.ken.go.body.mass * (level.kenMassMult ?? 1);
+    this.ken.go.setMass(this._kenMass);
+    this._davidRadius = davidRadius; // body already created at this radius
+    this._davidMass = NaN; // force the first mass apply
+    this._applyDavidPhysique();
 
     /** @type {Brother} The brother currently being slingshotted. */
     this.launcher = this.david;
@@ -92,16 +106,16 @@ export class Brothers {
   }
 
   /**
-   * Create one brother's circular body.
+   * Create one brother's circular body at the given radius.
    *
    * @param {string} name
    * @param {string} cssColor   Colour for UI text.
    * @param {number} fillColor  0xRRGGBB fill for the circle.
    * @param {{x:number, y:number}} pos
+   * @param {number} r          Body/visual radius.
    * @returns {Brother}
    */
-  _createBrother(name, cssColor, fillColor, pos) {
-    const r = Config.ball.radius;
+  _createBrother(name, cssColor, fillColor, pos, r) {
     const go = this.scene.add.circle(pos.x, pos.y, r, fillColor);
     this.scene.matter.add.gameObject(go, {
       shape: { type: 'circle', radius: r },
@@ -110,6 +124,33 @@ export class Brothers {
     });
     go.body.label = 'brother';
     return { name, color: cssColor, go, face: /** @type {*} */ (null) };
+  }
+
+  /**
+   * Set David's radius and mass from the lab's Config.ball.davidRadiusMult /
+   * davidMassMult (and this level's David multipliers), both relative to Ken.
+   * Called once at construction and again whenever the lab changes a value (see
+   * GameScene._adjustParam/_promptParam/_resetParams) — not per frame. A no-op
+   * when nothing changed.
+   *
+   * @returns {void}
+   */
+  _applyDavidPhysique() {
+    const lvl = this._level;
+    const targetR = this._kenRadius * Config.ball.davidRadiusMult * (lvl.davidRadiusMult ?? 1);
+    const targetM = this._kenMass * Config.ball.davidMassMult * (lvl.davidMassMult ?? 1);
+    let massDirty = targetM !== this._davidMass;
+    if (Math.abs(targetR - this._davidRadius) > 1e-3) {
+      const factor = targetR / this._davidRadius;
+      Phaser.Physics.Matter.Matter.Body.scale(this.david.go.body, factor, factor);
+      this.david.go.radius = targetR; // resize the visual circle to match
+      this._davidRadius = targetR;
+      massDirty = true; // Body.scale recomputes mass from area; restore ours
+    }
+    if (massDirty) {
+      this.david.go.setMass(targetM);
+      this._davidMass = targetM;
+    }
   }
 
   /**
@@ -213,6 +254,7 @@ export class Brothers {
    * @returns {void}
    */
   _indicateLauncher() {
+    this._glow.radius = this.launcher.go.radius + 8; // fit the (possibly larger) launcher
     this._glow.setVisible(true);
     this._glowTween.resume();
   }
@@ -316,13 +358,13 @@ export class Brothers {
    * @returns {void}
    */
   _containInArena() {
-    const r = Config.ball.radius;
     const e = Config.ball.restitution;
     const { width, height } = this._level.arena;
     for (const b of [this.david, this.ken]) {
       const body = b.go.body;
       if (body.isStatic) continue; // a frozen ball isn't moving anywhere
 
+      const r = b.go.radius; // brothers can differ in size (David is bigger)
       let { x, y } = b.go;
       let { x: vx, y: vy } = body.velocity;
       let hit = false;
@@ -442,15 +484,15 @@ export class Brothers {
   _launcherBlocked() {
     const l = this.launcher.go;
     const a = this.anchor.go;
-    const r = Config.ball.radius;
+    const r = l.radius; // launcher's own radius (David and Ken can differ)
     const { width, height } = this._level.arena;
     const walls = this._level.walls;
 
     // Poking past an arena edge?
     if (l.x < r || l.x > width - r || l.y < r || l.y > height - r) return true;
 
-    // Overlapping the other brother?
-    if (Phaser.Math.Distance.Between(l.x, l.y, a.x, a.y) < r * 2) return true;
+    // Overlapping the other brother? (sum of both radii)
+    if (Phaser.Math.Distance.Between(l.x, l.y, a.x, a.y) < r + a.radius) return true;
 
     // Sitting on a wall (closest-point circle/rectangle overlap)?
     const onWall = walls.some((w) => {

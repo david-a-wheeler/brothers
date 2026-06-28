@@ -64,11 +64,18 @@ export const Config = {
   /** A faint reference grid on the arena floor, so zooming reads clearly. */
   grid: { size: 64, color: 0xffffff, alpha: 0.06 },
 
-  /** Shared rigid-body settings for both brothers. */
+  /**
+   * Shared rigid-body settings. `radius` is Ken's (the baseline); David's size
+   * and mass are expressed as multiples of Ken's via `davidRadiusMult` /
+   * `davidMassMult`, which are lab-tunable and live in applyRubberBandDefaults()
+   * (so the lab's Reset restores them). Levels can further scale each brother
+   * (see levels.js kenRadiusMult / davidMassMult / etc.).
+   */
   ball: {
-    radius: 30,
+    radius: 30, // Ken's radius (the baseline both brothers are sized from)
     restitution: 0.8, // bounciness off walls and each other (plan: 0.7-0.9)
     frictionAir: 0.025, // passive per-frame slowdown
+    // davidRadiusMult / davidMassMult are set in applyRubberBandDefaults().
   },
 
   /**
@@ -165,10 +172,10 @@ export const Config = {
 };
 
 /**
- * The single source of truth for the tunable "rubber band" defaults (slingshot
- * + tether). Called once at load to populate Config, and again by the dev
- * panel's Reset button. To change a default, change it here — it then applies
- * to both startup and reset.
+ * The single source of truth for the tunable lab defaults (slingshot, tether,
+ * and David's size/mass multipliers). Called once at load to populate Config,
+ * and again by the dev panel's Reset button. To change a default, change it
+ * here — it then applies to both startup and reset.
  *
  * @returns {void}
  */
@@ -184,6 +191,10 @@ export function applyRubberBandDefaults() {
     restLength: 90, // preferred resting gap (~1.5x ball diameter)
     stiffness: 0.02, // soft, slingshot-like restoring force
     damping: 0.08, // energy lost per oscillation (0 = a perpetual spring)
+  });
+  Object.assign(Config.ball, {
+    davidRadiusMult: 1.2, // David's radius as a multiple of Ken's (lab 1.0-2.0)
+    davidMassMult: 1.2, // David's mass as a multiple of Ken's (lab 1.0-3.0)
   });
 }
 

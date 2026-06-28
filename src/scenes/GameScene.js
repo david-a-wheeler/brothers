@@ -934,6 +934,8 @@ export class GameScene extends Phaser.Scene {
       { obj: Config.tether, key: 'restLength', step: 5, dp: 0, min: 0, desc: 'Tether resting length; beyond it the band pulls them together.' },
       { obj: Config.tether, key: 'stiffness', step: 0.005, dp: 3, min: 0, desc: 'Tether spring strength once stretched past rest length.' },
       { obj: Config.tether, key: 'damping', step: 0.02, dp: 2, min: 0, desc: 'How quickly tether oscillations settle.' },
+      { obj: Config.ball, key: 'davidRadiusMult', step: 0.01, dp: 2, min: 1, max: 2, desc: "David's radius as a multiple of Ken's (1.00-2.00)." },
+      { obj: Config.ball, key: 'davidMassMult', step: 0.01, dp: 2, min: 1, max: 3, desc: "David's mass as a multiple of Ken's (1.00-3.00)." },
     ];
     const n = this._devParams.length;
     const helpY = y0 + 38 + n * rowH;
@@ -990,10 +992,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Prompt for a direct numeric value for a dev parameter (clamped to its min).
-   * Uses window.prompt so it works on desktop and mobile without a DOM input.
+   * Prompt for a direct numeric value for a dev parameter (clamped to its
+   * min/max). Uses window.prompt so it works on desktop and mobile without a
+   * DOM input.
    *
-   * @param {{obj: object, key: string, min: number}} param
+   * @param {{obj: object, key: string, min: number, max?: number}} param
    * @returns {void}
    */
   _promptParam(param) {
@@ -1001,8 +1004,9 @@ export class GameScene extends Phaser.Scene {
     if (input === null) return; // cancelled
     const v = parseFloat(input);
     if (!Number.isFinite(v)) return; // not a number
-    param.obj[param.key] = Math.max(param.min, v);
+    param.obj[param.key] = Math.min(param.max ?? Infinity, Math.max(param.min, v));
     this._devRows.forEach((r) => this._setDevRowText(r));
+    this.brothers?._applyDavidPhysique(); // apply if this was a David size/mass row
   }
 
   /**
@@ -1038,6 +1042,7 @@ export class GameScene extends Phaser.Scene {
   _resetParams() {
     applyRubberBandDefaults();
     this._devRows.forEach((r) => this._setDevRowText(r));
+    this.brothers?._applyDavidPhysique(); // David's size/mass are among the defaults
   }
 
   /**
@@ -1088,16 +1093,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Step a parameter by ±its step (clamped to its min), then refresh the rows.
+   * Step a parameter by ±its step (clamped to its min and optional max), then
+   * refresh the rows.
    *
-   * @param {{obj: object, key: string, step: number, dp: number, min: number}} param
+   * @param {{obj: object, key: string, step: number, dp: number, min: number, max?: number}} param
    * @param {number} dir  -1 or +1.
    * @returns {void}
    */
   _adjustParam(param, dir) {
     const raw = param.obj[param.key] + dir * param.step;
-    param.obj[param.key] = Math.max(param.min, Number(raw.toFixed(param.dp)));
+    const clamped = Math.min(param.max ?? Infinity, Math.max(param.min, Number(raw.toFixed(param.dp))));
+    param.obj[param.key] = clamped;
     this._devRows.forEach((r) => this._setDevRowText(r));
+    this.brothers?._applyDavidPhysique(); // apply if this was a David size/mass row
   }
 
   /**
@@ -1620,7 +1628,7 @@ export class GameScene extends Phaser.Scene {
       // starts a shot; pressing anywhere else on the board pans the camera.
       if (this.status !== 'ENDED' && this.phase === 'AIMING') {
         const l = this.brothers.launcher.go;
-        const reach = Config.ball.radius * 1.4; // forgiving for touch
+        const reach = l.radius * 1.4; // forgiving for touch; tracks the launcher's size
         const w = this.cameras.main.getWorldPoint(p.x, p.y);
         if (Phaser.Math.Distance.Between(w.x, w.y, l.x, l.y) <= reach) {
           this.isAiming = true;

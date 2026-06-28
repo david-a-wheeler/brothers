@@ -20,6 +20,14 @@ const DEFAULTS = {
   goalRadius: 60,
   teleporterRadius: 44,
   retainVelocity: 0.6,
+  // Per-brother size/mass multipliers a level can override (e.g. "David goes on
+  // a diet"). Applied on top of the global defaults; 1 = no change. Ken's are
+  // relative to Config.ball.radius/mass; David's are relative to Ken (so they
+  // stack with the lab's Config.ball.davidRadiusMult / davidMassMult).
+  kenRadiusMult: 1,
+  kenMassMult: 1,
+  davidRadiusMult: 1,
+  davidMassMult: 1,
 };
 
 /**
@@ -32,6 +40,10 @@ const DEFAULTS = {
  * @property {{x:number,y:number,radius:number}|null} destination
  * @property {{source:{x:number,y:number,radius:number}, target:{x:number,y:number}, retainVelocity:number}|null} teleporter
  * @property {{x:number,y:number,width:number,height:number}[]} walls
+ * @property {number} kenRadiusMult
+ * @property {number} kenMassMult
+ * @property {number} davidRadiusMult
+ * @property {number} davidMassMult
  */
 
 /**
@@ -69,6 +81,10 @@ export function loadTiledLevel(map) {
     arena,
     moves: mapProps.moves ?? DEFAULTS.moves,
     wallRestitution: mapProps.wallRestitution ?? DEFAULTS.wallRestitution,
+    kenRadiusMult: mapProps.kenRadiusMult ?? DEFAULTS.kenRadiusMult,
+    kenMassMult: mapProps.kenMassMult ?? DEFAULTS.kenMassMult,
+    davidRadiusMult: mapProps.davidRadiusMult ?? DEFAULTS.davidRadiusMult,
+    davidMassMult: mapProps.davidMassMult ?? DEFAULTS.davidMassMult,
     david: null,
     ken: null,
     destination: null,
