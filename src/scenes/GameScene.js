@@ -102,6 +102,8 @@ export class GameScene extends Phaser.Scene {
     this._modalOpen = false;
     /** True while the dev parameter-tuning panel is open. */
     this._devOpen = false;
+    /** HUD icon the attract glow is tracking (null = not attracting). */
+    this._attractTarget = null;
 
     this._computeLayout(); // sets this._layout + this._hudHeight for the build
     this._buildHud();
@@ -190,6 +192,10 @@ export class GameScene extends Phaser.Scene {
     const startX = cx - ((icons.length - 1) * L.gap) / 2;
     icons.forEach((ic, i) => ic.setDisplaySize(L.iconSize, L.iconSize).setPosition(startX + i * L.gap, iconRowY));
     tips.forEach((tp, i) => tp.setPosition(startX + i * L.gap, L.hudHeight + 6));
+
+    // Keep the attract glow on its target icon now that the icon has moved (the
+    // ongoing pulse tween only animates scale/alpha, so position is ours to set).
+    if (this._attractTarget) this.attractGlow.setPosition(this._attractTarget.x, this._attractTarget.y);
 
     // Info text. Wide/compact: turn left + Best/#Left right on row 0. Narrow:
     // state text centred on row 0, Best/#Left centred on row 1 (no collision).
@@ -1512,6 +1518,10 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _attract(icon) {
+    // Remember which icon we're highlighting so the glow follows it across
+    // layout changes (window resize / device rotation), instead of sticking to
+    // the screen position it had when the pulse started. See _layoutHud.
+    this._attractTarget = icon;
     this.attractGlow
       .setPosition(icon.x, icon.y)
       .setVisible(true)
