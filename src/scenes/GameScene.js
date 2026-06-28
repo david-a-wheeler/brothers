@@ -1439,19 +1439,28 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _resolveTurn() {
-    if (this.level.destination && this.brothers.anyInside(this.level.destination)) {
-      // Record best (most moves left) — note 0 is a real result, distinct from
+    if (this.level.destination &&
+	this.brothers.anyInside(this.level.destination)) {
+      // Record best score (most moves left) if we beat it.
+      // Note that "0" is a real best score result, distinct from
       // "never won" (null).
       const best = this.registry.get(this._bestKey);
-      if (best == null || this.movesLeft > best) this.registry.set(this._bestKey, this.movesLeft);
+      let message = 'Level clear!'; // Default success message
+      if (best == null) {
+        message = 'First time!';
+        this.registry.set(this._bestKey, this.movesLeft);
+      } else if (this.movesLeft > best) {
+        message = 'New best score!';
+        this.registry.set(this._bestKey, this.movesLeft);
+      }
       this._winBurst();
       sfx.win();
-      this._endGame('LEVEL CLEAR!', FACES.win, '#7cfc8a', true);
+      this._endGame(message, FACES.win, '#7cfc8a', true);
       return;
     }
     if (this.movesLeft <= 0) {
       sfx.lose();
-      this._endGame('OUT OF MOVES', FACES.lose, '#ff7a6b', false);
+      this._endGame('Out of moves', FACES.lose, '#ff7a6b', false);
       return;
     }
     this.brothers.swapRoles();
