@@ -18,7 +18,7 @@ const gameConfig = {
   parent: 'game',
   // Auto-retry loading (incl. asset loading) to counter network problems
   loader: {
-        maxRetries: 4
+        maxRetries: 9
   },
   width: Config.view.width,
   height: Config.view.height,
