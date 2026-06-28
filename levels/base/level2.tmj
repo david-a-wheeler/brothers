@@ -1,0 +1,44 @@
+{
+ "compressionlevel":-1,
+ "width":40,
+ "height":25,
+ "tilewidth":32,
+ "tileheight":32,
+ "infinite":false,
+ "orientation":"orthogonal",
+ "renderorder":"right-down",
+ "type":"map",
+ "version":"1.10",
+ "tiledversion":"1.12.2",
+ "nextlayerid":2,
+ "nextobjectid":8,
+ "tilesets":[],
+ "properties":[
+  {"name":"moves","type":"int","value":8},
+  {"name":"wallRestitution","type":"float","value":0.6}
+ ],
+ "layers":[
+  {
+   "type":"objectgroup",
+   "id":1,
+   "name":"objects",
+   "opacity":1,
+   "visible":true,
+   "x":0,
+   "y":0,
+   "draworder":"topdown",
+   "objects":[
+    {"id":1,"name":"david","class":"spawn","point":true,"x":180,"y":660,"width":0,"height":0,"rotation":0,"visible":true,
+     "properties":[{"name":"who","type":"string","value":"david"}]},
+    {"id":2,"name":"ken","class":"spawn","point":true,"x":270,"y":660,"width":0,"height":0,"rotation":0,"visible":true,
+     "properties":[{"name":"who","type":"string","value":"ken"}]},
+    {"id":3,"name":"goal","class":"goal","point":true,"x":1060,"y":200,"width":0,"height":0,"rotation":0,"visible":true,
+     "properties":[{"name":"radius","type":"float","value":60}]},
+    {"id":4,"name":"divider","class":"wall","x":50,"y":447,"width":700,"height":26,"rotation":0,"visible":true},
+    {"id":5,"name":"upper","class":"wall","x":280,"y":247,"width":720,"height":26,"rotation":0,"visible":true},
+    {"id":6,"name":"left pillar","class":"wall","x":237,"y":50,"width":26,"height":300,"rotation":0,"visible":true},
+    {"id":7,"name":"right pillar","class":"wall","x":887,"y":500,"width":26,"height":280,"rotation":0,"visible":true}
+   ]
+  }
+ ]
+}
