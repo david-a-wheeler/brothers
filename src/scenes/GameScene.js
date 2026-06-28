@@ -451,24 +451,24 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Build the level's zones. Each is optional — a level may omit either the
-   * destination or the teleporter.
+   * goal or the teleporter.
    *
    * @returns {void}
    */
   _buildZones() {
-    if (this.level.destination) this._buildDestination(this.level.destination);
+    if (this.level.goal) this._buildGoal(this.level.goal);
     if (this.level.teleporter) this._buildTeleporter(this.level.teleporter);
   }
 
   /**
-   * Destination goal — an archery target (concentric rings + a slow-rotating
+   * Goal — an archery target (concentric rings + a slow-rotating
    * reticle) plus a sensor body, all centred on the goal.
    *
-   * @param {{x:number, y:number, radius:number}} destination
+   * @param {{x:number, y:number, radius:number}} goalDef
    * @returns {void}
    */
-  _buildDestination(destination) {
-    const R = destination.radius;
+  _buildGoal(goalDef) {
+    const R = goalDef.radius;
     const ringBands = [
       { r: R, color: 0x145a32 }, // dark
       { r: R * 0.78, color: 0x2ecc71 }, // bright
@@ -476,18 +476,18 @@ export class GameScene extends Phaser.Scene {
       { r: R * 0.33, color: 0x2ecc71 }, // bright
       { r: R * 0.14, color: 0xeafff2 }, // bullseye
     ];
-    this.destinationGfx = this.add.container(
-      destination.x,
-      destination.y,
+    this.goalGfx = this.add.container(
+      goalDef.x,
+      goalDef.y,
       ringBands.map((b) => this.add.circle(0, 0, b.r, b.color))
     );
-    this.destinationReticle = this._buildReticle(destination.x, destination.y, R);
-    this._startDestinationPulse();
-    const goal = this.matter.add.circle(destination.x, destination.y, destination.radius, {
+    this.goalReticle = this._buildReticle(goalDef.x, goalDef.y, R);
+    this._startGoalPulse();
+    const goalBody = this.matter.add.circle(goalDef.x, goalDef.y, goalDef.radius, {
       isSensor: true,
       isStatic: true,
     });
-    goal.label = 'destination';
+    goalBody.label = 'goal';
   }
 
   /**
@@ -584,7 +584,7 @@ export class GameScene extends Phaser.Scene {
         lifespan: T.exitLifespan,
         quantity: T.pullQuantity,
         frequency: T.pullFrequency,
-        tint: 0xe67e22, // orange, matching the destination marker
+        tint: 0xe67e22, // orange, matching the goal marker
         blendMode: 'ADD',
         scale: { start: 0.85, end: 0 },
         alpha: { start: 1, end: 0 },
@@ -1974,8 +1974,8 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _resolveTurn() {
-    if (this.level.destination &&
-	this.brothers.anyInside(this.level.destination)) {
+    if (this.level.goal &&
+	this.brothers.anyInside(this.level.goal)) {
       // Record best score (most moves left) if we beat it.
       // Note that "0" is a real best score result, distinct from
       // "never won" (null).
@@ -2005,19 +2005,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Celebratory one-shot at the destination when the level is cleared:
+   * Celebratory one-shot at the goal when the level is cleared:
    * a quick scale pop on the goal plus an expanding ring.
    *
    * @returns {void}
    */
   _winBurst() {
-    const d = this.level.destination;
-    const a = Config.anim.destination;
-    this.tweens.killTweensOf(this.destinationGfx);
-    this.destinationGfx.setScale(1);
+    const d = this.level.goal;
+    const a = Config.anim.goal;
+    this.tweens.killTweensOf(this.goalGfx);
+    this.goalGfx.setScale(1);
     // Pop the whole target once. The reticle keeps spinning independently.
     this.tweens.add({
-      targets: this.destinationGfx,
+      targets: this.goalGfx,
       scale: a.winBurstScale,
       duration: a.winBurstDuration,
       ease: 'Back.Out',
@@ -2056,16 +2056,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Start the destination's idle motion: a slow, continuous rotation of the
+   * Start the goal's idle motion: a slow, continuous rotation of the
    * reticle overlay. The target rings themselves stay fixed in size.
    *
    * @returns {void}
    */
-  _startDestinationPulse() {
+  _startGoalPulse() {
     this.tweens.add({
-      targets: this.destinationReticle,
+      targets: this.goalReticle,
       angle: 360,
-      duration: Config.anim.destination.reticleRotateDuration,
+      duration: Config.anim.goal.reticleRotateDuration,
       repeat: -1,
     });
   }

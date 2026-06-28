@@ -132,12 +132,12 @@ export const Config = {
    */
   anim: {
     /**
-     * Destination: an archery target (concentric rings) that stays a fixed
+     * Goal: an archery target (concentric rings) that stays a fixed
      * size so it reads as a goal, not a collectible. Motion comes from a slow-
      * rotating reticle/crosshair overlay; the rings themselves never move,
      * except for a one-shot pop on win.
      */
-    destination: {
+    goal: {
       reticleRotateDuration: 9000, // ms per full rotation of the crosshair
       winBurstScale: 1.8, // one-shot pop of the whole target when cleared
       winBurstDuration: 320,

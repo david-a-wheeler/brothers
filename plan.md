@@ -26,7 +26,7 @@ Handles the core update loops, asset loading, mobile web layout scaling, multi-t
 * **Physics Engine: Matter.js (MIT License)**
 Integrated natively within Phaser 3. It handles rigid body geometry, circular collisions, elastic constraints, air resistance tracking, and overlap sensors.
 * **Level Designer: Tiled Map Editor (GPL/Free)**
-A visual 2D mapping tool. Levels will be drawn visually in Tiled and exported as standard `.json` files. Phaser will read these files to spawn walls, destination areas, and hazard positions automatically.
+A visual 2D mapping tool. Levels will be drawn visually in Tiled and exported as standard `.json` files. Phaser will read these files to spawn walls, goal areas, and hazard positions automatically.
 * **Audio Generators: sfxr / ChipTone & OpenGameArt (Public Domain/CC0)**
 Web-based synthesis engines used to export quick `.wav` or `.mp3` sound effects (impacts, snaps, portal sounds) without dealing with licensing hurdles.
 
@@ -104,7 +104,7 @@ This phased approach breaks development down into isolated, highly achievable mi
 ### Phase 2: Map Infrastructure & Camera Setup (Est. Time: One Evening)
 
 * Open Tiled Map Editor and create `level1.json` (Width: 2000px, Height: 1500px to allow for panning room).
-* Draw an outer bounding wall layer. Add an "Objects" layer and place rectangles for the `destination` and a `teleporter_source`/`teleporter_destination`.
+* Draw an outer bounding wall layer. Add an "Objects" layer and place rectangles for the `goal` and a `teleporter_source`/`teleporter_destination`.
 * Update the Phaser codebase to load this JSON file using `this.load.tilemapTiledJSON()`.
 * Map mouse-drag and pinch-to-zoom listeners to control `this.cameras.main.scrollX`, `scrollY`, and `setZoom()` so the player can effortlessly look around the large level map.
 * **Resolve the drag conflict up front.** Both the slingshot and the camera pan are "press and drag" gestures, so they must be disambiguated on `pointerdown`: hit-test the pointer against the current Launcher's body — if it hits, the gesture is a slingshot pull; otherwise it pans the camera. A boolean like `isAiming` set on `pointerdown` routes the subsequent `pointermove`/`pointerup` to the correct handler so a camera pan can never be mistaken for a launch (and vice-versa). This flag is also what Phase 4 uses to decide whether a `pointerup` should consume a move.

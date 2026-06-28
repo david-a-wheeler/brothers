@@ -37,7 +37,7 @@ const DEFAULTS = {
  * @property {number} wallRestitution
  * @property {{x:number,y:number}|null} david
  * @property {{x:number,y:number}|null} ken
- * @property {{x:number,y:number,radius:number}|null} destination
+ * @property {{x:number,y:number,radius:number}|null} goal
  * @property {{source:{x:number,y:number,radius:number}, target:{x:number,y:number}, retainVelocity:number}|null} teleporter
  * @property {{x:number,y:number,width:number,height:number}[]} walls
  * @property {number} kenRadiusMult
@@ -87,7 +87,7 @@ export function loadTiledLevel(map) {
     davidMassMult: mapProps.davidMassMult ?? DEFAULTS.davidMassMult,
     david: null,
     ken: null,
-    destination: null,
+    goal: null,
     teleporter: null,
     walls: [],
   };
@@ -118,7 +118,7 @@ export function loadTiledLevel(map) {
         else level.david = { x: o.x, y: o.y };
         break;
       case 'goal':
-        level.destination = { x: o.x, y: o.y, radius: p.radius ?? DEFAULTS.goalRadius };
+        level.goal = { x: o.x, y: o.y, radius: p.radius ?? DEFAULTS.goalRadius };
         break;
       case 'teleporter-source':
         source = { x: o.x, y: o.y, radius: p.radius ?? DEFAULTS.teleporterRadius, retain: p.retain };

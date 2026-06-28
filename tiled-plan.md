@@ -70,7 +70,7 @@ Set each object's **Class** (older Tiled: **Type**) to one of:
 | -------------------- | ------ | ----------------------------------- | ------- |
 | `wall`               | rect   | —                                   | A solid wall (deflects balls). |
 | `spawn`              | point  | `who` = `"david"` \| `"ken"`        | A brother's start position. |
-| `goal`               | point  | `radius` (number)                   | The destination zone. |
+| `goal`               | point  | `radius` (number)                   | The goal zone. |
 | `teleporter-source`  | point  | `radius` (number), `retain` (0–1)   | Portal entrance (optional). |
 | `teleporter-target`  | point  | —                                   | Portal exit (optional). |
 

@@ -476,7 +476,7 @@ export class Brothers {
    *  - the elastic band (the launcher -> anchor line, which the ball flies
    *    roughly along) *touches* a wall. A band that only passes near a wall
    *    without touching it is allowed.
-   * The destination goal and teleporter aren't checked — they're non-solid,
+   * The goal and teleporter aren't checked — they're non-solid,
    * so resting on or firing across them is fine.
    *
    * @returns {boolean}
