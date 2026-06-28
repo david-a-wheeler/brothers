@@ -1389,6 +1389,16 @@ export class GameScene extends Phaser.Scene {
     this._menuContent.setMask(this._menuMaskGfx.createGeometryMask());
     this._menuParts.push(this._menuContent);
 
+    // Scrollbar indicator (right edge of the viewport). Shown only when the
+    // content overflows; sized/positioned by _updateScrollbar. Not in the
+    // content container, so it stays put while the list scrolls.
+    this._menuScrollbar = this.add
+      .rectangle(this._menuListX + this._menuListW - 3, listTop, 4, 20, 0xffffff, 0.45)
+      .setOrigin(0.5, 0.5)
+      .setDepth(32)
+      .setVisible(false);
+    this._menuParts.push(this._menuScrollbar);
+
     this.cameras.main.ignore(this._menuParts); // HUD-camera only (like _showConfirm)
 
     for (const part of this._menuParts) {
@@ -1438,8 +1448,10 @@ export class GameScene extends Phaser.Scene {
     this._menuScroll = 0;
     this._clearMenuContent();
     let y = 0;
+    let hasScores = false;
     manifest.levelIds.forEach((file, i) => {
       const best = scores.bestFor(`${manifest.id}/${file}`);
+      if (best != null) hasScores = true;
       const allowed = this._canJump(manifest, i);
       const value = best != null ? `✓  ${best} ★` : allowed ? '—' : '🔒';
       this._menuRow(y, `Level ${i + 1}`, value, {
@@ -1449,7 +1461,47 @@ export class GameScene extends Phaser.Scene {
       });
       y += 44;
     });
+    // "Forget pack scores" at the bottom of the scrollable list (shaded out when
+    // the pack has no scores). It scrolls with the levels, so it's reachable via
+    // the scrollbar/drag when the list overflows.
+    y += 10;
+    y += this._menuContentButton(y, 'Forget pack scores', {
+      enabled: hasScores,
+      onTap: () => this._confirmForgetPack(manifest),
+    });
     this._finishMenuContent(y);
+  }
+
+  /**
+   * Confirm, then forget all best scores for a pack. If the player is in that
+   * pack, past level 1, and not in test mode, drop them to level 1 (a now-locked
+   * later level shouldn't stay loaded once its unlock is forgotten).
+   *
+   * @param {{id:string, name:string, levelIds:string[]}} manifest
+   * @returns {void}
+   */
+  _confirmForgetPack(manifest) {
+    this._showConfirm(`Forget scores for pack ${manifest.name}?`, () => {
+      const keys = manifest.levelIds.map((f) => `${manifest.id}/${f}`);
+      scores.forget(keys); // clear persisted scores
+      const inThisPack = manifest.id === activePackId();
+      if (inThisPack) {
+        // Also clear the in-memory registry, which cached this session's bests;
+        // otherwise the HUD "Best:" (and the restart hydration) would keep
+        // showing the old numbers instead of "-".
+        for (const k of keys) this.registry.set(`best:${k}`, null);
+      }
+      if (!this._testMode && inThisPack && currentIndex() > 0) {
+        this._hideConfirm();
+        this._closeMenu();
+        setLevelIndex(0);
+        this.scene.restart();
+        return;
+      }
+      if (inThisPack) this._refreshHud(); // -> "Best: -"
+      this._hideConfirm();
+      this._showPackDetail(manifest); // re-render: scores cleared, button shaded
+    });
   }
 
   /**
@@ -1526,7 +1578,13 @@ export class GameScene extends Phaser.Scene {
       .text(12, midY, label, { fontSize: '17px', color: enabled ? '#ffffff' : '#7a7a85' })
       .setOrigin(0, 0.5);
     const valueTxt = this.add
-      .text(w - 12, midY, value, { fontSize: '17px', color: valueColor })
+      // Top/bottom padding gives the text canvas room: Phaser under-measures
+      // emoji height (✓/★/🔒), so without it the glyph's top is clipped.
+      .text(w - 12, midY, value, {
+        fontSize: '17px',
+        color: valueColor,
+        padding: { top: 6, bottom: 6 },
+      })
       .setOrigin(1, 0.5);
     this._menuContent.add([bg, labelTxt, valueTxt]);
     if (onTap) {
@@ -1539,6 +1597,43 @@ export class GameScene extends Phaser.Scene {
         onTap();
       });
     }
+  }
+
+  /**
+   * A centered button inside the scrollable content (e.g. "Forget pack
+   * scores"). Destructive-red when enabled, gray when disabled. Same off-clip /
+   * drag-vs-tap guards as _menuRow.
+   *
+   * @param {number} localY  Top of the button in container-local space.
+   * @param {string} label
+   * @param {{onTap?:(()=>void)|null, enabled?:boolean}} [opts]
+   * @returns {number} The vertical space the button occupies.
+   */
+  _menuContentButton(localY, label, opts = {}) {
+    const { onTap = null, enabled = true } = opts;
+    const h = 32;
+    const top = this._menuListTop;
+    const cx = this._menuListW / 2;
+    const midY = localY + h / 2;
+    const baseColor = enabled ? 0x7a2e2e : 0x33333b; // red when actionable, gray when off
+    const rect = this.add
+      .rectangle(cx, midY, Math.min(220, this._menuListW), h, baseColor, 1)
+      .setOrigin(0.5);
+    const txt = this.add
+      .text(cx, midY, label, { fontSize: '15px', color: enabled ? '#ffffff' : '#777' })
+      .setOrigin(0.5);
+    this._menuContent.add([rect, txt]);
+    if (enabled && onTap) {
+      rect.setInteractive({ useHandCursor: true });
+      rect.on('pointerover', () => rect.setFillStyle(0x9b3a3a, 1));
+      rect.on('pointerout', () => rect.setFillStyle(baseColor, 1));
+      rect.on('pointerup', (p) => {
+        if (p.y < top || p.y > top + this._menuListH) return; // scrolled out of view
+        if (Math.abs(p.y - this._menuDownY) > 6) return; // a drag-scroll, not a tap
+        onTap();
+      });
+    }
+    return h;
   }
 
   /** Destroy the current list rows (keeps the container + mask). */
@@ -1555,12 +1650,14 @@ export class GameScene extends Phaser.Scene {
    */
   _finishMenuContent(contentH) {
     if (!this._menuContent) return; // menu closed mid-populate
+    this._menuContentH = contentH;
     this._menuScrollMax = Math.max(0, contentH - this._menuListH);
     this._menuScroll = Phaser.Math.Clamp(this._menuScroll, 0, this._menuScrollMax);
     this._menuContent.y = this._menuListTop - this._menuScroll;
     this.cameras.main.ignore(this._menuContent); // re-walk: new children too
     this._menuContent.setAlpha(0);
     this.tweens.add({ targets: this._menuContent, alpha: 1, duration: 150, ease: 'Sine.Out' });
+    this._updateScrollbar();
   }
 
   /**
@@ -1572,6 +1669,27 @@ export class GameScene extends Phaser.Scene {
   _menuScrollBy(delta) {
     this._menuScroll = Phaser.Math.Clamp(this._menuScroll + delta, 0, this._menuScrollMax);
     this._menuContent.y = this._menuListTop - this._menuScroll;
+    this._updateScrollbar();
+  }
+
+  /**
+   * Size/position the scrollbar thumb for the current scroll, or hide it when
+   * the content fits. Gives a clear, draggable-feeling cue that there's more.
+   *
+   * @returns {void}
+   */
+  _updateScrollbar() {
+    const bar = this._menuScrollbar;
+    if (!bar) return;
+    if (this._menuScrollMax <= 0) {
+      bar.setVisible(false);
+      return;
+    }
+    const viewH = this._menuListH;
+    const thumbH = Math.max(24, viewH * (viewH / this._menuContentH));
+    const t = this._menuScroll / this._menuScrollMax;
+    const y = this._menuListTop + t * (viewH - thumbH);
+    bar.setSize(4, thumbH).setPosition(this._menuListX + this._menuListW - 3, y + thumbH / 2).setVisible(true);
   }
 
   /**

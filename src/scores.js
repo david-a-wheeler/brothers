@@ -63,6 +63,31 @@ export function recordBest(levelKey, movesLeft) {
 }
 
 /**
+ * Forget (delete) the best scores for the given level keys, persisting the
+ * result. Used by the menu's "Forget pack scores".
+ *
+ * @param {string[]} levelKeys  `${packId}/${levelFilename}` keys to clear.
+ * @returns {void}
+ */
+export function forget(levelKeys) {
+  const c = load();
+  let changed = false;
+  for (const k of levelKeys) {
+    if (k in c) {
+      delete c[k];
+      changed = true;
+    }
+  }
+  if (changed) {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(c));
+    } catch {
+      // Storage unavailable: the in-memory cache is already updated.
+    }
+  }
+}
+
+/**
  * The full best-score cache (for computing pack totals in the menu).
  *
  * @returns {Record<string, number>}
