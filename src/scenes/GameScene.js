@@ -832,9 +832,12 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(11)
       .setVisible(false);
+    // Name the target level on reveal (it changes as the player navigates), or
+    // "(None)" when there's no such level in this direction.
+    const reveal = () => tip.setText(tooltipText + this._navTargetSuffix(dir)).setVisible(true);
     icon.on('pointerover', () => {
       if (this._navEnabled(dir)) icon.setAlpha(1);
-      tip.setVisible(true);
+      reveal();
     });
     icon.on('pointerout', () => {
       this._refreshNavButtons();
@@ -842,13 +845,26 @@ export class GameScene extends Phaser.Scene {
     });
     icon.on('pointerdown', (_p, _x, _y, e) => {
       e?.stopPropagation();
-      tip.setVisible(true);
+      reveal();
     });
     icon.on('pointerup', () => {
       tip.setVisible(false);
       this._navClicked(dir);
     });
     return [icon, tip];
+  }
+
+  /**
+   * Tooltip suffix naming the level a nav icon would go to: " (Pack N)", or
+   * " (None)" if there's no level in that direction.
+   *
+   * @param {'prev'|'next'} dir
+   * @returns {string}
+   */
+  _navTargetSuffix(dir) {
+    const target = currentIndex() + (dir === 'prev' ? -1 : 1);
+    if (target < 0 || target >= levelCount()) return ' (None)';
+    return ` (${activePackName()} ${target + 1})`;
   }
 
   /**
