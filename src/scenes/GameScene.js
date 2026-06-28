@@ -120,10 +120,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Decide the HUD metrics for the current window size. On a small/narrow screen
-   * (<= Config.hud.compactMaxWidth) it goes "compact": two rows and larger,
-   * touch-friendly icons. Stores `this._layout` and keeps `this._hudHeight` in
-   * sync (used by the input guard, dev panel, and camera viewport).
+   * Decide the HUD metrics for the current window size, choosing 1, 2, or 3
+   * rows so nothing collides:
+   *  - wide   (> compactMaxWidth): 1 row — turn text and Best/#Left at the edges,
+   *           icons centred between them.
+   *  - compact(<= compactMaxWidth): 2 rows — the info text on one line (turn
+   *           left, Best/#Left right), icons below; larger touch icons.
+   *  - narrow (<= narrowMaxWidth): 3 rows — state text, then Best/#Left, then
+   *           icons — so the two texts can't overlap on a phone in portrait.
+   * Stores `this._layout` and keeps `this._hudHeight` in sync (input guard, dev
+   * panel, camera viewport). Re-run on every resize/rotation (see _onResize).
    *
    * @returns {void}
    */
@@ -131,37 +137,41 @@ export class GameScene extends Phaser.Scene {
     const H = Config.hud;
     const w = this.scale.width;
     const h = this.scale.height;
-    const compact = w <= H.compactMaxWidth;
+    const mode = w > H.compactMaxWidth ? 'wide' : w <= H.narrowMaxWidth ? 'narrow' : 'compact';
+    const rows = mode === 'wide' ? 1 : mode === 'narrow' ? 3 : 2;
+    const touch = mode !== 'wide'; // bigger icons/gaps on small screens
     this._layout = {
       w,
       h,
-      compact,
+      mode,
+      rows,
       rowHeight: H.rowHeight,
-      hudHeight: compact ? H.rowHeight * 2 : H.rowHeight,
-      iconSize: compact ? H.compactIcon : H.normalIcon,
-      gap: compact ? H.compactGap : H.normalGap,
+      hudHeight: rows * H.rowHeight,
+      iconSize: touch ? H.compactIcon : H.normalIcon,
+      gap: touch ? H.compactGap : H.normalGap,
       pad: H.pad,
     };
     this._hudHeight = this._layout.hudHeight;
   }
 
   /**
-   * Position and size every HUD element for `this._layout`. Wide screens use a
-   * single row (turn text left, Best/#Left right, icon cluster centred); compact
-   * screens stack into two rows (info text on top, icon row below) with larger
-   * icons. Re-run whenever the layout changes (see _onResize).
+   * Position and size every HUD element for `this._layout` (1/2/3 rows; see
+   * _computeLayout). Icons always occupy the last row; the text occupies the
+   * row(s) above. Re-run whenever the layout changes.
    *
    * @returns {void}
    */
   _layoutHud() {
     const L = this._layout;
     const cx = L.w / 2;
+    const rh = L.rowHeight;
+    const rowY = (i) => i * rh + rh / 2; // centre Y of row i
 
     // Opaque ribbon + bottom border span the full width.
     this.hudBar.setPosition(cx, L.hudHeight / 2).setSize(L.w, L.hudHeight);
     this.hudBorder.setPosition(cx, L.hudHeight).setSize(L.w, 2);
 
-    // Icon cluster (prev, restart, next, status, beaker), centred and spaced.
+    // Icon cluster (prev, restart, next, status, beaker) on the last row.
     const icons = [
       this.prevButton,
       this.restartButton,
@@ -176,21 +186,28 @@ export class GameScene extends Phaser.Scene {
       this.statusTooltip,
       this.beakerTooltip,
     ];
-    const iconRowY = L.compact ? L.rowHeight + L.rowHeight / 2 : L.hudHeight / 2;
+    const iconRowY = rowY(L.rows - 1);
     const startX = cx - ((icons.length - 1) * L.gap) / 2;
     icons.forEach((ic, i) => ic.setDisplaySize(L.iconSize, L.iconSize).setPosition(startX + i * L.gap, iconRowY));
     tips.forEach((tp, i) => tp.setPosition(startX + i * L.gap, L.hudHeight + 6));
 
-    // Info text: turn (left) and Best/#Left (right), vertically centred in its row.
-    const textY = L.compact ? L.rowHeight / 2 : L.hudHeight / 2;
-    const fontSize = L.compact ? '18px' : '22px';
-    this.turnText.setOrigin(0, 0.5).setPosition(L.pad, textY).setFontSize(fontSize);
-    this.movesText.setOrigin(1, 0.5).setPosition(L.w - L.pad, textY).setFontSize(fontSize);
+    // Info text. Wide/compact: turn left + Best/#Left right on row 0. Narrow:
+    // state text centred on row 0, Best/#Left centred on row 1 (no collision).
+    const fontSize = L.mode === 'wide' ? '22px' : '18px';
+    this.turnText.setFontSize(fontSize);
+    this.movesText.setFontSize(fontSize);
+    if (L.mode === 'narrow') {
+      this.turnText.setOrigin(0.5, 0.5).setPosition(cx, rowY(0));
+      this.movesText.setOrigin(0.5, 0.5).setPosition(cx, rowY(1));
+    } else {
+      this.turnText.setOrigin(0, 0.5).setPosition(L.pad, rowY(0));
+      this.movesText.setOrigin(1, 0.5).setPosition(L.w - L.pad, rowY(0));
+    }
 
     // Banner + backing panel centred; sized/scaled to fit narrow screens.
     const panelW = Math.min(L.w - 2 * L.pad, 520);
-    this.bannerPanel.setPosition(cx, L.h / 2).setSize(panelW, L.compact ? 90 : 110);
-    this.banner.setPosition(cx, L.h / 2).setFontSize(L.compact ? '34px' : '52px');
+    this.bannerPanel.setPosition(cx, L.h / 2).setSize(panelW, L.mode === 'wide' ? 110 : 90);
+    this.banner.setPosition(cx, L.h / 2).setFontSize(L.mode === 'wide' ? '52px' : '34px');
 
     this._layoutDevPanel();
   }

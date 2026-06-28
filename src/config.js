@@ -25,7 +25,13 @@ export const Config = {
    * touch-friendly icons. The single source for these knobs.
    */
   hud: {
-    compactMaxWidth: 700, // px: at or below this width, use the compact two-row layout
+    // Width breakpoints (px). Wide (> compactMaxWidth): one row — turn text and
+    // Best/#Left at the edges with the icons centred between. Compact (between
+    // the two): two rows — the info text on one line, icons below. Narrow
+    // (<= narrowMaxWidth): three rows — state text, then Best/#Left, then icons —
+    // so the two texts can't collide on a phone in portrait.
+    compactMaxWidth: 760,
+    narrowMaxWidth: 520,
     rowHeight: 52, // height of one HUD row
     normalIcon: 30, // icon display size (px) on wide screens
     compactIcon: 44, // icon display size (px) on small screens (touch target)
