@@ -32,12 +32,15 @@ const FACES = {
 export class Brothers {
   /**
    * @param {Phaser.Scene} scene
+   * @param {import('./levels.js').Level} level  Spawns, walls, and arena bounds.
    */
-  constructor(scene) {
+  constructor(scene, level) {
     this.scene = scene;
+    /** Level data this pair lives in (spawns/walls/arena). */
+    this._level = level;
 
-    this.david = this._createBrother('David', '#3aa0ff', 0x3aa0ff, Config.level.david);
-    this.ken = this._createBrother('Ken', '#ff5a4d', 0xff5a4d, Config.level.ken);
+    this.david = this._createBrother('David', '#3aa0ff', 0x3aa0ff, level.david);
+    this.ken = this._createBrother('Ken', '#ff5a4d', 0xff5a4d, level.ken);
 
     /** @type {Brother} The brother currently being slingshotted. */
     this.launcher = this.david;
@@ -51,8 +54,8 @@ export class Brothers {
     this._glow = this._createGlow();
 
     // Faces are created after the band and glow so they render on top.
-    this.david.face = this._createFace(Config.level.david, FACES.idle.launcher);
-    this.ken.face = this._createFace(Config.level.ken, FACES.idle.anchor);
+    this.david.face = this._createFace(level.david, FACES.idle.launcher);
+    this.ken.face = this._createFace(level.ken, FACES.idle.anchor);
 
     /** David's rectangular glasses, overlaid on his face (see {@link update}). */
     this._davidGlasses = this._createGlasses();
@@ -308,7 +311,7 @@ export class Brothers {
   _containInArena() {
     const r = Config.ball.radius;
     const e = Config.ball.restitution;
-    const { width, height } = Config.view;
+    const { width, height } = this._level.arena;
     for (const b of [this.david, this.ken]) {
       const body = b.go.body;
       if (body.isStatic) continue; // a frozen ball isn't moving anywhere
@@ -433,7 +436,8 @@ export class Brothers {
     const l = this.launcher.go;
     const a = this.anchor.go;
     const r = Config.ball.radius;
-    const { width, height } = Config.view;
+    const { width, height } = this._level.arena;
+    const walls = this._level.walls;
 
     // Poking past an arena edge?
     if (l.x < r || l.x > width - r || l.y < r || l.y > height - r) return true;
@@ -442,7 +446,7 @@ export class Brothers {
     if (Phaser.Math.Distance.Between(l.x, l.y, a.x, a.y) < r * 2) return true;
 
     // Sitting on a wall (closest-point circle/rectangle overlap)?
-    const onWall = Config.level.walls.some((w) => {
+    const onWall = walls.some((w) => {
       const nx = Phaser.Math.Clamp(l.x, w.x - w.width / 2, w.x + w.width / 2);
       const ny = Phaser.Math.Clamp(l.y, w.y - w.height / 2, w.y + w.height / 2);
       return Phaser.Math.Distance.Between(l.x, l.y, nx, ny) < r;
@@ -454,7 +458,7 @@ export class Brothers {
     // doesn't touch — is allowed. Both balls being clear is already covered by
     // the launcher checks above and by the band's endpoints sitting on them.
     const band = new Phaser.Geom.Line(l.x, l.y, a.x, a.y);
-    return Config.level.walls.some((w) =>
+    return walls.some((w) =>
       Phaser.Geom.Intersects.LineToRectangle(
         band,
         new Phaser.Geom.Rectangle(w.x - w.width / 2, w.y - w.height / 2, w.width, w.height)

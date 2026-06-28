@@ -1,6 +1,7 @@
 import { Config, applyRubberBandDefaults } from '../config.js';
 import { Brothers, FACES } from '../Brothers.js';
 import { sfx } from '../Sfx.js';
+import { currentLevel, currentLevelKey } from '../levels.js';
 
 /**
  * Level state is tracked along two axes.
@@ -58,21 +59,28 @@ export class GameScene extends Phaser.Scene {
     // own per-frame step would otherwise run once at the full frame delta.
     this.matter.world.autoUpdate = false;
 
+    /** The current level model (from Tiled via levels.js). */
+    this.level = currentLevel();
+    /** Per-level arena size (varies between levels); drives bounds/camera/grid. */
+    this.arena = this.level.arena;
+    /** Registry key for this level's best result, so packs don't share scores. */
+    this._bestKey = `best:${currentLevelKey()}`;
+
     this._buildArena();
     this._buildFloorGrid();
     this._buildWalls();
     this._buildZones();
 
-    this.brothers = new Brothers(this);
+    this.brothers = new Brothers(this, this.level);
 
     /** @type {LevelStatus} */
     this.status = 'READY';
     /** @type {TurnPhase} */
     this.phase = 'AIMING';
-    this.movesLeft = Config.level.moves;
+    this.movesLeft = this.level.moves;
     // Best winning result = the most moves ever left over on a win. Kept in the
-    // registry so it survives scene restarts (replays); null until first won.
-    if (!this.registry.has('bestMovesLeft')) this.registry.set('bestMovesLeft', null);
+    // registry (keyed per level) so it survives scene restarts; null until won.
+    if (!this.registry.has(this._bestKey)) this.registry.set(this._bestKey, null);
     /** True between pointerdown-on-launcher and pointerup. */
     this.isAiming = false;
     /** Wall-clock ms before which teleporter hits are ignored (debounce). */
@@ -102,7 +110,7 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _buildFloorGrid() {
-    const { width, height } = Config.view;
+    const { width, height } = this.arena;
     const g = Config.grid;
     const gfx = this.add.graphics().setDepth(-1);
     gfx.lineStyle(1, g.color, g.alpha);
@@ -130,7 +138,11 @@ export class GameScene extends Phaser.Scene {
     // clamp mixes pixel and world units and mis-centres at a fractional zoom.
     const M = Config.zoom.edgeMargin;
     main.setViewport(0, this._hudHeight, width, height - this._hudHeight);
-    this._minZoom = Math.min(main.width / (width + 2 * M), main.height / (height + 2 * M));
+    // Fit the (per-level) arena, plus a margin, into the viewport below the HUD.
+    this._minZoom = Math.min(
+      main.width / (this.arena.width + 2 * M),
+      main.height / (this.arena.height + 2 * M)
+    );
     main.setZoom(this._minZoom);
     this._clampCamera();
 
@@ -175,8 +187,8 @@ export class GameScene extends Phaser.Scene {
   _clampCamera() {
     const main = this.cameras.main;
     const M = Config.zoom.edgeMargin;
-    const aw = Config.view.width;
-    const ah = Config.view.height;
+    const aw = this.arena.width;
+    const ah = this.arena.height;
     // Phaser centres the view on midPoint = scroll + halfViewport (in pixels),
     // spanning width/zoom of world. So we clamp the *midpoint*, then convert
     // back to scroll. Per axis: if the visible span exceeds the arena+margins,
@@ -209,12 +221,12 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _buildArena() {
-    const { width, height, arenaColor } = Config.view;
+    const { width, height } = this.arena;
     this.matter.world.setBounds(0, 0, width, height, 64);
     // The play-area floor. Drawn below everything; wherever it isn't (the gray
     // canvas clear) reads as "outside the arena" — e.g. the letterbox margins
     // when the arena is fully zoomed out.
-    this.add.rectangle(width / 2, height / 2, width, height, arenaColor).setDepth(-2);
+    this.add.rectangle(width / 2, height / 2, width, height, Config.view.arenaColor).setDepth(-2);
   }
 
   /**
@@ -249,14 +261,14 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Short interior brick walls: a tiling-sprite visual plus a matching static
-   * Matter body for each entry in `Config.level.walls`. Labelled 'wall' so the
-   * collision router leaves them alone (they just deflect the balls).
+   * Matter body for each wall in the level. Labelled 'wall' so the collision
+   * router leaves them alone (they just deflect the balls).
    *
    * @returns {void}
    */
   _buildWalls() {
     this._makeBrickTexture();
-    for (const wall of Config.level.walls) {
+    for (const wall of this.level.walls) {
       this.add.tileSprite(wall.x, wall.y, wall.width, wall.height, 'brick');
       // A thin dark frame so the wall reads crisply against the background.
       this.add
@@ -264,25 +276,31 @@ export class GameScene extends Phaser.Scene {
         .setStrokeStyle(2, 0x2a1d15, 0.9);
       const body = this.matter.add.rectangle(wall.x, wall.y, wall.width, wall.height, {
         isStatic: true,
-        restitution: Config.level.wallRestitution,
+        restitution: this.level.wallRestitution,
       });
       body.label = 'wall';
     }
   }
 
   /**
-   * Destination goal and the teleporter source/target, with their sensors.
+   * Build the level's zones. Each is optional — a level may omit either the
+   * destination or the teleporter.
    *
    * @returns {void}
    */
   _buildZones() {
-    const { destination, teleporter } = Config.level;
-    const A = Config.anim;
+    if (this.level.destination) this._buildDestination(this.level.destination);
+    if (this.level.teleporter) this._buildTeleporter(this.level.teleporter);
+  }
 
-    // Destination goal — an archery target: concentric green rings at a fixed
-    // size (so it reads as a goal, not a collectible) plus a slow-rotating
-    // crosshair overlay for life. Rings live in a container so the win burst
-    // can pop the whole target at once.
+  /**
+   * Destination goal — an archery target (concentric rings + a slow-rotating
+   * reticle) plus a sensor body, all centred on the goal.
+   *
+   * @param {{x:number, y:number, radius:number}} destination
+   * @returns {void}
+   */
+  _buildDestination(destination) {
     const R = destination.radius;
     const ringBands = [
       { r: R, color: 0x145a32 }, // dark
@@ -303,35 +321,40 @@ export class GameScene extends Phaser.Scene {
       isStatic: true,
     });
     goal.label = 'destination';
+  }
 
-    // Teleporter source (entrance) — breathing fill...
-    this.teleporterGfx = this.add.circle(
-      teleporter.source.x,
-      teleporter.source.y,
-      teleporter.source.radius,
-      0x9b59b6,
-      0.5
-    );
+  /**
+   * Teleporter — a breathing source with inward-pulled motes and a portal
+   * sensor, plus an exit marker with outward motes that mirror the source rate.
+   *
+   * @param {{source:{x:number,y:number,radius:number}, target:{x:number,y:number}}} teleporter
+   * @returns {void}
+   */
+  _buildTeleporter(teleporter) {
+    const T = Config.anim.teleporter;
+    const { source, target } = teleporter;
+
+    // Source (entrance) — breathing fill...
+    this.teleporterGfx = this.add.circle(source.x, source.y, source.radius, 0x9b59b6, 0.5);
     this.tweens.add({
       targets: this.teleporterGfx,
-      fillAlpha: A.teleporter.pulseAlpha,
-      duration: A.teleporter.pulseDuration,
+      fillAlpha: T.pulseAlpha,
+      duration: T.pulseDuration,
       ease: 'Sine.InOut',
       yoyo: true,
       repeat: -1,
     });
-    // ...plus motes that pop in at random points on the rim and are pulled
-    // straight into the centre, fading as they arrive — several active at once.
+
+    // ...plus motes that pop in at random rim points and are pulled to centre.
     if (!this.textures.exists('portalSpark')) {
       const g = this.add.graphics();
       g.fillStyle(0xffffff, 1).fillCircle(4, 4, 3);
       g.generateTexture('portalSpark', 8, 8);
       g.destroy();
     }
-    const T = A.teleporter;
-    const cx = teleporter.source.x;
-    const cy = teleporter.source.y;
-    const sr = teleporter.source.radius;
+    const cx = source.x;
+    const cy = source.y;
+    const sr = source.radius;
     // Normalise a mote's spawn position to a centre-relative offset whether
     // Phaser reports it local to the emitter or in world space.
     const offset = (p) => ({
@@ -365,35 +388,32 @@ export class GameScene extends Phaser.Scene {
         speedY: { onEmit: (p) => -offset(p).y * T.pullSpeed },
       })
       .setDepth(2);
-    const portal = this.matter.add.circle(
-      teleporter.source.x,
-      teleporter.source.y,
-      teleporter.source.radius,
-      { isSensor: true, isStatic: true }
-    );
+    const portal = this.matter.add.circle(source.x, source.y, source.radius, {
+      isSensor: true,
+      isStatic: true,
+    });
     portal.label = 'teleporter';
 
-    // Teleporter target (exit) — visual marker with a calm idle breathe.
+    // Target (exit) — visual marker with a calm idle breathe.
     this.targetGfx = this.add
-      .rectangle(teleporter.target.x, teleporter.target.y, 70, 70)
+      .rectangle(target.x, target.y, 70, 70)
       .setStrokeStyle(2, 0xe67e22, 0.6)
-      .setAlpha(A.target.idleAlphaLow);
+      .setAlpha(Config.anim.target.idleAlphaLow);
     this.tweens.add({
       targets: this.targetGfx,
-      alpha: A.target.idleAlphaHigh,
-      duration: A.target.idleDuration,
+      alpha: Config.anim.target.idleAlphaHigh,
+      duration: Config.anim.target.idleDuration,
       ease: 'Sine.InOut',
       yoyo: true,
       repeat: -1,
     });
 
-    // Exit motes: the mirror of the source — they burst from the centre in a
-    // random direction, then decelerate (drag opposing their velocity, sized so
-    // they stop exactly as they fade) and vanish about halfway out. Reusing the
-    // source's frequency/quantity keeps the exit rate matched to the intake.
+    // Exit motes: the mirror of the source — burst out, decelerate (friction
+    // sized to stop as they fade), vanish ~halfway out. Reusing the source's
+    // frequency/quantity keeps the exit rate matched to the intake.
     const exitDrag = 1000 / T.exitLifespan; // px/s² per px/s -> v hits 0 at lifespan
     this.add
-      .particles(teleporter.target.x, teleporter.target.y, 'portalSpark', {
+      .particles(target.x, target.y, 'portalSpark', {
         lifespan: T.exitLifespan,
         quantity: T.pullQuantity,
         frequency: T.pullFrequency,
@@ -403,8 +423,6 @@ export class GameScene extends Phaser.Scene {
         alpha: { start: 1, end: 0 },
         angle: { min: 0, max: 360 }, // random outward direction
         speed: T.exitSpeed,
-        // Friction: accelerate opposite to each mote's velocity so it slows to a
-        // stop. accel = -v * (1000/lifespan) reaches zero speed at lifespan end.
         accelerationX: { onEmit: (p) => -p.velocityX * exitDrag },
         accelerationY: { onEmit: (p) => -p.velocityY * exitDrag },
       })
@@ -1115,7 +1133,7 @@ export class GameScene extends Phaser.Scene {
     if (this.time.now < this.teleportLockUntil) return;
     this.teleportLockUntil = this.time.now + 600;
 
-    const { source, target, retainVelocity } = Config.level.teleporter;
+    const { source, target, retainVelocity } = this.level.teleporter;
 
     // Punctuate the warp: a ring collapsing out of the entrance and a fresh
     // ring blooming at the exit so the eye follows source -> target.
@@ -1157,11 +1175,11 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _resolveTurn() {
-    if (this.brothers.anyInside(Config.level.destination)) {
+    if (this.level.destination && this.brothers.anyInside(this.level.destination)) {
       // Record best (most moves left) — note 0 is a real result, distinct from
       // "never won" (null).
-      const best = this.registry.get('bestMovesLeft');
-      if (best == null || this.movesLeft > best) this.registry.set('bestMovesLeft', this.movesLeft);
+      const best = this.registry.get(this._bestKey);
+      if (best == null || this.movesLeft > best) this.registry.set(this._bestKey, this.movesLeft);
       this._winBurst();
       sfx.win();
       this._endGame('LEVEL CLEAR!', FACES.win, '#7cfc8a');
@@ -1184,7 +1202,7 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _winBurst() {
-    const d = Config.level.destination;
+    const d = this.level.destination;
     const a = Config.anim.destination;
     this.tweens.killTweensOf(this.destinationGfx);
     this.destinationGfx.setScale(1);
@@ -1330,7 +1348,7 @@ export class GameScene extends Phaser.Scene {
       color = launcher.color;
     }
     this.turnText.setText(text).setColor(color);
-    const best = this.registry.get('bestMovesLeft');
+    const best = this.registry.get(this._bestKey);
     this.movesText.setText(`Best: ${best == null ? '-' : best}    #Left: ${this.movesLeft}`);
     this._refreshResetButton();
     this._refreshStatusIcon();

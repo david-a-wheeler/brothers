@@ -128,30 +128,6 @@ export const Config = {
       duration: 480,
     },
   },
-
-  /** Per-level data (placeholder until Tiled map loading lands). */
-  level: {
-    moves: 6,
-    david: { x: 350, y: 540 }, // 90px from Ken => tether starts at rest length
-    ken: { x: 440, y: 540 },
-    destination: { x: 880, y: 160, radius: 60 },
-    teleporter: {
-      source: { x: 620, y: 300, radius: 44 }, // centred in the gap between the upper-left barrier and the goal-shield wall
-      target: { x: 160, y: 160 },
-      retainVelocity: 0.6, // keep 60% of speed coming out of the portal
-    },
-    /**
-     * Short interior brick walls (centre x/y, width/height). A few light
-     * obstacles that force indirect shots without sealing off any route.
-     * `restitution` is how bouncy they are off the balls.
-     */
-    walls: [
-      { x: 640, y: 470, width: 220, height: 22 }, // mid-field barrier
-      { x: 780, y: 300, width: 22, height: 170 }, // shields the goal's lower-left
-      { x: 380, y: 250, width: 160, height: 22 }, // upper-left barrier
-    ],
-    wallRestitution: 0.6,
-  },
 };
 
 /**
