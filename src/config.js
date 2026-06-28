@@ -6,12 +6,32 @@
  * Later, the per-level data should come from Tiled JSON instead of `level`.
  */
 export const Config = {
-  /** Logical resolution; the Scale manager fits this to the screen. */
+  /**
+   * Design reference size. The canvas now uses Scale.RESIZE (fills the window),
+   * so width/height are only a starting/default size — the live size comes from
+   * the window (see GameScene._computeLayout). Colors are still used.
+   */
   view: {
     width: 1024,
     height: 768,
     background: '#4d4d55', // "outside the arena" gray: canvas clear + page letterbox
     arenaColor: 0x1b1b22, // the play-area floor, so anything gray reads as out of bounds
+  },
+
+  /**
+   * HUD layout. The ribbon is laid out to the live window size each frame it
+   * changes (see GameScene._computeLayout/_layoutHud). On a small/narrow screen
+   * it goes "compact": two rows (info text above, icon row below) with larger,
+   * touch-friendly icons. The single source for these knobs.
+   */
+  hud: {
+    compactMaxWidth: 700, // px: at or below this width, use the compact two-row layout
+    rowHeight: 52, // height of one HUD row
+    normalIcon: 30, // icon display size (px) on wide screens
+    compactIcon: 44, // icon display size (px) on small screens (touch target)
+    normalGap: 44, // spacing between icon centres, wide
+    compactGap: 56, // spacing between icon centres, compact
+    pad: 14, // edge padding for text
   },
 
   /**

@@ -20,8 +20,11 @@ const gameConfig = {
   height: Config.view.height,
   backgroundColor: Config.view.background,
   scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    // RESIZE: the canvas fills the window (#game is 100vw/100vh). The HUD and
+    // camera are laid out to the live size in GameScene, so the arena uses the
+    // whole screen and the HUD renders at real pixels (see _computeLayout).
+    mode: Phaser.Scale.RESIZE,
+    autoCenter: Phaser.Scale.NO_CENTER,
   },
   physics: {
     default: 'matter',

@@ -36,7 +36,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Load image assets. The restart icon is an SVG rasterised to a small texture.
+   * Load image assets. Icons are SVGs rasterised at a high size; the HUD then
+   * display-sizes them per layout (setDisplaySize) so they stay crisp when
+   * enlarged for touch on small screens.
    *
    * @returns {void}
    */
@@ -52,7 +54,7 @@ export class GameScene extends Phaser.Scene {
     };
     for (const [key, name] of Object.entries(icons)) {
       if (!this.textures.exists(key)) {
-        this.load.svg(key, `assets/icons/${name}.svg`, { width: 30, height: 30 });
+        this.load.svg(key, `assets/icons/${name}.svg`, { width: 64, height: 64 });
       }
     }
   }
@@ -101,11 +103,96 @@ export class GameScene extends Phaser.Scene {
     /** True while the dev parameter-tuning panel is open. */
     this._devOpen = false;
 
+    this._computeLayout(); // sets this._layout + this._hudHeight for the build
     this._buildHud();
     this._wireInput();
     this._wireCollisions();
-    this._setupCameras();
+    this._setupCameras(); // creates cameras + ignore lists, then lays them out
+    this._layoutHud(); // position/size every HUD element for the current screen
+    // Reflow on window resize / device rotation. The scale manager is
+    // game-level, so remove the listener when the scene shuts down (restart).
+    this.scale.on('resize', this._onResize, this);
+    this.events.once('shutdown', () => this.scale.off('resize', this._onResize, this));
+    // Safety net: re-layout next tick in case the final window size only settles
+    // after create() (common on mobile when the scale manager reports late).
+    this.time.delayedCall(0, () => this._onResize());
     this._refreshHud();
+  }
+
+  /**
+   * Decide the HUD metrics for the current window size. On a small/narrow screen
+   * (<= Config.hud.compactMaxWidth) it goes "compact": two rows and larger,
+   * touch-friendly icons. Stores `this._layout` and keeps `this._hudHeight` in
+   * sync (used by the input guard, dev panel, and camera viewport).
+   *
+   * @returns {void}
+   */
+  _computeLayout() {
+    const H = Config.hud;
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const compact = w <= H.compactMaxWidth;
+    this._layout = {
+      w,
+      h,
+      compact,
+      rowHeight: H.rowHeight,
+      hudHeight: compact ? H.rowHeight * 2 : H.rowHeight,
+      iconSize: compact ? H.compactIcon : H.normalIcon,
+      gap: compact ? H.compactGap : H.normalGap,
+      pad: H.pad,
+    };
+    this._hudHeight = this._layout.hudHeight;
+  }
+
+  /**
+   * Position and size every HUD element for `this._layout`. Wide screens use a
+   * single row (turn text left, Best/#Left right, icon cluster centred); compact
+   * screens stack into two rows (info text on top, icon row below) with larger
+   * icons. Re-run whenever the layout changes (see _onResize).
+   *
+   * @returns {void}
+   */
+  _layoutHud() {
+    const L = this._layout;
+    const cx = L.w / 2;
+
+    // Opaque ribbon + bottom border span the full width.
+    this.hudBar.setPosition(cx, L.hudHeight / 2).setSize(L.w, L.hudHeight);
+    this.hudBorder.setPosition(cx, L.hudHeight).setSize(L.w, 2);
+
+    // Icon cluster (prev, restart, next, status, beaker), centred and spaced.
+    const icons = [
+      this.prevButton,
+      this.restartButton,
+      this.nextButton,
+      this.statusIcon,
+      this.beakerButton,
+    ];
+    const tips = [
+      this.prevTooltip,
+      this.restartTooltip,
+      this.nextTooltip,
+      this.statusTooltip,
+      this.beakerTooltip,
+    ];
+    const iconRowY = L.compact ? L.rowHeight + L.rowHeight / 2 : L.hudHeight / 2;
+    const startX = cx - ((icons.length - 1) * L.gap) / 2;
+    icons.forEach((ic, i) => ic.setDisplaySize(L.iconSize, L.iconSize).setPosition(startX + i * L.gap, iconRowY));
+    tips.forEach((tp, i) => tp.setPosition(startX + i * L.gap, L.hudHeight + 6));
+
+    // Info text: turn (left) and Best/#Left (right), vertically centred in its row.
+    const textY = L.compact ? L.rowHeight / 2 : L.hudHeight / 2;
+    const fontSize = L.compact ? '18px' : '22px';
+    this.turnText.setOrigin(0, 0.5).setPosition(L.pad, textY).setFontSize(fontSize);
+    this.movesText.setOrigin(1, 0.5).setPosition(L.w - L.pad, textY).setFontSize(fontSize);
+
+    // Banner + backing panel centred; sized/scaled to fit narrow screens.
+    const panelW = Math.min(L.w - 2 * L.pad, 520);
+    this.bannerPanel.setPosition(cx, L.h / 2).setSize(panelW, L.compact ? 90 : 110);
+    this.banner.setPosition(cx, L.h / 2).setFontSize(L.compact ? '34px' : '52px');
+
+    this._layoutDevPanel();
   }
 
   /**
@@ -133,26 +220,7 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _setupCameras() {
-    const { width, height } = Config.view;
-    const main = this.cameras.main;
-
-    // The world camera occupies the screen strip *below* the HUD bar, so the
-    // arena is never hidden behind it. Minimum zoom fits the arena PLUS a gray
-    // margin (edgeMargin on all sides) so the fully-zoomed-out view shows the
-    // arena centred with a little gray border. _clampCamera does the
-    // centre/overscroll itself (not setBounds) because Phaser's built-in bounds
-    // clamp mixes pixel and world units and mis-centres at a fractional zoom.
-    const M = Config.zoom.edgeMargin;
-    main.setViewport(0, this._hudHeight, width, height - this._hudHeight);
-    // Fit the (per-level) arena, plus a margin, into the viewport below the HUD.
-    this._minZoom = Math.min(
-      main.width / (this.arena.width + 2 * M),
-      main.height / (this.arena.height + 2 * M)
-    );
-    main.setZoom(this._minZoom);
-    this._clampCamera();
-
-    this.uiCamera = this.cameras.add(0, 0, width, height);
+    this.uiCamera = this.cameras.add(0, 0, this._layout.w, this._layout.h);
 
     this.hudObjects = [
       this.hudBar,
@@ -174,9 +242,46 @@ export class GameScene extends Phaser.Scene {
       this.bannerPanel,
       this.banner,
     ];
-    main.ignore(this.hudObjects);
+    this.cameras.main.ignore(this.hudObjects);
     // The UI camera shows only the HUD: ignore every other display object.
     this.uiCamera.ignore(this.children.list.filter((o) => !this.hudObjects.includes(o)));
+
+    this._layoutCameras(true); // initial viewport/zoom (start fully zoomed out)
+  }
+
+  /**
+   * Lay out the cameras for the current screen: the world camera fills the
+   * window *below* the HUD strip; the UI camera fills the whole window. The
+   * minimum zoom fits the (per-level) arena plus an edge margin into that world
+   * viewport. `resetZoom` (initial/level-load) snaps to that fit; otherwise we
+   * keep the player's current zoom and only raise it to the new minimum.
+   *
+   * @param {boolean} [resetZoom]
+   * @returns {void}
+   */
+  _layoutCameras(resetZoom = false) {
+    const { w, h, hudHeight } = this._layout;
+    const M = Config.zoom.edgeMargin;
+    const main = this.cameras.main;
+    main.setViewport(0, hudHeight, w, h - hudHeight);
+    this.uiCamera.setViewport(0, 0, w, h);
+    this._minZoom = Math.min(
+      main.width / (this.arena.width + 2 * M),
+      main.height / (this.arena.height + 2 * M)
+    );
+    if (resetZoom || main.zoom < this._minZoom) main.setZoom(this._minZoom);
+    this._clampCamera();
+  }
+
+  /**
+   * Reflow everything to the new window size (window resize / device rotation).
+   *
+   * @returns {void}
+   */
+  _onResize() {
+    this._computeLayout();
+    this._layoutHud();
+    this._layoutCameras(false);
   }
 
   /**
@@ -469,8 +574,8 @@ export class GameScene extends Phaser.Scene {
     // strip while panning/zooming. Created first (and at depth 9, under the
     // depth-10 HUD text) and rendered by the fixed UI camera, so it always
     // covers the same screen strip regardless of the world camera.
-    /** Height of the HUD strip; the world camera sits below it (see _setupCameras). */
-    this._hudHeight = 56;
+    // Initial positions/sizes here are placeholders; _layoutHud() positions and
+    // sizes every HUD element authoritatively for the current screen.
     const h = this._hudHeight;
     this.hudBar = this.add
       .rectangle(Config.view.width / 2, h / 2, Config.view.width, h, 0x0e0e12, 1)
@@ -742,9 +847,25 @@ export class GameScene extends Phaser.Scene {
    *
    * @returns {void}
    */
+  /**
+   * Keep the dev panel anchored just below the (possibly resized) ribbon by
+   * shifting all its parts vertically. x stays at the left edge.
+   *
+   * @returns {void}
+   */
+  _layoutDevPanel() {
+    const targetY = this._layout.hudHeight + 10;
+    const dy = targetY - this._devY;
+    if (dy === 0) return;
+    for (const p of this.devPanelParts) p.y += dy;
+    this._devBounds.y += dy;
+    this._devY = targetY;
+  }
+
   _buildDevPanel() {
     const x0 = 12;
     const y0 = this._hudHeight + 10;
+    this._devY = y0; // current top of the panel, shifted by _layoutDevPanel on resize
     const w = 250;
     const rowH = 30;
     this._devParams = [
@@ -957,13 +1078,13 @@ export class GameScene extends Phaser.Scene {
     this._modalOpen = true;
     this._isPanning = false;
 
-    const cx = Config.view.width / 2;
-    const cy = Config.view.height / 2;
-    const pw = 380;
+    const cx = this._layout.w / 2;
+    const cy = this._layout.h / 2;
+    const pw = Math.min(380, this._layout.w - 2 * this._layout.pad);
     const ph = 190;
 
     const backdrop = this.add
-      .rectangle(cx, cy, Config.view.width, Config.view.height, 0x000000, 0.6)
+      .rectangle(cx, cy, this._layout.w, this._layout.h, 0x000000, 0.6)
       .setDepth(30)
       .setInteractive(); // swallow clicks on the dimmed area
     const panel = this.add.graphics().setDepth(31);
@@ -1375,7 +1496,7 @@ export class GameScene extends Phaser.Scene {
    */
   _attract(icon) {
     this.attractGlow
-      .setPosition(icon.x, this._hudHeight / 2)
+      .setPosition(icon.x, icon.y)
       .setVisible(true)
       .setScale(1)
       .setAlpha(0.9);
