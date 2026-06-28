@@ -64,8 +64,12 @@ export class Brothers {
 
     /** True while the player is dragging the launcher to aim. */
     this._aiming = false;
-    /** Red "X" shown over the launcher when the current aim can't be fired. */
-    this._refusalX = this._createRefusalX();
+    /**
+     * Red "X" over EACH brother when the current aim can't be fired. Both are
+     * marked (not just the launcher) so the cue stays visible even when a
+     * finger covers the ball being dragged.
+     */
+    this._refusalXs = [this._createRefusalX(), this._createRefusalX()];
 
     /** Consecutive slow frames, for debounced settle detection. */
     this._settleFrames = 0;
@@ -250,10 +254,14 @@ export class Brothers {
     // Keep the glow ring centred on the movable ball (its scale is tweened).
     this._glow.setPosition(this.launcher.go.x, this.launcher.go.y);
 
-    // While aiming, flag an unlaunchable position with a red X over the ball.
+    // While aiming, flag an unlaunchable position with a red X over BOTH balls
+    // (so it shows even under the finger dragging one of them).
     const refuse = this._aiming && this._launcherBlocked();
-    this._refusalX.setVisible(refuse);
-    if (refuse) this._refusalX.setPosition(this.launcher.go.x, this.launcher.go.y);
+    const balls = [this.launcher.go, this.anchor.go];
+    this._refusalXs.forEach((x, i) => {
+      x.setVisible(refuse);
+      if (refuse) x.setPosition(balls[i].x, balls[i].y);
+    });
 
     // Drive the stretching-band friction sound every frame so a held draw goes
     // silent (it only makes noise while the length is actually changing).
@@ -411,7 +419,7 @@ export class Brothers {
       this.launcher.go.setPosition(this._aimStart.x, this._aimStart.y);
     }
     this._aiming = false;
-    this._refusalX.setVisible(false);
+    this._refusalXs.forEach((x) => x.setVisible(false));
     sfx.stopBand();
     this.launcher.go.setStatic(false);
     this.launcher.go.setVelocity(0, 0);
@@ -494,7 +502,7 @@ export class Brothers {
     const t = Phaser.Math.Clamp((pull - s.minPull) / (s.maxPull - s.minPull), 0, 1);
     const speed = s.minSpeed + (s.maxSpeed - s.minSpeed) * Math.pow(t, s.curve);
     this._aiming = false;
-    this._refusalX.setVisible(false);
+    this._refusalXs.forEach((x) => x.setVisible(false));
     sfx.stopBand();
     l.setStatic(false);
     // Matter normalises velocity to per-frame units regardless of sub-step
