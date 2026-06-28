@@ -4,14 +4,13 @@ import { sfx } from './Sfx.js';
 /**
  * Emoji faces per game state. Faces float on top of the physics bodies and
  * are kept upright, so they stay legible no matter how the balls spin.
- * Mirrors the expression matrix in plan.md section 3.
  */
 const FACES = {
   idle: { launcher: '😃', anchor: '🤨' },
-  drag: { launcher: '😤', anchor: '😳' },
-  flight: { launcher: '🚀', anchor: '😨' },
-  collision: '💥',
-  dizzy: '🌀',
+  drag: { launcher: '😏', anchor: '😳' },
+  flight: { launcher: '😁', anchor: '😨' },
+  collision: '😬',
+  dizzy: '😖',
   win: '😎',
   lose: '😭',
 };
