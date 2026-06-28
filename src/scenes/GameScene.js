@@ -2142,7 +2142,7 @@ export class GameScene extends Phaser.Scene {
       text = 'Moving';
       color = launcher.color;
     } else {
-      text = `${launcher.name}'s turn — drag to aim`;
+      text = `${launcher.name}'s turn, drag to aim`;
       color = launcher.color;
     }
     this.turnText.setText(text).setColor(color);
