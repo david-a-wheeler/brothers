@@ -856,7 +856,9 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Tooltip suffix naming the level a nav icon would go to: " (Pack N)", or
-   * " (None)" if there's no level in that direction.
+   * " (None)" if there's no level in that direction, or " (Locked)" if the
+   * next level exists but the current level hasn't been won yet (and we're
+   * not in test mode).
    *
    * @param {'prev'|'next'} dir
    * @returns {string}
@@ -864,6 +866,10 @@ export class GameScene extends Phaser.Scene {
   _navTargetSuffix(dir) {
     const target = currentIndex() + (dir === 'prev' ? -1 : 1);
     if (target < 0 || target >= levelCount()) return ' (None)';
+    if (dir === 'next') {
+      const wonCurrent = this.registry.get(this._bestKey) != null;
+      if (!wonCurrent && !this._testMode) return ' (Locked)';
+    }
     return ` (${activePackName()} ${target + 1})`;
   }
 
