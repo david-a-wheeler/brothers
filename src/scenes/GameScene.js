@@ -668,8 +668,14 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     // The tooltip always reveals on hover/press (even when reset is disabled);
-    // brightening and the actual restart only apply when reset is enabled.
-    const showTip = () => this.restartTooltip.setVisible(true);
+    // brightening and the actual restart only apply when reset is enabled. The
+    // label names the current pack + level, set fresh on reveal since both can
+    // change as the player navigates.
+    const showTip = () => {
+      this.restartTooltip
+        .setText(`Restart Level (${activePackName()} ${currentIndex() + 1})`)
+        .setVisible(true);
+    };
     const hideTip = () => this.restartTooltip.setVisible(false);
     this.restartButton.on('pointerover', () => {
       if (this._resetEnabled()) this.restartButton.setAlpha(1);
