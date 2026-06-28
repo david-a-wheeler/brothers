@@ -16,8 +16,6 @@ export class Sfx {
     this._master = null;
     /** @type {AudioBuffer|null} Cached short white-noise used by the click. */
     this._noise = null;
-    /** @type {AudioBuffer|null} Cached long looping noise used by the band. */
-    this._loopNoise = null;
     /** @type {Object|null} Live nodes of the stretching-band sound, or null. */
     this._band = null;
     /** Flip to false to silence the game. */
@@ -171,13 +169,15 @@ export class Sfx {
   }
 
   /**
-   * Begin the looping "stretching rubber band" sound, held until
-   * {@link stopBand}. Rather than a pure tone, this is *friction*: looping
-   * noise through a resonant bandpass (giving a pitched-but-noisy creak),
-   * modulated by two LFOs — a slow one sweeping the filter (the creak drifting
-   * in pitch) and a faster one stuttering the volume (stick-slip). Starts
-   * silent; drive it with {@link updateBand}. No-op if audio isn't unlocked
-   * yet or a band is already playing.
+   * Begin the "stretching rubber band" sound, held until {@link stopBand}. A
+   * cartoon-rubber FM voice (see rubber-band-simulator.html): a triangle
+   * *carrier* (hollow, elastic body) is frequency-modulated by a detuned
+   * sawtooth *modulator* for rubbery grit, then shaped by a resonant lowpass —
+   * the hollow "balloon squelch". Both oscillators run continuously but the
+   * output starts silent; {@link updateBand} drives pitch from tension and
+   * volume from how fast the draw length is changing, so a held stretch falls
+   * silent and can never hum. No-op if audio isn't unlocked yet or a band is
+   * already playing.
    *
    * @returns {void}
    */
@@ -186,48 +186,41 @@ export class Sfx {
     const ctx = this._ctx;
     const master = /** @type {GainNode} */ (this._master);
 
-    // Pure friction: looping noise through two resonant bandpasses (a low
-    // "groan" + a high "squeak"). There is NO oscillator/tone, so it can never
-    // hum — when there's no motion, the gain is zero and it's silent.
-    if (!this._loopNoise) {
-      const len = Math.ceil(ctx.sampleRate * 2);
-      this._loopNoise = ctx.createBuffer(1, len, ctx.sampleRate);
-      const d = this._loopNoise.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    }
-    const src = ctx.createBufferSource();
-    src.buffer = this._loopNoise;
-    src.loop = true;
-
-    const bpHi = ctx.createBiquadFilter();
-    bpHi.type = 'bandpass';
-    bpHi.frequency.value = 1500;
-    bpHi.Q.value = 12;
-    const bpLo = ctx.createBiquadFilter();
-    bpLo.type = 'bandpass';
-    bpLo.frequency.value = 320;
-    bpLo.Q.value = 5;
-
+    // Carrier: the primary tone. Triangle reads as a hollow, elastic texture.
+    const carrier = ctx.createOscillator();
+    carrier.type = 'triangle';
+    // Modulator: a sawtooth driving the carrier's frequency (FM) to inject the
+    // chaotic, "rubbery" friction artefacts. Detuned by modRatio in updateBand.
+    const modulator = ctx.createOscillator();
+    modulator.type = 'sawtooth';
+    const modGain = ctx.createGain(); // FM depth (squeak intensity)
+    // Resonant lowpass: the hollow cavity of a balloon shell.
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
     // Motion gate: gain follows how fast the length is changing (set per frame
     // in updateBand). Starts at silence.
     const g = ctx.createGain();
     g.gain.value = 0.0001;
 
-    src.connect(bpHi).connect(g);
-    src.connect(bpLo).connect(g);
+    // Modulator -> modGain -> carrier.frequency; carrier -> filter -> gate -> out.
+    modulator.connect(modGain);
+    modGain.connect(carrier.frequency);
+    carrier.connect(filter);
+    filter.connect(g);
     g.connect(master);
-    src.start();
 
-    this._band = { src, bpHi, bpLo, g, lastK: 0, lastT: ctx.currentTime };
+    carrier.start();
+    modulator.start();
+
+    this._band = { carrier, modulator, modGain, filter, g, lastK: 0, lastT: ctx.currentTime };
   }
 
   /**
-   * Drive the rubber-band friction from the *current* draw tension. Call this
+   * Drive the rubber-band FM voice from the *current* draw tension. Call this
    * every frame while aiming (not only when the pointer moves), so a held draw
-   * decays to silence. Loudness tracks the rate of length change — it only
-   * makes noise while stretching or relaxing; the squeak's pitch and a little
-   * motion-scaled jitter rise with tension for an organic creak. No-op if no
-   * band is playing.
+   * decays to silence. Pitch (and FM depth / filter brightness) rise with
+   * tension; loudness tracks the rate of length change — it only makes noise
+   * while stretching or relaxing. No-op if no band is playing.
    *
    * @param {number} tension  0 (slack) .. 1 (fully drawn).
    * @returns {void}
@@ -245,10 +238,21 @@ export class Sfx {
     b.lastK = k;
     b.lastT = now;
 
-    const jitter = (Math.random() - 0.5) * 500 * activity; // organic creak warble
-    ramp(b.bpHi.frequency, 1200 + k * 2400 + jitter);
-    ramp(b.bpLo.frequency, 260 + k * 320);
-    ramp(b.g.gain, 0.0001 + activity * 0.6, 0.025);
+    // Synth parameters mirror the reference simulator. Tension stands in for the
+    // simulator's pull distance via a nominal stretch span, so the same pitch /
+    // FM-depth math applies. (basePitch 85, pitchBend 2.5, modRatio 1.4,
+    // modScale 10, filterQ 1.)
+    const stretch = k * 280; // nominal pull distance in "px"
+    const pitch = 85 + stretch * 2.5; // ~85..785 Hz as tension rises
+    const modDepth = stretch * (10 / 100) * (pitch * 0.1); // FM depth (grit)
+
+    ramp(b.carrier.frequency, pitch);
+    ramp(b.modulator.frequency, pitch * 1.4);
+    ramp(b.modGain.gain, modDepth);
+    ramp(b.filter.frequency, pitch * 2.5, 0.03); // brighter as it scales out
+    ramp(b.filter.Q, 1);
+    // Velocity -> amplitude. Capped so fast yanks don't blow out the mix.
+    ramp(b.g.gain, Math.min(0.21, activity * 0.4), 0.01);
   }
 
   /**
@@ -262,7 +266,8 @@ export class Sfx {
     const now = this._ctx.currentTime;
     b.g.gain.cancelScheduledValues(now);
     b.g.gain.setTargetAtTime(0.0001, now, 0.03);
-    b.src.stop(now + 0.15);
+    b.carrier.stop(now + 0.15);
+    b.modulator.stop(now + 0.15);
     this._band = null;
   }
 
