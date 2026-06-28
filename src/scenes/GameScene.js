@@ -1,7 +1,13 @@
 import { Config, applyRubberBandDefaults } from '../config.js';
 import { Brothers, FACES } from '../Brothers.js';
 import { sfx } from '../Sfx.js';
-import { currentLevel, currentLevelKey } from '../levels.js';
+import {
+  currentLevel,
+  currentLevelKey,
+  levelCount,
+  currentIndex,
+  setLevelIndex,
+} from '../levels.js';
 
 /**
  * Level state is tracked along two axes.
@@ -155,7 +161,7 @@ export class GameScene extends Phaser.Scene {
       this.movesText,
       this.restartButton,
       this.restartTooltip,
-      this.restartGlow,
+      this.attractGlow,
       this.prevButton,
       this.prevTooltip,
       this.nextButton,
@@ -481,7 +487,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(10);
 
     // Restart button: the clockwise-arrow icon, vertically centred in the
-    // ribbon. Clicking opens a confirmation modal (see _showRestartConfirm).
+    // ribbon. Clicking opens a confirmation modal (see _showConfirm).
     this.restartButton = this.add
       .image(Config.view.width / 2, h / 2, 'icon-restart')
       .setDepth(10)
@@ -522,19 +528,21 @@ export class GameScene extends Phaser.Scene {
       // After the level is over there's nothing else to do, so skip the
       // confirmation and just restart; mid-play, confirm first.
       if (this.status === 'ENDED') this.scene.restart();
-      else this._showRestartConfirm();
+      else this._showConfirm('Restart Level?', () => this.scene.restart());
     });
 
-    // Previous / next level icons flanking reset. No other levels exist yet, so
-    // these are permanently grayed out — infrastructure for the future. Their
-    // tooltips still reveal on hover/press; releasing does nothing.
+    // Previous / next level icons flanking reset. Enabled state depends on
+    // position in the pack and whether the current level has been won (see
+    // _navEnabled); tooltips reveal on hover/press regardless.
     const gap = 44;
     [this.prevButton, this.prevTooltip] = this._buildNavIcon(
+      'prev',
       Config.view.width / 2 - gap,
       'icon-prev',
       'Previous level'
     );
     [this.nextButton, this.nextTooltip] = this._buildNavIcon(
+      'next',
       Config.view.width / 2 + gap,
       'icon-next',
       'Next level'
@@ -602,9 +610,9 @@ export class GameScene extends Phaser.Scene {
 
     this._buildDevPanel();
 
-    // A glow ring behind the restart icon, pulsed on game-over to draw the eye
-    // there (see _attractRestart). Hidden during play.
-    this.restartGlow = this.add
+    // A glow ring pulsed on game-over to draw the eye to a HUD icon (restart, or
+    // next level on a win); repositioned to the target icon (see _attract).
+    this.attractGlow = this.add
       .circle(Config.view.width / 2, h / 2, 22, 0xffffff, 0)
       .setStrokeStyle(3, 0xffd479, 0.9)
       .setDepth(9)
@@ -630,21 +638,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Build a permanently-disabled (grayed) navigation icon plus its tooltip,
-   * centred at `x` in the ribbon. The tooltip reveals on hover/press and hides
-   * on release/out; releasing does nothing (no levels to navigate to yet).
+   * Build a previous/next navigation icon plus its tooltip, centred at `x`.
+   * Enabled appearance is driven by {@link _refreshNavButtons}; the tooltip
+   * always reveals on hover/press; releasing navigates if enabled (with an
+   * "abandon?" confirm while playing — see {@link _navClicked}).
    *
+   * @param {'prev'|'next'} dir
    * @param {number} x
    * @param {string} key   Texture key.
    * @param {string} tooltipText
    * @returns {[Phaser.GameObjects.Image, Phaser.GameObjects.Text]}
    */
-  _buildNavIcon(x, key, tooltipText) {
+  _buildNavIcon(dir, x, key, tooltipText) {
     const icon = this.add
       .image(x, this._hudHeight / 2, key)
       .setDepth(10)
-      .setAlpha(0.3) // disabled look
-      .setInteractive(); // no hand cursor: it isn't actionable yet
+      .setInteractive({ useHandCursor: true });
     const tip = this.add
       .text(x, this._hudHeight + 12, tooltipText, {
         fontSize: '15px',
@@ -655,16 +664,72 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(11)
       .setVisible(false);
-    const show = () => tip.setVisible(true);
-    const hide = () => tip.setVisible(false);
-    icon.on('pointerover', show);
-    icon.on('pointerout', hide);
+    icon.on('pointerover', () => {
+      if (this._navEnabled(dir)) icon.setAlpha(1);
+      tip.setVisible(true);
+    });
+    icon.on('pointerout', () => {
+      this._refreshNavButtons();
+      tip.setVisible(false);
+    });
     icon.on('pointerdown', (_p, _x, _y, e) => {
       e?.stopPropagation();
-      show();
+      tip.setVisible(true);
     });
-    icon.on('pointerup', hide);
+    icon.on('pointerup', () => {
+      tip.setVisible(false);
+      this._navClicked(dir);
+    });
     return [icon, tip];
+  }
+
+  /**
+   * Whether a nav direction is currently usable. Previous needs an earlier
+   * level; next needs a later level AND the current level to have been won
+   * (best is non-nil) — you must complete a level to proceed.
+   *
+   * @param {'prev'|'next'} dir
+   * @returns {boolean}
+   */
+  _navEnabled(dir) {
+    if (dir === 'prev') return currentIndex() > 0;
+    const hasNext = currentIndex() < levelCount() - 1;
+    const wonCurrent = this.registry.get(this._bestKey) != null;
+    return hasNext && wonCurrent;
+  }
+
+  /** Dim (gray) the prev/next icons that aren't currently usable. */
+  _refreshNavButtons() {
+    this.prevButton.setAlpha(this._navEnabled('prev') ? 0.8 : 0.3);
+    this.nextButton.setAlpha(this._navEnabled('next') ? 0.8 : 0.3);
+  }
+
+  /**
+   * Handle a click on a nav icon: no-op if disabled; if a game is in progress
+   * (PLAYING) confirm before leaving; otherwise switch level immediately.
+   *
+   * @param {'prev'|'next'} dir
+   * @returns {void}
+   */
+  _navClicked(dir) {
+    if (!this._navEnabled(dir)) return;
+    const target = currentIndex() + (dir === 'prev' ? -1 : 1);
+    if (this.status === 'PLAYING') {
+      this._showConfirm('Abandon current game?', () => this._goToLevel(target));
+    } else {
+      this._goToLevel(target);
+    }
+  }
+
+  /**
+   * Switch to another level in the pack and rebuild the scene for it.
+   *
+   * @param {number} index
+   * @returns {void}
+   */
+  _goToLevel(index) {
+    setLevelIndex(index);
+    this.scene.restart();
   }
 
   /**
@@ -878,15 +943,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Open the "Restart Level?" confirmation modal: a dimming backdrop plus a
-   * panel with Yes/No. Built on the fixed UI camera (so it ignores zoom/pan)
-   * and on the world camera's ignore list (so it isn't double-drawn). Game
-   * input is gated by `_modalOpen` while it's up. Yes restarts the scene; No
-   * just dismisses it.
+   * Open a Yes/No confirmation modal: a dimming backdrop plus a panel. Built on
+   * the fixed UI camera (so it ignores zoom/pan) and on the world camera's
+   * ignore list (so it isn't double-drawn). Game input is gated by `_modalOpen`
+   * while it's up. Yes runs `onYes`; No just dismisses.
    *
+   * @param {string} message  The question shown in the panel.
+   * @param {() => void} onYes  Action to run if the player confirms.
    * @returns {void}
    */
-  _showRestartConfirm() {
+  _showConfirm(message, onYes) {
     if (this._modalOpen) return;
     this._modalOpen = true;
     this._isPanning = false;
@@ -904,13 +970,11 @@ export class GameScene extends Phaser.Scene {
     panel.fillStyle(0x23232c, 1).fillRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 14);
     panel.lineStyle(2, 0x4d4d55, 1).strokeRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 14);
     const title = this.add
-      .text(cx, cy - 48, 'Restart Level?', { fontSize: '28px', color: '#ffffff' })
+      .text(cx, cy - 48, message, { fontSize: '28px', color: '#ffffff' })
       .setOrigin(0.5)
       .setDepth(32);
-    const yes = this._modalButton(cx - 80, cy + 35, 'Yes', '#2e7d46', () => this.scene.restart());
-    const no = this._modalButton(cx + 80, cy + 35, 'No', '#555560', () =>
-      this._hideRestartConfirm()
-    );
+    const yes = this._modalButton(cx - 80, cy + 35, 'Yes', '#2e7d46', onYes);
+    const no = this._modalButton(cx + 80, cy + 35, 'No', '#555560', () => this._hideConfirm());
 
     this._modalParts = [backdrop, panel, title, yes, no];
     this.cameras.main.ignore(this._modalParts); // HUD-camera only
@@ -956,7 +1020,7 @@ export class GameScene extends Phaser.Scene {
    *
    * @returns {void}
    */
-  _hideRestartConfirm() {
+  _hideConfirm() {
     if (!this._modalParts) return;
     for (const part of this._modalParts) part.destroy();
     this._modalParts = null;
@@ -1182,12 +1246,12 @@ export class GameScene extends Phaser.Scene {
       if (best == null || this.movesLeft > best) this.registry.set(this._bestKey, this.movesLeft);
       this._winBurst();
       sfx.win();
-      this._endGame('LEVEL CLEAR!', FACES.win, '#7cfc8a');
+      this._endGame('LEVEL CLEAR!', FACES.win, '#7cfc8a', true);
       return;
     }
     if (this.movesLeft <= 0) {
       sfx.lose();
-      this._endGame('OUT OF MOVES', FACES.lose, '#ff7a6b');
+      this._endGame('OUT OF MOVES', FACES.lose, '#ff7a6b', false);
       return;
     }
     this.brothers.swapRoles();
@@ -1269,14 +1333,13 @@ export class GameScene extends Phaser.Scene {
    * @param {string} face  Emoji shown on both brothers.
    * @returns {void}
    */
-  _endGame(message, face, color) {
+  _endGame(message, face, color, won) {
     this.status = 'ENDED';
     this.brothers.setBothFaces(face);
     this._refreshHud(); // -> "Game Ended" text, reset enabled, ENDED status icon
 
     // Banner: pop the panel + text in, then let the text gently breathe. No
-    // "restart" instruction text — the icon animates instead (see
-    // _attractRestart).
+    // instruction text — an icon animates instead (see _attract).
     this.banner.setText(message).setColor(color);
     for (const o of [this.bannerPanel, this.banner]) o.setScale(0).setVisible(true);
     this.tweens.add({
@@ -1296,20 +1359,28 @@ export class GameScene extends Phaser.Scene {
       },
     });
 
-    this._attractRestart();
+    // On a win with a next level, hint "go on" by drawing the eye to Next;
+    // otherwise (loss, or last level) hint "try again" via Restart.
+    const goNext = won && currentIndex() < levelCount() - 1;
+    this._attract(goNext ? this.nextButton : this.restartButton);
   }
 
   /**
-   * Draw the eye to the restart icon once the level is over: a glow ring that
-   * pulses outward behind it, plus a soft heartbeat on the icon itself. Both
-   * loop until the scene restarts (which kills the tweens).
+   * Draw the eye to a HUD icon once the level is over: a glow ring that pulses
+   * outward behind it, plus a soft heartbeat on the icon itself. Both loop until
+   * the scene restarts/rebuilds (which kills the tweens).
    *
+   * @param {Phaser.GameObjects.Image} icon
    * @returns {void}
    */
-  _attractRestart() {
-    this.restartGlow.setVisible(true).setScale(1).setAlpha(0.9);
+  _attract(icon) {
+    this.attractGlow
+      .setPosition(icon.x, this._hudHeight / 2)
+      .setVisible(true)
+      .setScale(1)
+      .setAlpha(0.9);
     this.tweens.add({
-      targets: this.restartGlow,
+      targets: this.attractGlow,
       scale: 2,
       alpha: 0,
       duration: 950,
@@ -1317,7 +1388,7 @@ export class GameScene extends Phaser.Scene {
       repeat: -1,
     });
     this.tweens.add({
-      targets: this.restartButton,
+      targets: icon,
       scale: 1.15,
       duration: 600,
       ease: 'Sine.InOut',
@@ -1351,6 +1422,7 @@ export class GameScene extends Phaser.Scene {
     const best = this.registry.get(this._bestKey);
     this.movesText.setText(`Best: ${best == null ? '-' : best}    #Left: ${this.movesLeft}`);
     this._refreshResetButton();
+    this._refreshNavButtons();
     this._refreshStatusIcon();
   }
 }

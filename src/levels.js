@@ -153,6 +153,26 @@ export function currentLevel() {
   return activePack.levels[activeIndex];
 }
 
+/** @returns {number} Number of levels in the active pack. */
+export function levelCount() {
+  return activePack.levels.length;
+}
+
+/** @returns {number} Index of the current level within the pack. */
+export function currentIndex() {
+  return activeIndex;
+}
+
+/**
+ * Select the current level by index (clamped to the pack).
+ *
+ * @param {number} i
+ * @returns {void}
+ */
+export function setLevelIndex(i) {
+  activeIndex = Math.max(0, Math.min(i, activePack.levels.length - 1));
+}
+
 /**
  * Stable identity for the current level: pack id + the level's file id (not its
  * ordinal index, so reordering a pack doesn't reassign per-level state like best
