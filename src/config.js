@@ -3,7 +3,6 @@
  *
  * Everything you'd realistically want to tweak while balancing the game
  * lives here, so feel can be adjusted without digging through game logic.
- * Later, the per-level data should come from Tiled JSON instead of `level`.
  */
 export const Config = {
   /**
@@ -97,14 +96,15 @@ export const Config = {
    * in one step than an obstacle is thick passes straight through it.
    *
    * Sizing `substeps`: the fastest launch covers ~`slingshot.maxSpeed` px in a
-   * frame, so each sub-step moves ~maxSpeed / substeps. That must stay below the
-   * contact window of the thinnest obstacle — its thickness plus twice the ball
+   * frame, so each sub-step moves ~maxSpeed / substeps.
+   * That must stay below the
+   * contact window of the thinnest obstacle, its thickness plus twice the ball
    * radius. For a 22px wall and a 30px-radius ball that window is ~82px; at
    * 220 / 8 ≈ 28px per sub-step we're well under it. (If you ever add a thin,
    * fast, *small-radius* object, raise `substeps` accordingly.) Raising it is
    * safe for feel: Matter normalises velocities and `body.speed` to per-frame
    * units, so launch strength, friction, and the settle/brake thresholds are
-   * all sub-step-independent. Cost scales linearly with it.
+   * all sub-step-independent. CPU use cost scales linearly with it.
    */
   physics: {
     substeps: 8,
@@ -133,15 +133,15 @@ export const Config = {
       pulseAlpha: 0.8, // peak fill alpha of the idle breath (base is 0.5)
       pulseDuration: 1100,
       pullSpeed: 2.5, // inward speed factor (per second); higher = swifter pull-in
-      pullLifespan: 450, // ms ≈ time to reach the centre, so a mote fades as it arrives
-      pullFrequency: 55, // ms between spawns (lower = more motes active at once)
+      pullLifespan: 450, // ms ≈ time to reach the centre; mote fades as arrives
+      pullFrequency: 55, // ms between spawns (lower=more motes active at once)
       pullQuantity: 1, // motes per spawn
       // Destination exit motes: burst out of the centre, decelerate (friction)
       // to a stop, and fade — mirroring the source. They reuse pullFrequency /
       // pullQuantity so the exit rate matches the intake rate. Stop distance ≈
       // exitSpeed * exitLifespan / 2000 px (here ~18px, about halfway out).
       exitSpeed: 72, // initial outward speed (px/s)
-      exitLifespan: 500, // ms; a mote decelerates to a stop and fades out by here
+      exitLifespan: 500, // ms; a mote decelerates to stop and fades out by here
     },
     /** Teleport target: calm idle breathe, arrival ring on warp-in. */
     target: {
