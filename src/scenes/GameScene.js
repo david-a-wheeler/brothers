@@ -142,13 +142,22 @@ export class GameScene extends Phaser.Scene {
     const mode = w > H.compactMaxWidth ? 'wide' : w <= H.narrowMaxWidth ? 'narrow' : 'compact';
     const rows = mode === 'wide' ? 1 : mode === 'narrow' ? 3 : 2;
     const touch = mode !== 'wide'; // bigger icons/gaps on small screens
+    // Small screens stack text line(s) above the icon row: compact has one
+    // (info on a single line), narrow has two (state, then Best/#Left). These
+    // text rows use a tighter height than the icon row (text doesn't need the
+    // icon's touch-target height), so they don't waste scarce vertical space.
+    const textRows = mode === 'narrow' ? 2 : mode === 'compact' ? 1 : 0;
+    const textRow = H.narrowTextRow;
+    const hudHeight = textRows * textRow + H.rowHeight;
     this._layout = {
       w,
       h,
       mode,
       rows,
       rowHeight: H.rowHeight,
-      hudHeight: rows * H.rowHeight,
+      textRow,
+      textRows,
+      hudHeight,
       iconSize: touch ? H.compactIcon : H.normalIcon,
       gap: touch ? H.compactGap : H.normalGap,
       pad: H.pad,
@@ -167,7 +176,6 @@ export class GameScene extends Phaser.Scene {
     const L = this._layout;
     const cx = L.w / 2;
     const rh = L.rowHeight;
-    const rowY = (i) => i * rh + rh / 2; // centre Y of row i
 
     // Opaque ribbon + bottom border span the full width.
     this.hudBar.setPosition(cx, L.hudHeight / 2).setSize(L.w, L.hudHeight);
@@ -188,7 +196,9 @@ export class GameScene extends Phaser.Scene {
       this.statusTooltip,
       this.beakerTooltip,
     ];
-    const iconRowY = rowY(L.rows - 1);
+    // Icons sit on a full-height row below any compact text rows (in wide mode
+    // there are none, so the icons share the single row with the edge text).
+    const iconRowY = L.textRows * L.textRow + rh / 2;
     const startX = cx - ((icons.length - 1) * L.gap) / 2;
     icons.forEach((ic, i) => ic.setDisplaySize(L.iconSize, L.iconSize).setPosition(startX + i * L.gap, iconRowY));
     tips.forEach((tp, i) => tp.setPosition(startX + i * L.gap, L.hudHeight + 6));
@@ -203,11 +213,15 @@ export class GameScene extends Phaser.Scene {
     this.turnText.setFontSize(fontSize);
     this.movesText.setFontSize(fontSize);
     if (L.mode === 'narrow') {
-      this.turnText.setOrigin(0.5, 0.5).setPosition(cx, rowY(0));
-      this.movesText.setOrigin(0.5, 0.5).setPosition(cx, rowY(1));
+      // Two tight text rows: centres at half and one-and-a-half text-row heights.
+      this.turnText.setOrigin(0.5, 0.5).setPosition(cx, L.textRow / 2);
+      this.movesText.setOrigin(0.5, 0.5).setPosition(cx, L.textRow * 1.5);
     } else {
-      this.turnText.setOrigin(0, 0.5).setPosition(L.pad, rowY(0));
-      this.movesText.setOrigin(1, 0.5).setPosition(L.w - L.pad, rowY(0));
+      // One row of edge text. Compact: its own tight row above the icons. Wide:
+      // shares the single icon row (centred on it).
+      const textY = L.mode === 'compact' ? L.textRow / 2 : rh / 2;
+      this.turnText.setOrigin(0, 0.5).setPosition(L.pad, textY);
+      this.movesText.setOrigin(1, 0.5).setPosition(L.w - L.pad, textY);
     }
 
     // Banner + backing panel centred; sized/scaled to fit narrow screens.

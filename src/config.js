@@ -32,7 +32,8 @@ export const Config = {
     // so the two texts can't collide on a phone in portrait.
     compactMaxWidth: 760,
     narrowMaxWidth: 520,
-    rowHeight: 52, // height of one HUD row
+    rowHeight: 52, // height of one HUD row (sized for the icon touch targets)
+    narrowTextRow: 30, // height of a text-only row in narrow mode (tighter than icons)
     normalIcon: 30, // icon display size (px) on wide screens
     compactIcon: 44, // icon display size (px) on small screens (touch target)
     normalGap: 44, // spacing between icon centres, wide
