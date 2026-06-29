@@ -673,7 +673,7 @@ export class GameScene extends Phaser.Scene {
     // change as the player navigates.
     const showTip = () => {
       this.restartTooltip
-        .setText(`Restart Level (${activePackName()} ${currentIndex() + 1})`)
+        .setText(`Restart Level (${activePackName()} Level ${currentIndex() + 1})`)
         .setVisible(true);
     };
     const hideTip = () => this.restartTooltip.setVisible(false);
@@ -870,7 +870,7 @@ export class GameScene extends Phaser.Scene {
       const wonCurrent = this.registry.get(this._bestKey) != null;
       if (!wonCurrent && !this._testMode) return ' (Locked)';
     }
-    return ` (${activePackName()} ${target + 1})`;
+    return ` (${activePackName()} Level ${target + 1})`;
   }
 
   /**
@@ -1350,7 +1350,7 @@ export class GameScene extends Phaser.Scene {
       .text(
         cx0 + 16,
         cy0 + 16,
-        `${activePackName()} — Level ${currentIndex() + 1}/${levelCount()}`,
+        `${activePackName()} Level ${currentIndex() + 1}/${levelCount()}`,
         { fontSize: '18px', color: '#ffffff', fontStyle: 'bold' }
       )
       .setDepth(32);
