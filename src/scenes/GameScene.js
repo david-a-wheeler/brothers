@@ -386,6 +386,47 @@ export class GameScene extends Phaser.Scene {
     main.setScroll(midX - halfVW, midY - halfVH);
   }
 
+  /**
+   * Gently keep the flying pair in frame (the classic follow-with-deadzone trick,
+   * done by hand so it cooperates with the manual pan + {@link _clampCamera}).
+   * While a shot is in motion: if the balls' midpoint drifts out of a central
+   * deadzone, ease the camera toward it; and if a ball leaves the view entirely
+   * (they've spread apart), ease the zoom out a touch — down to the fit-all
+   * minimum. Lerps are small so it never jostles, and it yields to an active
+   * pan/pinch. It's fine for the pair to be briefly out of frame; they drift back.
+   *
+   * @returns {void}
+   */
+  _keepBallsInView() {
+    if (this._isPanning || this._pinchDist) return; // a gesture owns the camera
+    const cam = this.cameras.main;
+    const a = this.brothers.david.go;
+    const b = this.brothers.ken.go;
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+    const view = cam.worldView;
+
+    // Pan: only correct once the midpoint leaves the central 50% deadzone.
+    const dzX = view.width * 0.25;
+    const dzY = view.height * 0.25;
+    let dx = 0;
+    if (midX < view.x + dzX) dx = midX - (view.x + dzX);
+    else if (midX > view.right - dzX) dx = midX - (view.right - dzX);
+    let dy = 0;
+    if (midY < view.y + dzY) dy = midY - (view.y + dzY);
+    else if (midY > view.bottom - dzY) dy = midY - (view.bottom - dzY);
+    if (dx || dy) {
+      cam.setScroll(cam.scrollX + dx * 0.06, cam.scrollY + dy * 0.06); // gentle catch-up
+      this._clampCamera();
+    }
+
+    // Zoom out a little if either ball is off-screen (spread too far to both fit).
+    if (cam.zoom > this._minZoom && (!view.contains(a.x, a.y) || !view.contains(b.x, b.y))) {
+      cam.setZoom(Phaser.Math.Linear(cam.zoom, this._minZoom, 0.03));
+      this._clampCamera();
+    }
+  }
+
   // --- Level construction -------------------------------------------------
 
   /**
@@ -1869,6 +1910,7 @@ export class GameScene extends Phaser.Scene {
     this._updatePinch();
 
     if (this.status === 'PLAYING' && this.phase === 'MOVING') {
+      this._keepBallsInView(); // gently pan/zoom so the flying pair stays framed
       this.brothers.brakeSlowMotion();
       if (this.brothers.isSettled()) this._resolveTurn();
     }
