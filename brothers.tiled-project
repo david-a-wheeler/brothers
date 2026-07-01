@@ -11,23 +11,179 @@
     ],
     "propertyTypes": [
         {
-            "color": "#ffa0a0a4",
+            "color": "#ff3aa0ff",
             "drawFill": true,
-            "id": 1,
+            "id": 2,
             "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "David's start position (a point). Place one and set its Name to 'David' (the controlled brother; extra Davids are uncontrolled doppelgangers). radiusMult/massMult scale his size/mass off the base; they default to the game's David defaults (1.2x). Mass is independent of size."
+                },
+                {
+                    "name": "radiusMult",
+                    "type": "float",
+                    "value": 1.2
+                },
+                {
+                    "name": "massMult",
+                    "type": "float",
+                    "value": 1.2
+                }
             ],
-            "name": "wall",
+            "name": "David",
             "type": "class",
             "useAs": [
                 "property",
-                "map",
-                "layer",
-                "object",
-                "tile",
-                "tileset",
-                "wangcolor",
-                "wangset",
-                "project"
+                "object"
+            ]
+        },
+        {
+            "color": "#ffff5a4d",
+            "drawFill": true,
+            "id": 3,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "Ken's start position (a point). Place one and set its Name to 'Ken' (the controlled brother; extra Kens are uncontrolled doppelgangers). radiusMult/massMult scale his size/mass off the base (1 = the base size/mass). Mass is independent of size."
+                },
+                {
+                    "name": "radiusMult",
+                    "type": "float",
+                    "value": 1
+                },
+                {
+                    "name": "massMult",
+                    "type": "float",
+                    "value": 1
+                }
+            ],
+            "name": "Ken",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object"
+            ]
+        },
+        {
+            "color": "#ff2ecc71",
+            "drawFill": true,
+            "id": 4,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "A goal zone (a point). The level is won when a brother comes to rest inside any goal. radius is the capture radius in pixels. Place as many goals as you like - reaching any one wins."
+                },
+                {
+                    "name": "radius",
+                    "type": "float",
+                    "value": 60
+                }
+            ],
+            "name": "Goal",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object"
+            ]
+        },
+        {
+            "color": "#ffb5651d",
+            "drawFill": true,
+            "id": 1,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "A solid wall that deflects the brothers. Draw it as a rectangle (its size and position are the wall). Bounciness is shared for the level via the map's wallRestitution property. Place any number."
+                }
+            ],
+            "name": "Wall",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object"
+            ]
+        },
+        {
+            "color": "#ff9b59b6",
+            "drawFill": true,
+            "id": 5,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "A teleporter entrance (a point). A brother that enters it mid-flight warps the pair to a TeleporterTarget. radius is the trigger radius in pixels; retain is the fraction of speed kept through the warp (0-1); target is the Name of the TeleporterTarget to send to (blank = the first target placed). Place any number."
+                },
+                {
+                    "name": "radius",
+                    "type": "float",
+                    "value": 44
+                },
+                {
+                    "name": "retain",
+                    "type": "float",
+                    "value": 0.6
+                },
+                {
+                    "name": "target",
+                    "type": "string",
+                    "value": ""
+                }
+            ],
+            "name": "Teleporter",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object"
+            ]
+        },
+        {
+            "color": "#ffe67e22",
+            "drawFill": true,
+            "id": 6,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "A teleporter exit (a point). Give it a Name, then reference that Name from a Teleporter's 'target' property. One target can be the destination of many teleporters. It has no properties of its own besides its Name."
+                }
+            ],
+            "name": "TeleporterTarget",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object"
+            ]
+        },
+        {
+            "color": "#ff888888",
+            "drawFill": true,
+            "id": 7,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "Level-wide settings. Set the MAP's Class to 'Level' to edit these. moves is the number of shots allowed; wallRestitution is the bounciness of every Wall (0-1). The arena size is just the map's pixel dimensions."
+                },
+                {
+                    "name": "moves",
+                    "type": "int",
+                    "value": 6
+                },
+                {
+                    "name": "wallRestitution",
+                    "type": "float",
+                    "value": 0.6
+                }
+            ],
+            "name": "Level",
+            "type": "class",
+            "useAs": [
+                "property",
+                "map"
             ]
         }
     ]
