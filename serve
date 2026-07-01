@@ -1,60 +1,52 @@
 #!/usr/bin/env python3
-"""Tiny threaded static file server (unencrypted) for local development.
+"""Tiny threaded static file server for local development.
 
 Optimized for modern frontend development (parallel ES module loading)
-with strict local security boundaries. This can handle many
-simultaneous requests without keeling over, which is important
-for loading JavaScript and various assets.
+with absolute directory isolation and file-backed password cookie
+authentication.
 
-===============================================================================
-NETWORK & SECURITY CONFIGURATION DOCS
-===============================================================================
+This does *NOT* encrypt the connection (no TLS).
 
-1. FINDING YOUR VM'S IP ADDRESS
-   Run one of the following commands inside your VM terminal:
-   - Linux/macOS:  ip addr  OR  ifconfig
-   - Windows:      ipconfig
-   Look for the interface linked to your virtual network (e.g., eth1, enp0s8).
-   It usually looks like 192.168.X.X, 10.X.X.X, or 172.16.X.X.
+We store the password as cleartext in file `.password`.
+We're presuming to reuse it locally, so it's important that it be
+easily available. The goal of the password is to prevent outsiders
+from being able to easily access the site.
 
-2. RUNNING THE SERVER
-   By default, it binds to 127.0.0.1 (localhost) for safety.
-   To expose it ONLY to your virtual local network, pass the VM's local IP:
-
-   Usage:
-     ./serve [bind_address] [port]
-
-   Examples:
-     ./serve 192.168.56.101       # Listens on VM IP, default port 8000
-     ./serve 192.168.56.101 9000  # Listens on VM IP, custom port 9000
-
-3. HARDENING ACCESS via FIREWALL (Highly Recommended)
-   Even when bound to a specific IP, anyone on that virtual network can connect.
-   Use a firewall to restrict access to a SINGLE trusted client machine.
-   (Assuming VM IP is 192.168.56.101 and Client IP is 192.168.56.105)
-
-   Linux (UFW):
-     sudo ufw deny 8000/tcp
-     sudo ufw allow from 192.168.56.105 to any port 8000 proto tcp
-     sudo ufw enable
-
-   Windows Defender Firewall:
-     1. Open "Windows Defender Firewall with Advanced Security".
-     2. Create a new "Inbound Rule" -> Choose "Port" -> TCP -> Specific local ports: 8000.
-     3. Choose "Allow the connection".
-     4. Name the rule, then right-click the created rule -> Properties -> Scope tab.
-     5. Under "Remote IP address", select "These IP addresses" -> Add "192.168.56.105".
-===============================================================================
 """
 
+import io
 import os
+import re
+import secrets
+import string
 import sys
+from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs
+
+PASSWORD_FILE = ".password"
+
+
+def get_or_create_password():
+    """Reads the password from .password or creates a cryptographically secure 10-char one."""
+    if os.path.exists(PASSWORD_FILE):
+        with open(PASSWORD_FILE, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    else:
+        # We pick characters that won't break HTML forms or HTTP Cookie headers 
+        # (avoiding spaces, quotes, semicolons, commas, and backslashes)
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*()-_=+[]{}|:"
+        password = "".join(secrets.choice(alphabet) for _ in range(10))
+        with open(PASSWORD_FILE, "w", encoding="utf-8") as f:
+            f.write(password)
+        return password
+
+
+# Initialize the password globally on startup
+GLOBAL_PASSWORD = get_or_create_password()
 
 
 class Handler(SimpleHTTPRequestHandler):
-    # Use HTTP/1.1 to enable Keep-Alive. This allows connection reuse
-    # and completely eliminates net::ERR_SOCKET_NOT_CONNECTED on heavy reloads.
     protocol_version = "HTTP/1.1"
 
     extensions_map = {
@@ -66,37 +58,100 @@ class Handler(SimpleHTTPRequestHandler):
         ".tmj": "application/json",
     }
 
+    def is_authenticated(self):
+        """Checks if the browser sent a valid password cookie."""
+        cookie_header = self.headers.get("Cookie")
+        if cookie_header:
+            cookie = SimpleCookie(cookie_header)
+            if "password" in cookie and cookie["password"].value == GLOBAL_PASSWORD:
+                return True
+        return False
+
+    def serve_login_form(self, error=False):
+        """Serves a trivial HTML form for password authentication."""
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Server Authentication</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {{ font-family: sans-serif; margin: 2rem; padding: 0; background: #f9f9f9; }}
+        .box {{ max-width: 400px; margin: 0 auto; padding: 2rem; background: #fff; border: 1px solid #ccc; border-radius: 5px; }}
+        input[type="password"] {{ width: 100%; padding: 0.5rem; margin: 1rem 0; box-sizing: border-box; }}
+        input[type="submit"] {{ width: 100%; padding: 0.5rem; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }}
+        .error {{ color: red; margin-bottom: 1rem; }}
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>Authentication Required</h2>
+        { '<p class="error">Invalid password. Please try again.</p>' if error else '' }
+        <form method="POST" action="/login">
+            <label>Password: <input type="password" name="password" required autofocus></label>
+            <input type="submit" value="Submit">
+        </form>
+    </div>
+</body>
+</html>"""
+        body = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        """Processes the password form submission."""
+        if self.path == "/login":
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            params = parse_qs(post_data)
+            
+            submitted_password = params.get('password', [''])[0]
+            
+            if submitted_password == GLOBAL_PASSWORD:
+                # Correct password! Issue cookie and redirect back to index
+                self.send_response(303)  # See Other redirect
+                self.send_header("Location", "/")
+                # HttpOnly prevents JavaScript access; SameSite=Strict mitigates CSRF attacks
+                self.send_header("Set-Cookie", f"password={GLOBAL_PASSWORD}; Path=/; HttpOnly; SameSite=Strict")
+                self.end_headers()
+            else:
+                # Password failed, serve form again with error flag
+                self.serve_login_form(error=True)
+        else:
+            self.send_error(404, "Not Found")
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
-        # Security Bonus: Prevents browsers from guessing/riding MIME types
         self.send_header("X-Content-Type-Options", "nosniff")
         super().end_headers()
 
     def send_head(self):
-        """Intercepts requests to strictly enforce directory boundaries."""
-        # Get the path the standard implementation wants to serve
-        target_path = self.translate_path(self.path)
+        """Intercepts requests to validate cookies and enforce directory rules."""
+        # 1. Enforce Password Authentication
+        if not self.is_authenticated():
+            self.serve_login_form()
+            return None
 
-        # Resolve all relative paths and symlinks to absolute paths
+        # 2. Directory Traversal Guard (Structural isolation via realpath)
+        target_path = self.translate_path(self.path)
         base_dir = os.path.realpath(os.getcwd())
         abs_target = os.path.realpath(target_path)
-
-        # Bulletproof Directory Traversal Guard (handles symlinks safely)
+        
         try:
-            # os.path.commonpath guarantees abs_target is structurally inside base_dir
             if os.path.commonpath([base_dir, abs_target]) != base_dir:
                 self.send_error(403, "Forbidden: Access outside root directory is denied.")
                 return None
         except ValueError:
             self.send_error(403, "Forbidden")
             return None
-
+            
         return super().send_head()
 
 
 class SecureThreadingHTTPServer(ThreadingHTTPServer):
-    # Increase the OS connection backlog queue from 5 to 64.
-    # This absorbs massive parallel request spikes smoothly.
     request_queue_size = 64
 
 
@@ -104,7 +159,6 @@ def main():
     bind_address = "127.0.0.1"
     port = 8000
 
-    # Parse command line args dynamic configuration
     if len(sys.argv) > 1:
         if sys.argv[1].isdigit():
             port = int(sys.argv[1])
@@ -114,8 +168,12 @@ def main():
                 port = int(sys.argv[2])
 
     httpd = SecureThreadingHTTPServer((bind_address, port), Handler)
-
+    
+    print("-" * 50)
+    print(f"ACCESS PASSWORD: {GLOBAL_PASSWORD}")
+    print("-" * 50)
     print(f"Serving http://{bind_address}:{port}/  (Ctrl+C to stop)")
+    
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
