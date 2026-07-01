@@ -2,7 +2,7 @@
     "automappingRulesFile": "",
     "commands": [
     ],
-    "compatibilityVersion": 1100,
+    "compatibilityVersion": 1120,
     "extensionsPath": "extensions",
     "folders": [
         "."

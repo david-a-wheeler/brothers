@@ -39,12 +39,6 @@
                  "name":"goal",
                  "opacity":1,
                  "point":true,
-                 "properties":[
-                        {
-                         "name":"radius",
-                         "type":"float",
-                         "value":60
-                        }],
                  "rotation":0,
                  "type":"Goal",
                  "visible":true,
@@ -58,17 +52,6 @@
                  "name":"",
                  "opacity":1,
                  "point":true,
-                 "properties":[
-                        {
-                         "name":"radius",
-                         "type":"float",
-                         "value":44
-                        }, 
-                        {
-                         "name":"retain",
-                         "type":"float",
-                         "value":0.6
-                        }],
                  "rotation":0,
                  "type":"Teleporter",
                  "visible":true,

@@ -98,9 +98,30 @@ Map-level custom properties:
 | `moves`           | int   | Moves allowed this level.                 |
 | `wallRestitution` | float | Wall bounciness (0–1).                    |
 
-Arena size = the map's pixel dimensions. Rectangle objects use Tiled's top-left
-coordinates; the adapter converts walls to center coordinates. Point objects use
-their `x,y` directly. A teleporter with no reachable target is simply inert.
+Rectangle objects use Tiled's top-left coordinates; the adapter converts walls to
+center coordinates. Point objects use their `x,y` directly. A teleporter with no
+reachable target is simply inert.
+
+### Arena size
+
+**The arena is the map itself** — its size is the map's pixel dimensions
+(`map width × tile width` by `map height × tile height`), so the canvas you see
+in Tiled *is* the play area. It drives the physics bounds, the floor, the grid,
+and the camera fit, and every level may be a different rectangle (the two base
+levels are 1024×768 and 1280×800).
+
+To set it in Tiled:
+
+- **New map:** the *New Map* dialog's **Map size** (width/height in tiles) ×
+  **Tile size** — the product is the arena in pixels.
+- **Existing map:** **Map → Resize Map…** to change the width/height (in tiles),
+  or **Map → Map Properties** to change the tile size. Use *Resize*'s offset if
+  you want existing objects to stay put.
+
+Because the size is *tiles × tile size*, the arena changes in whole-tile steps
+(our maps use 32px tiles, so 32px steps). For a pixel-exact size, pick a tile
+size that divides your target (or set the tile size to 1). Objects may sit
+anywhere on the canvas; the arena clamps to the map bounds.
 
 ## Adding a new object type later
 
