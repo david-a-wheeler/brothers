@@ -11,13 +11,13 @@ const DEFAULT_RADIUS = 44;
 const DEFAULT_RETAIN = 0.6;
 
 /**
- * A teleporter entrance: a breathing portal with inward-pulled motes and a
- * sensor body. When a brother enters (mid-flight), the pair warps to this
- * source's destination — resolved lazily at trigger time (see
+ * A teleporter: a breathing portal with inward-pulled motes and a sensor body.
+ * When a brother enters (mid-flight), the pair warps to this teleporter's
+ * destination — a {@link TeleportTarget}, resolved lazily at trigger time (see
  * {@link _resolveDestination}), so it always reflects the current world. Each
- * source keeps its own debounce.
+ * teleporter keeps its own debounce.
  */
-export class TeleportSource extends Entity {
+export class Teleporter extends Entity {
   /**
    * @param {Phaser.Scene} scene
    * @param {import('../levels.js').EntityDef} def  Uses `radius`, `retain`, `dest`.

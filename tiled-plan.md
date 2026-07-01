@@ -75,13 +75,14 @@ two must match exactly.
 | `David`            | point  | `radiusMult`, `massMult` (optional) | David's start position. Name the controlled one **David**. |
 | `Ken`              | point  | `radiusMult`, `massMult` (optional) | Ken's start position. Name the controlled one **Ken**. |
 | `Goal`             | point  | `radius` (number)                   | A goal zone. **Any number — reaching any one wins.** |
-| `TeleportSource`   | point  | `radius` (number), `retain` (0–1), `dest` (target name) | Portal entrance. Any number. |
+| `Teleporter`       | point  | `radius` (number), `retain` (0–1), `dest` (target name) | Portal entrance. Any number. |
 | `TeleportTarget`   | point  | (Tiled **Name**)                    | Portal exit. Any number. |
 
-Goals, sources, and targets are each independent — a level may have as many as
-you like. A source sends the pair to the `TeleportTarget` whose Tiled **Name**
-matches its `dest` property; if `dest` is omitted (or names no target), it uses
-the **first** target. One target may be the destination of many sources.
+Goals, teleporters, and targets are each independent — a level may have as many
+as you like. A teleporter sends the pair to the `TeleportTarget` whose Tiled
+**Name** matches its `dest` property; if `dest` is omitted (or names no target),
+it uses the **first** target. One target may be the destination of many
+teleporters.
 
 Normally there's one `David` and one `Ken`. The slingshot pair is chosen by
 Tiled **Name** (`David`/`Ken`), so a level may later place extra, uncontrolled
@@ -99,7 +100,7 @@ Map-level custom properties:
 
 Arena size = the map's pixel dimensions. Rectangle objects use Tiled's top-left
 coordinates; the adapter converts walls to center coordinates. Point objects use
-their `x,y` directly. A source with no reachable target is simply inert.
+their `x,y` directly. A teleporter with no reachable target is simply inert.
 
 ## Adding a new object type later
 

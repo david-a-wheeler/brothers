@@ -29,7 +29,7 @@
  *   enter. Only sensor (pass-through) bodies get here; solid bodies (walls) are
  *   handled by the scene as a snap and never call this. May fire on several
  *   consecutive frames while the overlap persists, so a subclass that must act
- *   once per pass debounces itself (see TeleportSource). Default: no-op.
+ *   once per pass debounces itself (see Teleporter). Default: no-op.
  *
  * - `isReached(brothers)` — **a settle-time predicate, polled once after both
  *   balls have come to rest** (from `World.firstReached`, called in
