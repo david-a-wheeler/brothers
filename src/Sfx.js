@@ -127,6 +127,21 @@ export class Sfx {
   }
 
   /**
+   * Grab: a soft, short high "tick" when the launcher is picked up. Deliberately
+   * a clean tonal pip (no noise), so it's clearly not the {@link hit} ball-click.
+   *
+   * @returns {void}
+   */
+  grab() {
+    if (!this._ctx) return;
+    const t = this._ctx.currentTime;
+    // A crisp high pip with a lower-octave body under it, so it's clearly
+    // audible over the scene yet still a clean tone (not the noisy ball-click).
+    this._blip({ freq: 1046, type: 'triangle', dur: 0.05, gain: 0.5, at: t });
+    this._blip({ freq: 523, type: 'sine', dur: 0.05, gain: 0.28, at: t });
+  }
+
+  /**
    * Teleport: a quick upward pitch sweep ("vwoop") — the classic warp cue. A
    * triangle lead with a sine an octave below for body, both gliding up fast.
    *

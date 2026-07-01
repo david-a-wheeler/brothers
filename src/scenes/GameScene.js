@@ -100,6 +100,11 @@ export class GameScene extends Phaser.Scene {
     // scene restart.
     /** True between pointerdown-on-launcher and pointerup. */
     this.isAiming = false;
+    /** Aim sub-state while `isAiming`: 'idle' (not grabbed), 'grabbed' (pressed,
+     *  not yet moved), or 'dragging' (moved). Drives the turn prompt + cursor. */
+    this._aimState = 'idle';
+    /** Last-shown "aim is blocked" state while dragging (edge-triggers the prompt). */
+    this._aimBlocked = false;
     /** Last finger-spread distance while pinch-zooming (0 = not pinching). */
     this._pinchDist = 0;
     /** Camera-pan drag state. */
@@ -460,6 +465,9 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
     /** @type {import('../world/Entity.js').Entity|null} Entity whose info is showing. */
     this._infoEntity = null;
+    /** Suppress entity-info labels (set while dragging the launcher, to keep the
+     *  aim uncluttered and the launcher's face visible). */
+    this._infoSuppressed = false;
 
     // The tooltip always reveals on hover/press (even when reset is disabled);
     // brightening and the actual restart only apply when reset is enabled. The
@@ -1572,7 +1580,10 @@ export class GameScene extends Phaser.Scene {
         const w = this.cameras.main.getWorldPoint(p.x, p.y);
         if (Phaser.Math.Distance.Between(w.x, w.y, l.x, l.y) <= reach) {
           this.isAiming = true;
+          this._aimState = 'grabbed';
           this.brothers.beginAim();
+          sfx.grab(); // soft "tick" so it's clear the launcher is grabbed
+          this._refreshHud(); // "X's turn, grabbed"
           return;
         }
       }
@@ -1593,6 +1604,15 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (this.isAiming) {
+        if (this._aimState === 'grabbed') {
+          // First movement after the grab: now we're aiming. Hide the cursor so
+          // the launcher's face is visible, suppress the info label, update prompt.
+          this._aimState = 'dragging';
+          this.input.setDefaultCursor('none');
+          this._infoSuppressed = true;
+          this.hideEntityInfo(this._infoEntity); // drop any label showing on the launcher
+          this._refreshHud(); // "X's turn, aiming"
+        }
         const w = this.cameras.main.getWorldPoint(p.x, p.y);
         this.brothers.dragTo(w.x, w.y);
         return;
@@ -1620,9 +1640,13 @@ export class GameScene extends Phaser.Scene {
       this._isPanning = false;
       if (!this.isAiming) return;
       this.isAiming = false;
+      this._endGrab();
 
       const pull = this.brothers.release();
-      if (pull < Config.slingshot.minPull) return; // mis-click: no move spent
+      if (pull < Config.slingshot.minPull) {
+        this._refreshHud(); // mis-click: no move spent, back to "drag to aim"
+        return;
+      }
 
       this.movesLeft -= 1;
       this.status = 'PLAYING'; // first launch leaves READY; later launches keep PLAYING
@@ -1647,6 +1671,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Clear the grab/aim sub-state after a release, mis-click, or pinch-cancel:
+   * back to 'idle' and restore the (drag-hidden) cursor. Callers refresh the HUD.
+   *
+   * @returns {void}
+   */
+  _endGrab() {
+    this._aimState = 'idle';
+    this._aimBlocked = false;
+    this._infoSuppressed = false;
+    this.input.setDefaultCursor('default');
+  }
+
+  /**
    * Show a world entity's info label (its name/class) near the pointer while the
    * player hovers or presses it. The wording comes from the entity
    * ({@link import('../world/Entity.js').Entity#infoText}), so it lives in one
@@ -1656,7 +1693,7 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   showEntityInfo(entity) {
-    if (this._modalOpen || this._menuOpen) return; // an overlay owns the screen
+    if (this._modalOpen || this._menuOpen || this._infoSuppressed) return; // suppressed / overlay owns the screen
     const p = this.input.activePointer;
     this._infoEntity = entity;
     this.entityInfoText
@@ -1717,6 +1754,8 @@ export class GameScene extends Phaser.Scene {
     if (this.isAiming) {
       this.isAiming = false;
       this.brothers.cancelAim();
+      this._endGrab();
+      this._refreshHud();
     }
     const dist = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
     if (this._pinchDist > 0 && dist > 0) {
@@ -1784,6 +1823,12 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < n; i++) this.matter.world.step(sub);
 
     this.brothers.update();
+    // While dragging, echo the "can't launch here" state (the red Xs) in the
+    // turn prompt. Edge-triggered so the HUD only refreshes as it flips.
+    if (this._aimState === 'dragging' && this.brothers.aimRefused !== this._aimBlocked) {
+      this._aimBlocked = this.brothers.aimRefused;
+      this._refreshHud(); // "aiming" <-> "can't do that"
+    }
     // Tick any dynamic world objects (culled to the view). No-op today, since
     // all current objects are static/tween-driven; here for future types.
     this.world.update({ brothers: this.brothers, view: this.cameras.main.worldView });
@@ -1925,7 +1970,17 @@ export class GameScene extends Phaser.Scene {
       text = 'Moving';
       color = launcher.color;
     } else {
-      text = `${launcher.name}'s turn, drag to aim`;
+      // AIMING: the prompt tracks the grab sub-state (and, while dragging,
+      // whether the current spot is launchable).
+      const prompt =
+        this._aimState === 'dragging'
+          ? this._aimBlocked
+            ? "can't do that"
+            : 'aiming'
+          : this._aimState === 'grabbed'
+            ? 'grabbed'
+            : 'drag to aim';
+      text = `${launcher.name}'s turn, ${prompt}`;
       color = launcher.color;
     }
     this.turnText.setText(text).setColor(color);

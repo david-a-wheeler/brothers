@@ -43,6 +43,8 @@ export class Brothers {
 
     /** True while the player is dragging the launcher to aim. */
     this._aiming = false;
+    /** True while the current aim can't be launched; refreshed each frame in {@link update}. */
+    this.aimRefused = false;
     /**
      * Red "X" over EACH brother when the current aim can't be fired. Both are
      * marked (not just the launcher) so the cue stays visible even when a
@@ -179,8 +181,11 @@ export class Brothers {
     this._glow.setPosition(this.launcher.go.x, this.launcher.go.y);
 
     // While aiming, flag an unlaunchable position with a red X over BOTH balls
-    // (so it shows even under the finger dragging one of them).
+    // (so it shows even under the finger dragging one of them). Exposed as
+    // {@link aimRefused} so the scene can echo it in the turn prompt.
     const refuse = this._aiming && this._launcherBlocked();
+    /** True while the current aim can't be launched (drives the refusal Xs). */
+    this.aimRefused = refuse;
     const balls = [this.launcher.go, this.anchor.go];
     this._refusalXs.forEach((x, i) => {
       x.setVisible(refuse);
