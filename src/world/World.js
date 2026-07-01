@@ -1,6 +1,6 @@
 import { KINDS } from './registry.js';
 
-/** Shared read-only empty result for {@link WorldObjects#byType} misses. */
+/** Shared read-only empty result for {@link World#byType} misses. */
 const EMPTY = [];
 
 /**
@@ -9,19 +9,19 @@ const EMPTY = [];
  * flat list of objects plus a class → objects index (so a type's members are
  * found in O(1)), gives each object a reference to the world (`setup`), routes
  * the settle-time win check generically, and ticks the few objects that opt into
- * per-frame updates. Collisions route directly through each body's `worldObject`
+ * per-frame updates. Collisions route directly through each body's `entity`
  * back-reference, so a source/trigger "just works" when a brother reaches it.
  */
-export class WorldObjects {
+export class World {
   /**
    * @param {Phaser.Scene} scene
    * @param {import('../levels.js').Level} level
    */
   constructor(scene, level) {
     this.scene = scene;
-    /** @type {import('./WorldObject.js').WorldObject[]} Every object, in build order. */
+    /** @type {import('./Entity.js').Entity[]} Every object, in build order. */
     this._all = [];
-    /** @type {Map<Function, import('./WorldObject.js').WorldObject[]>} Class → its members. */
+    /** @type {Map<Function, import('./Entity.js').Entity[]>} Class → its members. */
     this._byType = new Map();
     /** Objects that opt into a per-frame update (none today; future dynamics). */
     this._updaters = [];
@@ -41,8 +41,8 @@ export class WorldObjects {
    * `setup`. Used during the initial build so setup can be deferred until every
    * object exists (see the constructor). Runtime callers should use {@link add}.
    *
-   * @param {import('./WorldObject.js').WorldObject} obj
-   * @returns {import('./WorldObject.js').WorldObject} The same object.
+   * @param {import('./Entity.js').Entity} obj
+   * @returns {import('./Entity.js').Entity} The same object.
    */
   _track(obj) {
     this._all.push(obj);
@@ -57,8 +57,8 @@ export class WorldObjects {
    * Add an object at runtime: index it, then set it up immediately (the world
    * already exists for a late arrival, so it can resolve references at once).
    *
-   * @param {import('./WorldObject.js').WorldObject} obj
-   * @returns {import('./WorldObject.js').WorldObject} The same object.
+   * @param {import('./Entity.js').Entity} obj
+   * @returns {import('./Entity.js').Entity} The same object.
    */
   add(obj) {
     this._track(obj);
@@ -69,7 +69,7 @@ export class WorldObjects {
   /**
    * Remove an object from the world's bookkeeping (reverses {@link _track}).
    *
-   * @param {import('./WorldObject.js').WorldObject} obj
+   * @param {import('./Entity.js').Entity} obj
    * @returns {void}
    */
   remove(obj) {
@@ -88,8 +88,8 @@ export class WorldObjects {
    * find the peers they interact with. The returned array is the live internal
    * list — treat it as read-only.
    *
-   * @param {Function} Cls  A {@link WorldObject} subclass.
-   * @returns {import('./WorldObject.js').WorldObject[]}
+   * @param {Function} Cls  An {@link Entity} subclass.
+   * @returns {import('./Entity.js').Entity[]}
    */
   byType(Cls) {
     return this._byType.get(Cls) || EMPTY;
@@ -100,7 +100,7 @@ export class WorldObjects {
    * Generic — any object type may define a win via `isReached` (goals do today).
    *
    * @param {import('../Brothers.js').Brothers} brothers
-   * @returns {import('./WorldObject.js').WorldObject|null}
+   * @returns {import('./Entity.js').Entity|null}
    */
   firstReached(brothers) {
     return this._all.find((o) => o.isReached(brothers)) || null;

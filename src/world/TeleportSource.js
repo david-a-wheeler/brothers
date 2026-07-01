@@ -1,6 +1,6 @@
 import { Config } from '../config.js';
 import { sfx } from '../Sfx.js';
-import { WorldObject } from './WorldObject.js';
+import { Entity } from './Entity.js';
 import { TeleportTarget } from './TeleportTarget.js';
 import { ensurePortalSpark, spawnRing } from './effects.js';
 
@@ -17,10 +17,10 @@ const DEFAULT_RETAIN = 0.6;
  * {@link _resolveDestination}), so it always reflects the current world. Each
  * source keeps its own debounce.
  */
-export class TeleportSource extends WorldObject {
+export class TeleportSource extends Entity {
   /**
    * @param {Phaser.Scene} scene
-   * @param {import('../levels.js').WorldObjectDef} def  Uses `radius`, `retain`, `dest`.
+   * @param {import('../levels.js').EntityDef} def  Uses `radius`, `retain`, `dest`.
    */
   constructor(scene, def) {
     super(scene, def);

@@ -28,14 +28,14 @@ const DEFAULTS = {
 };
 
 /**
- * A placed world object, kept type-agnostic on purpose: the loader doesn't know
- * what a "goal" or "teleporter" is — it just records the Tiled `kind` (class),
- * centre position, size, name, and any custom properties. `src/world` owns all
- * type behaviour and per-type defaults, so adding an object type needs no loader
- * change.
+ * A placed entity's definition, kept type-agnostic on purpose: the loader
+ * doesn't know what a "goal" or "teleporter" is — it just records the Tiled
+ * `kind` (class), centre position, size, name, and any custom properties.
+ * `src/world` owns all type behaviour and per-type defaults, so adding an entity
+ * type needs no loader change.
  *
  * @typedef {{kind:string, x:number, y:number, width:number, height:number,
- *   name:string, [prop:string]:any}} WorldObjectDef
+ *   name:string, [prop:string]:any}} EntityDef
  */
 
 /**
@@ -45,7 +45,7 @@ const DEFAULTS = {
  * @property {number} wallRestitution
  * @property {{x:number,y:number}|null} david
  * @property {{x:number,y:number}|null} ken
- * @property {WorldObjectDef[]} objects  Every placed object (goals, teleporters, walls, …).
+ * @property {EntityDef[]} objects  Every placed entity (goals, teleporters, walls, …).
  * @property {number} kenRadiusMult
  * @property {number} kenMassMult
  * @property {number} davidRadiusMult

@@ -1,5 +1,5 @@
 import { Config } from '../config.js';
-import { WorldObject } from './WorldObject.js';
+import { Entity } from './Entity.js';
 import { spawnRing } from './effects.js';
 
 /** Goal radius when the Tiled object omits a `radius` property. */
@@ -10,10 +10,10 @@ const DEFAULT_RADIUS = 60;
  * sensor body. Reaching it (a brother at rest inside, checked at settle) clears
  * the level. A level may have several; reaching any one wins.
  */
-export class Goal extends WorldObject {
+export class Goal extends Entity {
   /**
    * @param {Phaser.Scene} scene
-   * @param {import('../levels.js').WorldObjectDef} def
+   * @param {import('../levels.js').EntityDef} def
    */
   constructor(scene, def) {
     super(scene, def);

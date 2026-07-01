@@ -1,5 +1,5 @@
 import { Config } from '../config.js';
-import { WorldObject } from './WorldObject.js';
+import { Entity } from './Entity.js';
 import { ensurePortalSpark } from './effects.js';
 
 /**
@@ -7,10 +7,10 @@ import { ensurePortalSpark } from './effects.js';
  * mirror a source's intake. It has no body — sources reference it by name and
  * warp the pair to its {@link point}. One target may serve many sources.
  */
-export class TeleportTarget extends WorldObject {
+export class TeleportTarget extends Entity {
   /**
    * @param {Phaser.Scene} scene
-   * @param {import('../levels.js').WorldObjectDef} def  Uses `name`, `x`, `y`.
+   * @param {import('../levels.js').EntityDef} def  Uses `name`, `x`, `y`.
    */
   constructor(scene, def) {
     super(scene, def);

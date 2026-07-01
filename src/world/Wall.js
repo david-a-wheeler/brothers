@@ -1,14 +1,14 @@
-import { WorldObject } from './WorldObject.js';
+import { Entity } from './Entity.js';
 
 /**
  * A solid interior wall: a tiling brick visual, a thin dark frame, and a static
  * Matter body. Solid (not a sensor), so a brother striking it triggers the snap
  * via the scene's collision router.
  */
-export class Wall extends WorldObject {
+export class Wall extends Entity {
   /**
    * @param {Phaser.Scene} scene
-   * @param {import('../levels.js').WorldObjectDef} def  Uses `x,y,width,height`.
+   * @param {import('../levels.js').EntityDef} def  Uses `x,y,width,height`.
    * @param {import('../levels.js').Level} level  Provides `wallRestitution`.
    */
   constructor(scene, def, level) {

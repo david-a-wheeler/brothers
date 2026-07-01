@@ -14,7 +14,7 @@ import {
   loadPack,
 } from '../levels.js';
 import * as scores from '../scores.js';
-import { WorldObjects } from '../world/WorldObjects.js';
+import { World } from '../world/World.js';
 
 /**
  * Level state is tracked along two axes.
@@ -83,8 +83,8 @@ export class GameScene extends Phaser.Scene {
 
     this._buildArena();
     this._buildFloorGrid();
-    /** All level world objects (goals, teleporters, walls); see src/world. */
-    this.world = new WorldObjects(this, this.level);
+    /** The world: owns every level entity (goals, teleporters, walls); see src/world. */
+    this.world = new World(this, this.level);
 
     this.brothers = new Brothers(this, this.level);
 
@@ -1676,9 +1676,9 @@ export class GameScene extends Phaser.Scene {
   /**
    * Collision routing: brother-on-brother triggers the Hybrid Snap; a brother
    * touching a solid (wall/edge) also snaps; a brother entering a trigger object
-   * is dispatched to that object via its body's `worldObject` back-reference
+   * is dispatched to that object via its body's `entity` back-reference
    * (e.g. a teleporter warps the pair). The win check happens at settle time
-   * (distance-based, see WorldObjects.firstReached), not here, so a fast
+   * (distance-based, see World.firstReached), not here, so a fast
    * fly-through doesn't win.
    *
    * @returns {void}
@@ -1706,7 +1706,7 @@ export class GameScene extends Phaser.Scene {
         if (other.isSensor) {
           // A trigger object (e.g. teleporter) handles itself; goals are
           // checked at settle, so their no-op handler does nothing here.
-          other.worldObject?.onBrotherContact();
+          other.entity?.onBrotherContact();
         } else {
           sfx.hit(); // brother off a wall or the arena edge — same click, no debounce
           this.brothers.snap(); // hitting a solid also frees the anchor

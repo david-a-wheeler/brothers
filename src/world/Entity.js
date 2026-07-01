@@ -2,7 +2,7 @@
  * Base class for everything the level places in the arena (goals, teleporter
  * sources/targets, walls, and future types). Each subclass owns its own
  * visuals, physics body, and animation, and overrides only the hooks it needs.
- * The manager ({@link WorldObjects}) builds them from the level model, routes
+ * The manager ({@link World}) builds them from the level model, routes
  * collisions to them, evaluates win conditions, and ticks the few that opt into
  * per-frame updates.
  *
@@ -24,7 +24,7 @@
  * - `onBrotherContact()` — **fired the instant a brother's body overlaps this
  *   object's sensor body, mid-flight** (Matter `collisionstart` while the shot
  *   phase is MOVING; the scene's collision router looks up the struck body's
- *   `worldObject` and calls this). Use it for triggers that must act *on touch*,
+ *   `entity` and calls this). Use it for triggers that must act *on touch*,
  *   before the balls settle — e.g. a teleporter warps the pair the moment they
  *   enter. Only sensor (pass-through) bodies get here; solid bodies (walls) are
  *   handled by the scene as a snap and never call this. May fire on several
@@ -32,7 +32,7 @@
  *   once per pass debounces itself (see TeleportSource). Default: no-op.
  *
  * - `isReached(brothers)` — **a settle-time predicate, polled once after both
- *   balls have come to rest** (from `WorldObjects.firstReached`, called in
+ *   balls have come to rest** (from `World.firstReached`, called in
  *   `_resolveTurn`). Not tied to a physics contact: it asks a geometric
  *   question ("is a brother at rest inside my zone?") via `brothers.anyInside`.
  *   Return `true` to signal this object's win condition is met — the manager
@@ -59,7 +59,7 @@
  * Game objects and bodies are torn down automatically when the scene restarts,
  * so there is no explicit destroy step.
  */
-export class WorldObject {
+export class Entity {
   /** Set false by subclasses; only `true` objects are ticked each frame. */
   needsUpdate = false;
 
@@ -87,7 +87,7 @@ export class WorldObject {
       isStatic: true,
       ...opts,
     });
-    body.worldObject = this;
+    body.entity = this;
     return body;
   }
 
@@ -105,7 +105,7 @@ export class WorldObject {
       isStatic: true,
       ...opts,
     });
-    body.worldObject = this;
+    body.entity = this;
     return body;
   }
 
@@ -115,7 +115,7 @@ export class WorldObject {
   /**
    * One-time init after the whole world exists. Default: keep a world reference
    * so peers can be found later. Override as `setup(world) { super.setup(world); … }`.
-   * @param {import('./WorldObjects.js').WorldObjects} world
+   * @param {import('./World.js').World} world
    */
   setup(world) {
     this.world = world;

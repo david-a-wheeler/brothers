@@ -92,9 +92,9 @@ their `x,y` directly. A source with no reachable target is simply inert.
 
 ## Adding a new object type later
 
-Each world-object type is a small class in `src/world/` (a subclass of
-`WorldObject`) that owns its visuals, physics body, and behaviour; the manager
-`src/world/WorldObjects.js` builds them from the level model and the scene stays
+Each entity type is a small class in `src/world/` (a subclass of `Entity`) that
+owns its visuals, physics body, and behaviour; the manager (`World`, in
+`src/world/World.js`) builds them from the level model and the scene stays
 generic. The loader is **type-agnostic** — it records every classed object into
 one generic `level.objects` array (`kind`, centre `x,y`, size, `name`, custom
 props) and knows nothing about goals or teleporters. So adding a type is just
@@ -106,15 +106,15 @@ two small steps:
    `.tiled-project` defining the classes is *optional* and is intentionally
    avoided here because that feature is version-specific. **No `loadTiledLevel`
    change is needed** — the new `kind` flows through automatically.
-2. Add a `WorldObject` subclass that builds it, and one entry in the `KINDS`
-   registry in `WorldObjects.js` (mapping the class string to your subclass) —
+2. Add an `Entity` subclass that builds it, and one entry in the `KINDS`
+   registry in `registry.js` (mapping the class string to your subclass) —
    the only place that knows the type set. Each subclass is constructed as
    `new Cls(scene, def, level)`; override only the hooks it needs:
    `onBrotherContact()` (trigger sensors), `isReached(brothers)` (win
    conditions), or `needsUpdate`+`update(ctx)` (per-frame dynamics; culled to
    the view). An unknown `kind` with no `KINDS` entry is simply ignored.
 
-A sensor body is tagged `body.worldObject = this`, so the scene's collision
+A sensor body is tagged `body.entity = this`, so the scene's collision
 router dispatches contacts to the right instance without label strings. Nothing
 else changes — old levels without the new type still load.
 
