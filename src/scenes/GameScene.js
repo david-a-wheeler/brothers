@@ -1678,7 +1678,7 @@ export class GameScene extends Phaser.Scene {
    * touching a solid (wall/edge) also snaps; a brother entering a trigger object
    * is dispatched to that object via its body's `worldObject` back-reference
    * (e.g. a teleporter warps the pair). The win check happens at settle time
-   * (distance-based, see WorldObjects.firstReachedGoal), not here, so a fast
+   * (distance-based, see WorldObjects.firstReached), not here, so a fast
    * fly-through doesn't win.
    *
    * @returns {void}
@@ -1749,8 +1749,8 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _resolveTurn() {
-    const goal = this.world.firstReachedGoal(this.brothers);
-    if (goal) {
+    const reached = this.world.firstReached(this.brothers);
+    if (reached) {
       // Record best score (most moves left) if we beat it.
       // Note that "0" is a real best score result, distinct from
       // "never won" (null).
@@ -1764,7 +1764,7 @@ export class GameScene extends Phaser.Scene {
         this.registry.set(this._bestKey, this.movesLeft);
       }
       scores.recordBest(currentLevelKey(), this.movesLeft); // persist across reloads
-      goal.celebrate();
+      reached.celebrate();
       sfx.win();
       this._endGame(message, FACES.win, '#7cfc8a', true);
       return;

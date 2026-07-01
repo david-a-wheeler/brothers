@@ -6,11 +6,20 @@
  * collisions to them, evaluates win conditions, and ticks the few that opt into
  * per-frame updates.
  *
- * The four hooks below are the entire contract between a world object and the
- * rest of the game. Every subclass is driven purely through them, and the base
- * defaults are all inert, so a subclass overrides only the ones it cares about
- * and inherits do-nothing behaviour for the rest. The two ways the world reacts
- * to the brothers are deliberately split by *timing*:
+ * The hooks below are the entire contract between a world object and the rest of
+ * the game. Every subclass is driven purely through them, and the base defaults
+ * are all inert, so a subclass overrides only the ones it cares about and
+ * inherits do-nothing behaviour for the rest. The two ways the world reacts to
+ * the brothers are deliberately split by *timing*:
+ *
+ * - `setup(world)` — **one-time initialisation, run once after every object in
+ *   the level has been created.** The default stores `this.world = world`, so
+ *   every object can reach the manager (and thus its peers) later. Because it
+ *   runs post-build, a subclass may override it to search the world —
+ *   `world.byType(SomeClass)` — for objects it interacts with, resolving those
+ *   references eagerly here or leaving the lookup lazy (a teleporter resolves
+ *   lazily, at trigger time, so it always sees the current world). Override as
+ *   `setup(world) { super.setup(world); … }` to keep the `this.world` default.
  *
  * - `onBrotherContact()` — **fired the instant a brother's body overlaps this
  *   object's sensor body, mid-flight** (Matter `collisionstart` while the shot
@@ -23,13 +32,14 @@
  *   once per pass debounces itself (see TeleportSource). Default: no-op.
  *
  * - `isReached(brothers)` — **a settle-time predicate, polled once after both
- *   balls have come to rest** (from `WorldObjects.firstReachedGoal`, called in
+ *   balls have come to rest** (from `WorldObjects.firstReached`, called in
  *   `_resolveTurn`). Not tied to a physics contact: it asks a geometric
  *   question ("is a brother at rest inside my zone?") via `brothers.anyInside`.
  *   Return `true` to signal this object's win condition is met — the manager
- *   wins the level on the first goal that does. Use this (not `onBrotherContact`)
- *   for anything decided by where the balls *end up*, not what they touched in
- *   flight. Default: returns `false` (never a win).
+ *   wins the level on the first object that does (goals today, but any type may
+ *   define one). Use this (not `onBrotherContact`) for anything decided by where
+ *   the balls *end up*, not what they touched in flight. When it wins, the
+ *   manager calls `celebrate()` on that object. Default: returns `false`.
  *
  * - `needsUpdate` + `update(ctx)` — **opt-in per-frame tick for *dynamic*
  *   objects** (moving hazards, timed gates, …). Static objects leave
@@ -102,6 +112,15 @@ export class WorldObject {
   // Default hooks — all inert; subclasses override only what they need. See the
   // class doc-comment above for exactly when each is called and by whom.
 
+  /**
+   * One-time init after the whole world exists. Default: keep a world reference
+   * so peers can be found later. Override as `setup(world) { super.setup(world); … }`.
+   * @param {import('./WorldObjects.js').WorldObjects} world
+   */
+  setup(world) {
+    this.world = world;
+  }
+
   /** Mid-flight sensor touch. Default: do nothing. */
   onBrotherContact() {}
 
@@ -124,4 +143,7 @@ export class WorldObject {
    * @param {{brothers: import('../Brothers.js').Brothers, view: Phaser.Geom.Rectangle}} _ctx
    */
   update(_ctx) {}
+
+  /** Celebratory one-shot when this object wins the level. Default: do nothing. */
+  celebrate() {}
 }

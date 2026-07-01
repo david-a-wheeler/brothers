@@ -1,25 +1,15 @@
-import { Goal } from './Goal.js';
-import { TeleportSource } from './TeleportSource.js';
-import { TeleportTarget } from './TeleportTarget.js';
-import { Wall } from './Wall.js';
+import { KINDS } from './registry.js';
+
+/** Shared read-only empty result for {@link WorldObjects#byType} misses. */
+const EMPTY = [];
 
 /**
- * Maps a Tiled object class (the level model's `kind`) to its world-object
- * class. This is the *only* place that knows the set of object types — adding a
- * type is one import + one entry here (plus the class itself); the loader stays
- * type-agnostic.
- */
-const KINDS = {
-  goal: Goal,
-  'teleporter-source': TeleportSource,
-  'teleporter-target': TeleportTarget,
-  wall: Wall,
-};
-
-/**
- * Builds and owns every world object in a level from `level.objects`, and gives
- * the scene a few small entry points: the settle-time win check and a culled
- * per-frame tick. Collisions route directly through each body's `worldObject`
+ * Builds and owns every world object in a level, and acts as a neutral registry
+ * the objects query through — it holds *no* per-type knowledge. It keeps the
+ * flat list of objects plus a class → objects index (so a type's members are
+ * found in O(1)), gives each object a reference to the world (`setup`), routes
+ * the settle-time win check generically, and ticks the few objects that opt into
+ * per-frame updates. Collisions route directly through each body's `worldObject`
  * back-reference, so a source/trigger "just works" when a brother reaches it.
  */
 export class WorldObjects {
@@ -29,50 +19,91 @@ export class WorldObjects {
    */
   constructor(scene, level) {
     this.scene = scene;
-    /** @type {import('./WorldObject.js').WorldObject[]} */
+    /** @type {import('./WorldObject.js').WorldObject[]} Every object, in build order. */
     this._all = [];
-    /** @type {Goal[]} Win is "reach any goal" (checked at settle). */
-    this.goals = [];
+    /** @type {Map<Function, import('./WorldObject.js').WorldObject[]>} Class → its members. */
+    this._byType = new Map();
     /** Objects that opt into a per-frame update (none today; future dynamics). */
     this._updaters = [];
 
+    // Build every object first (bookkeeping only), then run setup once the whole
+    // world exists — so a setup may search for anything it interacts with.
     for (const def of level.objects) {
       const Cls = KINDS[def.kind];
       if (!Cls) continue; // unknown kind: ignored (forward-compatible)
-      const obj = new Cls(scene, def, level);
-      this._all.push(obj);
-      if (obj.needsUpdate) this._updaters.push(obj);
-      if (obj instanceof Goal) this.goals.push(obj);
+      this._track(new Cls(scene, def, level));
     }
-
-    this._linkTeleporters();
+    for (const obj of this._all) obj.setup(this);
   }
 
   /**
-   * Point each teleporter source at its destination: the target whose name
-   * matches the source's `dest`, or the first target if unnamed/unknown.
+   * Index an object into the world's data structures — WITHOUT running its
+   * `setup`. Used during the initial build so setup can be deferred until every
+   * object exists (see the constructor). Runtime callers should use {@link add}.
    *
+   * @param {import('./WorldObject.js').WorldObject} obj
+   * @returns {import('./WorldObject.js').WorldObject} The same object.
+   */
+  _track(obj) {
+    this._all.push(obj);
+    const bucket = this._byType.get(obj.constructor);
+    if (bucket) bucket.push(obj);
+    else this._byType.set(obj.constructor, [obj]);
+    if (obj.needsUpdate) this._updaters.push(obj);
+    return obj;
+  }
+
+  /**
+   * Add an object at runtime: index it, then set it up immediately (the world
+   * already exists for a late arrival, so it can resolve references at once).
+   *
+   * @param {import('./WorldObject.js').WorldObject} obj
+   * @returns {import('./WorldObject.js').WorldObject} The same object.
+   */
+  add(obj) {
+    this._track(obj);
+    obj.setup(this);
+    return obj;
+  }
+
+  /**
+   * Remove an object from the world's bookkeeping (reverses {@link _track}).
+   *
+   * @param {import('./WorldObject.js').WorldObject} obj
    * @returns {void}
    */
-  _linkTeleporters() {
-    const targets = this._all.filter((o) => o instanceof TeleportTarget);
-    if (!targets.length) return;
-    const byName = new Map(targets.map((t) => [t.name, t]));
-    for (const obj of this._all) {
-      if (obj instanceof TeleportSource) {
-        obj.destination = byName.get(obj.dest) || targets[0];
-      }
-    }
+  remove(obj) {
+    const drop = (arr) => {
+      const i = arr.indexOf(obj);
+      if (i >= 0) arr.splice(i, 1);
+    };
+    drop(this._all);
+    const bucket = this._byType.get(obj.constructor);
+    if (bucket) drop(bucket);
+    if (obj.needsUpdate) drop(this._updaters);
   }
 
   /**
-   * Settle-time win check across all goals.
+   * Every object of a given class (e.g. `byType(TeleportTarget)`), so objects can
+   * find the peers they interact with. The returned array is the live internal
+   * list — treat it as read-only.
+   *
+   * @param {Function} Cls  A {@link WorldObject} subclass.
+   * @returns {import('./WorldObject.js').WorldObject[]}
+   */
+  byType(Cls) {
+    return this._byType.get(Cls) || EMPTY;
+  }
+
+  /**
+   * Settle-time win check: the first object whose win predicate is satisfied.
+   * Generic — any object type may define a win via `isReached` (goals do today).
    *
    * @param {import('../Brothers.js').Brothers} brothers
-   * @returns {Goal|null} The first goal reached, or null.
+   * @returns {import('./WorldObject.js').WorldObject|null}
    */
-  firstReachedGoal(brothers) {
-    return this.goals.find((g) => g.isReached(brothers)) || null;
+  firstReached(brothers) {
+    return this._all.find((o) => o.isReached(brothers)) || null;
   }
 
   /**
