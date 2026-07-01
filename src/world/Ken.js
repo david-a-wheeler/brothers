@@ -16,20 +16,33 @@ export class Ken extends Brother {
   }
 
   /**
-   * A small chin beard (goatee) — a soft downward tuft drawn around its own
-   * origin so {@link _updateFeature} can sit it at the bottom of his face. Kept
-   * low so it doesn't hide his eyes or mouth the way the old mustache did.
+   * A soft beard: a filled crescent band that follows the lower edge of his
+   * face and wraps up the sides, drawn around its own origin so
+   * {@link _updateFeature} can centre it on his face. It hugs the jaw rather than
+   * covering his mouth/eyes the way the old mustache did.
    *
    * @returns {Phaser.GameObjects.Graphics}
    */
   _createFeature() {
     const g = this.scene.add.graphics().setDepth(7);
-    g.fillStyle(0x000000, 1);
-    g.fillTriangle(-5, -4, 5, -4, 0, 6); // downward tuft at the chin
+    g.fillStyle(0x333333, 0.5); // dark grey, quite translucent so it hides little
+    // A thin crescent centred on his face: the curved bottom follows the face
+    // edge (so it always connects), and the top edge dips down in the middle so
+    // the centre is thin and reveals more of the face. `R` ~ the emoji face
+    // radius; `a` is where it meets the face on each side; `dip` is how far the
+    // centre of the top drops (larger = thinner centre).
+    const R = 15;
+    const a = Phaser.Math.DegToRad(32);
+    const dip = 12;
+    g.beginPath();
+    g.arc(0, 0, R, a, Math.PI - a, false); // curved bottom, along the face edge
+    g.lineTo(0, dip); // top edge dips down in the centre...
+    g.closePath(); // ...back up to the far side -> a thin crescent
+    g.fillPath();
     return g;
   }
 
   _updateFeature() {
-    this.feature.setPosition(this.go.x, this.go.y + 12); // bottom of the face
+    this.feature.setPosition(this.go.x, this.go.y); // centred on his face
   }
 }
