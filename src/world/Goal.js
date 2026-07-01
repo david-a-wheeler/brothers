@@ -57,6 +57,16 @@ export class Goal extends Entity {
     return brothers.anyInside(this.zone);
   }
 
+  /** @returns {Phaser.GameObjects.Container} The rings container receives hover/press. */
+  interactiveView() {
+    return this.gfx;
+  }
+
+  /** A container has no intrinsic size, so give it an explicit circular hit area. */
+  interactiveHitArea() {
+    return [new Phaser.Geom.Circle(0, 0, this.radius), Phaser.Geom.Circle.Contains];
+  }
+
   /** Celebratory one-shot when this goal clears the level: scale pop + ring. */
   celebrate() {
     const a = Config.anim.goal;

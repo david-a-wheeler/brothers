@@ -294,6 +294,7 @@ export class GameScene extends Phaser.Scene {
       this.statusTooltip,
       this.menuButton,
       this.menuTooltip,
+      this.entityInfoText,
       ...this.devPanelParts,
       this.bannerPanel,
       this.banner,
@@ -443,6 +444,22 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(11)
       .setVisible(false);
+
+    // Floating label naming whatever world entity the player hovers or presses
+    // (wording comes from Entity.infoText; see showEntityInfo). Anchored
+    // bottom-left so it floats above-right of the pointer.
+    this.entityInfoText = this.add
+      .text(0, 0, '', {
+        fontSize: '15px',
+        color: '#ffffff',
+        backgroundColor: '#000000',
+        padding: { x: 8, y: 4 },
+      })
+      .setOrigin(0, 1)
+      .setDepth(11)
+      .setVisible(false);
+    /** @type {import('../world/Entity.js').Entity|null} Entity whose info is showing. */
+    this._infoEntity = null;
 
     // The tooltip always reveals on hover/press (even when reset is disabled);
     // brightening and the actual restart only apply when reset is enabled. The
@@ -1565,6 +1582,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.on('pointermove', (p) => {
+      // Keep an open entity-info label floating with the pointer.
+      if (this._infoEntity) this.entityInfoText.setPosition(p.x + 14, p.y - 8);
       if (this._modalOpen) return;
       if (this._menuOpen) {
         if (this._menuDragging) {
@@ -1625,6 +1644,38 @@ export class GameScene extends Phaser.Scene {
     // Mobile: make a second touch pointer available for pinch (handled in
     // update() so we can track the changing finger spread frame to frame).
     this.input.addPointer(1);
+  }
+
+  /**
+   * Show a world entity's info label (its name/class) near the pointer while the
+   * player hovers or presses it. The wording comes from the entity
+   * ({@link import('../world/Entity.js').Entity#infoText}), so it lives in one
+   * place. Called from `Entity._enableInfo`.
+   *
+   * @param {import('../world/Entity.js').Entity} entity
+   * @returns {void}
+   */
+  showEntityInfo(entity) {
+    if (this._modalOpen || this._menuOpen) return; // an overlay owns the screen
+    const p = this.input.activePointer;
+    this._infoEntity = entity;
+    this.entityInfoText
+      .setText(entity.infoText())
+      .setPosition(p.x + 14, p.y - 8)
+      .setVisible(true);
+  }
+
+  /**
+   * Hide the entity info label — but only if `entity` is the one showing, so
+   * moving straight from one entity to an adjacent one doesn't flicker.
+   *
+   * @param {import('../world/Entity.js').Entity} entity
+   * @returns {void}
+   */
+  hideEntityInfo(entity) {
+    if (this._infoEntity !== entity) return;
+    this._infoEntity = null;
+    this.entityInfoText.setVisible(false);
   }
 
   /**

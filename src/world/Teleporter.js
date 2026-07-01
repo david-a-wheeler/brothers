@@ -90,6 +90,11 @@ export class Teleporter extends Entity {
     this._circleBody(x, y, sr, true);
   }
 
+  /** @returns {Phaser.GameObjects.Arc} The portal circle receives hover/press. */
+  interactiveView() {
+    return this.gfx;
+  }
+
   /**
    * This teleporter's exit: the target named by `target`, or the first target if
    * unnamed/unknown. Resolved on demand (teleports are rare) so it reflects the

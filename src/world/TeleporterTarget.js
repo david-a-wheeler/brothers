@@ -57,4 +57,9 @@ export class TeleporterTarget extends Entity {
       })
       .setDepth(2);
   }
+
+  /** @returns {Phaser.GameObjects.Rectangle} The exit marker receives hover/press. */
+  interactiveView() {
+    return this.gfx;
+  }
 }

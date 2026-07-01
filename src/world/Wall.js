@@ -14,11 +14,17 @@ export class Wall extends Entity {
   constructor(scene, def, level) {
     super(scene, def);
     Wall.ensureBrickTexture(scene);
-    scene.add.tileSprite(def.x, def.y, def.width, def.height, 'brick');
+    /** The brick fill; also the hover/press target for the info label. */
+    this.view = scene.add.tileSprite(def.x, def.y, def.width, def.height, 'brick');
     scene.add.rectangle(def.x, def.y, def.width, def.height).setStrokeStyle(2, 0x2a1d15, 0.9);
     this._rectBody(def.x, def.y, def.width, def.height, false, {
       restitution: level.wallRestitution,
     });
+  }
+
+  /** @returns {Phaser.GameObjects.TileSprite} The brick fill receives hover/press. */
+  interactiveView() {
+    return this.view;
   }
 
   /**

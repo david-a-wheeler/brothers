@@ -114,11 +114,87 @@ export class Entity {
 
   /**
    * One-time init after the whole world exists. Default: keep a world reference
-   * so peers can be found later. Override as `setup(world) { super.setup(world); … }`.
+   * so peers can be found later, and wire the hover/press info label. Override as
+   * `setup(world) { super.setup(world); … }`.
    * @param {import('./World.js').World} world
    */
   setup(world) {
     this.world = world;
+    this._enableInfo();
+  }
+
+  // --- Info label (hover / press) -----------------------------------------
+
+  /**
+   * Human-readable form of this entity's class, for display. Takes the internal
+   * class name and inserts a space before each interior capital, so
+   * `TeleporterTarget` reads "Teleporter Target" and `Goal` stays "Goal". Its own
+   * method (and text-only) so it can be localized later.
+   *
+   * @returns {string}
+   */
+  displayedClassName() {
+    return this.constructor.name.replace(/[A-Z]/g, (ch, i) => (i === 0 ? ch : ' ' + ch));
+  }
+
+  /**
+   * The label shown while the player hovers or presses this entity. An entity
+   * with no name — or whose name equals its class (ignoring case) — shows just
+   * the displayed class name; a distinctly named one shows
+   * "Name (Displayed Class Name)". Its own method so wording lives in one place
+   * and can be localized later.
+   *
+   * @returns {string}
+   */
+  infoText() {
+    const cls = this.displayedClassName();
+    const name = this.def.name;
+    if (!name || name.toLowerCase() === this.constructor.name.toLowerCase()) return cls;
+    return `${name} (${cls})`;
+  }
+
+  /**
+   * The game object that should receive hover/press for the info label, or
+   * `null` for an entity with no pickable view (then no label is wired).
+   * Subclasses return their primary visual.
+   *
+   * @returns {Phaser.GameObjects.GameObject|null}
+   */
+  interactiveView() {
+    return null;
+  }
+
+  /**
+   * Optional `[hitArea, callback]` for `setInteractive` when the view needs an
+   * explicit shape (e.g. a Container, which has no intrinsic size). `null` uses
+   * the view's own bounds.
+   *
+   * @returns {[object, Function]|null}
+   */
+  interactiveHitArea() {
+    return null;
+  }
+
+  /**
+   * Make this entity's view reveal its {@link infoText} on hover (mouse) or
+   * press (touch), and hide it on out/release. Wired once, in {@link setup}.
+   *
+   * @returns {void}
+   */
+  _enableInfo() {
+    const view = this.interactiveView();
+    if (!view) return;
+    const hit = this.interactiveHitArea();
+    if (hit) view.setInteractive(hit[0], hit[1]);
+    else view.setInteractive();
+    view.on('pointerover', () => this.scene.showEntityInfo(this));
+    view.on('pointerdown', () => this.scene.showEntityInfo(this));
+    view.on('pointerout', () => this.scene.hideEntityInfo(this));
+    // A mouse still hovering after release keeps the label (pointerout hides it);
+    // a touch has no hover, so a lifted finger hides it here.
+    view.on('pointerup', (pointer) => {
+      if (pointer.wasTouch) this.scene.hideEntityInfo(this);
+    });
   }
 
   /** Mid-flight sensor touch. Default: do nothing. */

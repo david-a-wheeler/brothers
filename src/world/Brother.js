@@ -164,6 +164,11 @@ export class Brother extends Entity {
     this.face.setText(emoji);
   }
 
+  /** @returns {Phaser.GameObjects.Arc} The body circle receives hover/press. */
+  interactiveView() {
+    return this.go;
+  }
+
   // --- Subclass surface (David/Ken override these) ------------------------
 
   /** @returns {number} 0xRRGGBB body fill. */
