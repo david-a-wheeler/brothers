@@ -1,5 +1,6 @@
 import { Config, applyRubberBandDefaults } from '../config.js';
 import { Brothers, FACES } from '../Brothers.js';
+import { Brother } from '../world/Brother.js';
 import { sfx } from '../Sfx.js';
 import {
   currentLevel,
@@ -86,7 +87,7 @@ export class GameScene extends Phaser.Scene {
     /** The world: owns every level entity (goals, teleporters, walls); see src/world. */
     this.world = new World(this, this.level);
 
-    this.brothers = new Brothers(this, this.level);
+    this.brothers = new Brothers(this, this.world);
 
     /** @type {LevelStatus} */
     this.status = 'READY';
@@ -1692,8 +1693,8 @@ export class GameScene extends Phaser.Scene {
       if (this.status !== 'PLAYING' || this.phase !== 'MOVING') return;
 
       for (const pair of event.pairs) {
-        const aBro = pair.bodyA.label === 'brother';
-        const bBro = pair.bodyB.label === 'brother';
+        const aBro = pair.bodyA.entity instanceof Brother;
+        const bBro = pair.bodyB.entity instanceof Brother;
 
         if (aBro && bBro) {
           sfx.hit(); // billiard-style click on every brother-on-brother contact

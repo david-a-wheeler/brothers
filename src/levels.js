@@ -17,14 +17,6 @@
 const DEFAULTS = {
   moves: 6,
   wallRestitution: 0.6,
-  // Per-brother size/mass multipliers a level can override (e.g. "David goes on
-  // a diet"). Applied on top of the global defaults; 1 = no change. Ken's are
-  // relative to Config.ball.radius/mass; David's are relative to Ken (so they
-  // stack with the lab's Config.ball.davidRadiusMult / davidMassMult).
-  kenRadiusMult: 1,
-  kenMassMult: 1,
-  davidRadiusMult: 1,
-  davidMassMult: 1,
 };
 
 /**
@@ -43,13 +35,7 @@ const DEFAULTS = {
  * @property {{width:number, height:number}} arena
  * @property {number} moves
  * @property {number} wallRestitution
- * @property {{x:number,y:number}|null} david
- * @property {{x:number,y:number}|null} ken
- * @property {EntityDef[]} objects  Every placed entity (goals, teleporters, walls, …).
- * @property {number} kenRadiusMult
- * @property {number} kenMassMult
- * @property {number} davidRadiusMult
- * @property {number} davidMassMult
+ * @property {EntityDef[]} objects  Every placed entity (brothers, goals, teleporters, walls, …).
  */
 
 /**
@@ -87,12 +73,6 @@ export function loadTiledLevel(map) {
     arena,
     moves: mapProps.moves ?? DEFAULTS.moves,
     wallRestitution: mapProps.wallRestitution ?? DEFAULTS.wallRestitution,
-    kenRadiusMult: mapProps.kenRadiusMult ?? DEFAULTS.kenRadiusMult,
-    kenMassMult: mapProps.kenMassMult ?? DEFAULTS.kenMassMult,
-    davidRadiusMult: mapProps.davidRadiusMult ?? DEFAULTS.davidRadiusMult,
-    davidMassMult: mapProps.davidMassMult ?? DEFAULTS.davidMassMult,
-    david: null,
-    ken: null,
     objects: [],
   };
 
@@ -102,28 +82,23 @@ export function loadTiledLevel(map) {
     if (layer.type === 'objectgroup') objects.push(...(layer.objects || []));
   }
 
-  // The loader is type-agnostic: spawns are pulled out (the pair needs them up
-  // front), and every other classed object is recorded generically for the
-  // world layer to interpret. Rect objects (e.g. walls) are converted from
-  // Tiled's top-left to centre coordinates; points have zero size so their
-  // centre is just their x,y. Unclassed objects are skipped.
+  // The loader is fully type-agnostic: every classed object — brothers, goals,
+  // teleporters, walls — is recorded generically for the world layer to
+  // interpret. Rect objects (e.g. walls) are converted from Tiled's top-left to
+  // centre coordinates; points have zero size so their centre is just their
+  // x,y. Unclassed objects are skipped.
   for (const o of objects) {
     const cls = o.class ?? o.type ?? '';
-    const p = propsToObject(o.properties);
-    if (cls === 'spawn') {
-      if (p.who === 'ken') level.ken = { x: o.x, y: o.y };
-      else level.david = { x: o.x, y: o.y };
-    } else if (cls) {
-      level.objects.push({
-        ...p, // custom props (radius, retain, dest, …)
-        kind: cls,
-        name: o.name || '',
-        x: o.x + (o.width || 0) / 2,
-        y: o.y + (o.height || 0) / 2,
-        width: o.width || 0,
-        height: o.height || 0,
-      });
-    }
+    if (!cls) continue;
+    level.objects.push({
+      ...propsToObject(o.properties), // custom props (radius, retain, dest, radiusMult, …)
+      kind: cls,
+      name: o.name || '',
+      x: o.x + (o.width || 0) / 2,
+      y: o.y + (o.height || 0) / 2,
+      width: o.width || 0,
+      height: o.height || 0,
+    });
   }
 
   return level;

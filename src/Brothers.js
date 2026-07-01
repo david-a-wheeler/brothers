@@ -1,86 +1,45 @@
 import { Config } from './config.js';
+import { FACES } from './faces.js';
 import { sfx } from './Sfx.js';
+import { David } from './world/David.js';
+import { Ken } from './world/Ken.js';
+import { Wall } from './world/Wall.js';
 
 /**
- * Emoji faces per game state. Faces float on top of the physics bodies and
- * are kept upright, so they stay legible no matter how the balls spin.
- */
-const FACES = {
-  idle: { launcher: '😃', anchor: '🤨' },
-  drag: { launcher: '😏', anchor: '😳' },
-  flight: { launcher: '😁', anchor: '😨' },
-  collision: '😬',
-  dizzy: '😖',
-  win: '😎',
-  lose: '😭',
-};
-
-/**
- * @typedef {Object} Brother
- * @property {string} name        Display name ("David" / "Ken").
- * @property {string} color       CSS colour for this brother's UI text.
- * @property {Phaser.GameObjects.Arc} go    The circle game object + Matter body.
- * @property {Phaser.GameObjects.Text} face The emoji face, locked upright.
- */
-
-/**
- * Owns the David/Ken pair: their bodies, the elastic tether, the upright
- * faces, role swapping, the "Hybrid Snap", settle detection, and teleporting.
- * The scene creates exactly one of these and drives it.
+ * Coordinates the David/Ken pair. The two brothers are {@link Brother} entities
+ * that the {@link World} builds from the level's `david`/`ken` objects and that
+ * own their own bodies and views; this class finds them and drives everything
+ * *between* them: the elastic tether, the upright faces' expressions, role
+ * swapping, the "Hybrid Snap", settle detection, and teleporting. The scene
+ * creates exactly one of these (after the world) and drives it.
  */
 export class Brothers {
   /**
    * @param {Phaser.Scene} scene
-   * @param {import('./levels.js').Level} level  Spawns, walls, and arena bounds.
+   * @param {import('./world/World.js').World} world  Holds the entities + level.
    */
-  constructor(scene, level) {
+  constructor(scene, world) {
     this.scene = scene;
-    /** Level data this pair lives in (spawns/objects/arena). */
-    this._level = level;
-    /**
-     * Wall rectangles (centre `x,y` + `width,height`) pulled once from the
-     * generic object list — used by the aim-blocking geometry. The world layer
-     * owns wall *rendering/physics*; this is just the collision math for legal
-     * launches, so it only needs the shapes.
-     */
-    this._walls = (level.objects || []).filter((o) => o.kind === 'wall');
+    this.world = world;
+    /** Arena bounds, for the aim-legality geometry. */
+    this._arena = world.level.arena;
 
-    // Ken is the baseline; David is sized/massed relative to him. Radii are set
-    // at creation; masses (and live lab tweaks to David) are applied just below.
-    const kenRadius = Config.ball.radius * (level.kenRadiusMult ?? 1);
-    const davidRadius = kenRadius * Config.ball.davidRadiusMult * (level.davidRadiusMult ?? 1);
-    this.david = this._createBrother('David', '#3aa0ff', 0x3aa0ff, level.david, davidRadius);
-    this.ken = this._createBrother('Ken', '#ff5a4d', 0xff5a4d, level.ken, kenRadius);
+    // Find the two real brothers among the world's entities. A level normally
+    // has one of each; if it has extras (future doppelgängers), prefer the ones
+    // the designer named "David"/"Ken".
+    this.david = this._pick(world.byType(David), 'David');
+    this.ken = this._pick(world.byType(Ken), 'Ken');
 
-    // Ken's mass: his natural (area-based) mass, scaled by the level. David's
-    // mass is derived from Ken's in _applyDavidPhysique (called here + per frame
-    // so the lab's David sliders take effect live).
-    this._kenRadius = kenRadius;
-    this._kenMass = this.ken.go.body.mass * (level.kenMassMult ?? 1);
-    this.ken.go.setMass(this._kenMass);
-    this._davidRadius = davidRadius; // body already created at this radius
-    this._davidMass = NaN; // force the first mass apply
-    this._applyDavidPhysique();
-
-    /** @type {Brother} The brother currently being slingshotted. */
+    /** @type {import('./world/Brother.js').Brother} The brother being slingshotted. */
     this.launcher = this.david;
-    /** @type {Brother} The frozen brother that unfreezes on impact. */
+    /** @type {import('./world/Brother.js').Brother} The frozen brother that unfreezes on impact. */
     this.anchor = this.ken;
 
     /** The elastic band, drawn fresh each frame (see {@link update}). */
-    this.band = scene.add.graphics();
+    this.band = scene.add.graphics().setDepth(4);
 
     /** Pulsing halo ring marking whichever ball can currently be moved. */
     this._glow = this._createGlow();
-
-    // Faces are created after the band and glow so they render on top.
-    this.david.face = this._createFace(level.david, FACES.idle.launcher);
-    this.ken.face = this._createFace(level.ken, FACES.idle.anchor);
-
-    /** David's rectangular glasses, overlaid on his face (see {@link update}). */
-    this._davidGlasses = this._createGlasses();
-    /** Ken's mustache, overlaid on his face (see {@link update}). */
-    this._kenMustache = this._createMustache();
 
     /** True while the player is dragging the launcher to aim. */
     this._aiming = false;
@@ -113,96 +72,28 @@ export class Brothers {
   }
 
   /**
-   * Create one brother's circular body at the given radius.
+   * Choose the controlled brother from the candidates of one kind: the one whose
+   * Tiled name matches, else the first placed.
    *
+   * @param {import('./world/Brother.js').Brother[]} list
    * @param {string} name
-   * @param {string} cssColor   Colour for UI text.
-   * @param {number} fillColor  0xRRGGBB fill for the circle.
-   * @param {{x:number, y:number}} pos
-   * @param {number} r          Body/visual radius.
-   * @returns {Brother}
+   * @returns {import('./world/Brother.js').Brother}
    */
-  _createBrother(name, cssColor, fillColor, pos, r) {
-    const go = this.scene.add.circle(pos.x, pos.y, r, fillColor);
-    this.scene.matter.add.gameObject(go, {
-      shape: { type: 'circle', radius: r },
-      restitution: Config.ball.restitution,
-      frictionAir: Config.ball.frictionAir,
-    });
-    go.body.label = 'brother';
-    return { name, color: cssColor, go, face: /** @type {*} */ (null) };
+  _pick(list, name) {
+    return list.find((b) => b.def.name === name) || list[0];
   }
 
   /**
-   * Set David's radius and mass from the lab's Config.ball.davidRadiusMult /
-   * davidMassMult (and this level's David multipliers), both relative to Ken.
-   * Called once at construction and again whenever the lab changes a value (see
-   * GameScene._adjustParam/_promptParam/_resetParams) — not per frame. A no-op
-   * when nothing changed.
+   * Push the lab's live David size/mass multipliers onto the David entity (whose
+   * accessors reshape the body). Called at construction-time defaults via the
+   * entity itself, and again whenever the lab changes a value (see
+   * GameScene._adjustParam/_promptParam/_resetParams).
    *
    * @returns {void}
    */
   _applyDavidPhysique() {
-    const lvl = this._level;
-    const targetR = this._kenRadius * Config.ball.davidRadiusMult * (lvl.davidRadiusMult ?? 1);
-    const targetM = this._kenMass * Config.ball.davidMassMult * (lvl.davidMassMult ?? 1);
-    let massDirty = targetM !== this._davidMass;
-    if (Math.abs(targetR - this._davidRadius) > 1e-3) {
-      const factor = targetR / this._davidRadius;
-      Phaser.Physics.Matter.Matter.Body.scale(this.david.go.body, factor, factor);
-      this.david.go.radius = targetR; // resize the visual circle to match
-      this._davidRadius = targetR;
-      massDirty = true; // Body.scale recomputes mass from area; restore ours
-    }
-    if (massDirty) {
-      this.david.go.setMass(targetM);
-      this._davidMass = targetM;
-    }
-  }
-
-  /**
-   * Create an upright emoji face.
-   *
-   * @param {{x:number, y:number}} pos
-   * @param {string} emoji
-   * @returns {Phaser.GameObjects.Text}
-   */
-  _createFace(pos, emoji) {
-    return this.scene.add
-      .text(pos.x, pos.y, emoji, { fontSize: '34px' })
-      .setOrigin(0.5);
-  }
-
-  /**
-   * Build David's glasses: two black rectangular lens frames (wider than tall)
-   * joined by a bridge, drawn around their own origin so {@link update} can sit
-   * them over the eyes. Lenses are open frames, so the emoji's eyes/eyebrows
-   * still show through. Hidden on the win face (it already has shades).
-   *
-   * @returns {Phaser.GameObjects.Graphics}
-   */
-  _createGlasses() {
-    const g = this.scene.add.graphics();
-    g.lineStyle(2, 0x000000, 1);
-    g.strokeRoundedRect(-12.5, -4, 11, 7, 2); // left lens
-    g.strokeRoundedRect(1.5, -4, 11, 7, 2); // right lens
-    g.lineBetween(-1.5, -0.5, 1.5, -0.5); // bridge
-    return g;
-  }
-
-  /**
-   * Build Ken's mustache: two black lobes (wider than tall) meeting at the
-   * centre, drawn around their own origin so {@link update} can sit them above
-   * his mouth. Shown on every expression.
-   *
-   * @returns {Phaser.GameObjects.Graphics}
-   */
-  _createMustache() {
-    const g = this.scene.add.graphics();
-    g.fillStyle(0x000000, 1);
-    g.fillEllipse(-5, 0, 10, 3); // left half
-    g.fillEllipse(5, 0, 10, 3); // right half
-    return g;
+    this.david.radiusMult = Config.ball.davidRadiusMult;
+    this.david.massMult = Config.ball.davidMassMult;
   }
 
   /**
@@ -213,13 +104,9 @@ export class Brothers {
    * @returns {Phaser.GameObjects.Arc}
    */
   _createGlow() {
-    const ring = this.scene.add.circle(
-      this.launcher.go.x,
-      this.launcher.go.y,
-      Config.ball.radius + 8,
-      0xffffff,
-      0 // fillAlpha 0: we only want the stroke
-    );
+    const ring = this.scene.add
+      .circle(this.launcher.go.x, this.launcher.go.y, Config.ball.radius + 8, 0xffffff, 0)
+      .setDepth(5);
     ring.setStrokeStyle(3, 0xfff2a8, 0.9);
 
     /** Looping expand-and-fade pulse. Paused while the ring is hidden. */
@@ -277,27 +164,16 @@ export class Brothers {
   }
 
   /**
-   * Glue faces to bodies (kept upright) and redraw the tether. Call once
-   * per frame from the scene's update.
+   * Per-frame: let each brother glue its own face/feature and stay in-arena,
+   * then draw the pair-level bits (tether band + sound, glow, refusal Xs). Call
+   * once per frame from the scene's update.
    *
    * @returns {void}
    */
   update() {
     this._applyPullOnlyTether();
-    this._containInArena();
-
-    for (const b of [this.david, this.ken]) {
-      b.face.setPosition(b.go.x, b.go.y);
-      b.face.rotation = 0;
-    }
-
-    // David wears rectangular glasses over his eyes on every expression except
-    // the win face (😎), which already has shades.
-    this._davidGlasses.setPosition(this.david.go.x, this.david.go.y - 7);
-    this._davidGlasses.setVisible(this.david.face.text !== FACES.win);
-
-    // Ken sports a mustache above his mouth on every expression.
-    this._kenMustache.setPosition(this.ken.go.x, this.ken.go.y + 1);
+    this.david.update();
+    this.ken.update();
 
     // Keep the glow ring centred on the movable ball (its scale is tweened).
     this._glow.setPosition(this.launcher.go.x, this.launcher.go.y);
@@ -355,60 +231,14 @@ export class Brothers {
   }
 
   /**
-   * Hard safety net: keep both balls inside the arena no matter what. Matter's
-   * world-bounds walls can be tunnelled through at high launch speeds (a fast
-   * ball can jump clean past them in a single step), so each frame we clamp any
-   * dynamic ball back inside the play area and reflect the offending velocity
-   * component — matching the bounce the wall would have given — so it never
-   * escapes and still rebounds naturally.
-   *
-   * @returns {void}
-   */
-  _containInArena() {
-    const e = Config.ball.restitution;
-    const { width, height } = this._level.arena;
-    for (const b of [this.david, this.ken]) {
-      const body = b.go.body;
-      if (body.isStatic) continue; // a frozen ball isn't moving anywhere
-
-      const r = b.go.radius; // brothers can differ in size (David is bigger)
-      let { x, y } = b.go;
-      let { x: vx, y: vy } = body.velocity;
-      let hit = false;
-      if (x < r) {
-        x = r;
-        vx = Math.abs(vx) * e;
-        hit = true;
-      } else if (x > width - r) {
-        x = width - r;
-        vx = -Math.abs(vx) * e;
-        hit = true;
-      }
-      if (y < r) {
-        y = r;
-        vy = Math.abs(vy) * e;
-        hit = true;
-      } else if (y > height - r) {
-        y = height - r;
-        vy = -Math.abs(vy) * e;
-        hit = true;
-      }
-      if (hit) {
-        b.go.setPosition(x, y);
-        b.go.setVelocity(vx, vy);
-      }
-    }
-  }
-
-  /**
    * Set both faces from a role-relative state (launcher vs. anchor).
    *
    * @param {'idle'|'drag'|'flight'} state
    * @returns {void}
    */
   setExpressions(state) {
-    this.launcher.face.setText(FACES[state].launcher);
-    this.anchor.face.setText(FACES[state].anchor);
+    this.launcher.setFace(FACES[state].launcher);
+    this.anchor.setFace(FACES[state].anchor);
   }
 
   /**
@@ -418,8 +248,8 @@ export class Brothers {
    * @returns {void}
    */
   setBothFaces(emoji) {
-    this.david.face.setText(emoji);
-    this.ken.face.setText(emoji);
+    this.david.setFace(emoji);
+    this.ken.setFace(emoji);
   }
 
   /**
@@ -492,8 +322,10 @@ export class Brothers {
     const l = this.launcher.go;
     const a = this.anchor.go;
     const r = l.radius; // launcher's own radius (David and Ken can differ)
-    const { width, height } = this._level.arena;
-    const walls = this._walls;
+    const { width, height } = this._arena;
+    // Walls come straight from the world (single source of truth): each Wall
+    // entity's def carries its centre + size.
+    const walls = this.world.byType(Wall);
 
     // Poking past an arena edge?
     if (l.x < r || l.x > width - r || l.y < r || l.y > height - r) return true;
@@ -502,7 +334,7 @@ export class Brothers {
     if (Phaser.Math.Distance.Between(l.x, l.y, a.x, a.y) < r + a.radius) return true;
 
     // Sitting on a wall (closest-point circle/rectangle overlap)?
-    const onWall = walls.some((w) => {
+    const onWall = walls.some(({ def: w }) => {
       const nx = Phaser.Math.Clamp(l.x, w.x - w.width / 2, w.x + w.width / 2);
       const ny = Phaser.Math.Clamp(l.y, w.y - w.height / 2, w.y + w.height / 2);
       return Phaser.Math.Distance.Between(l.x, l.y, nx, ny) < r;
@@ -514,7 +346,7 @@ export class Brothers {
     // doesn't touch — is allowed. Both balls being clear is already covered by
     // the launcher checks above and by the band's endpoints sitting on them.
     const band = new Phaser.Geom.Line(l.x, l.y, a.x, a.y);
-    return walls.some((w) =>
+    return walls.some(({ def: w }) =>
       Phaser.Geom.Intersects.LineToRectangle(
         band,
         new Phaser.Geom.Rectangle(w.x - w.width / 2, w.y - w.height / 2, w.width, w.height)

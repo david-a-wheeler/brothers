@@ -28,10 +28,8 @@
    "y":0,
    "draworder":"topdown",
    "objects":[
-    {"id":1,"name":"david","class":"spawn","point":true,"x":350,"y":540,"width":0,"height":0,"rotation":0,"visible":true,
-     "properties":[{"name":"who","type":"string","value":"david"}]},
-    {"id":2,"name":"ken","class":"spawn","point":true,"x":440,"y":540,"width":0,"height":0,"rotation":0,"visible":true,
-     "properties":[{"name":"who","type":"string","value":"ken"}]},
+    {"id":1,"name":"David","class":"david","point":true,"x":350,"y":540,"width":0,"height":0,"rotation":0,"visible":true},
+    {"id":2,"name":"Ken","class":"ken","point":true,"x":440,"y":540,"width":0,"height":0,"rotation":0,"visible":true},
     {"id":3,"name":"goal","class":"goal","point":true,"x":880,"y":160,"width":0,"height":0,"rotation":0,"visible":true,
      "properties":[{"name":"radius","type":"float","value":60}]},
     {"id":4,"name":"teleporter in","class":"teleporter-source","point":true,"x":620,"y":300,"width":0,"height":0,"rotation":0,"visible":true,

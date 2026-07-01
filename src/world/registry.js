@@ -1,4 +1,6 @@
+import { David } from './David.js';
 import { Goal } from './Goal.js';
+import { Ken } from './Ken.js';
 import { TeleportSource } from './TeleportSource.js';
 import { TeleportTarget } from './TeleportTarget.js';
 import { Wall } from './Wall.js';
@@ -12,6 +14,8 @@ import { Wall } from './Wall.js';
  * Adding a type is two steps: write the subclass file, then add one line here.
  */
 export const KINDS = {
+  david: David,
+  ken: Ken,
   goal: Goal,
   'teleporter-source': TeleportSource,
   'teleporter-target': TeleportTarget,

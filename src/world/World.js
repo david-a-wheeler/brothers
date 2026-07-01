@@ -19,6 +19,8 @@ export class World {
    */
   constructor(scene, level) {
     this.scene = scene;
+    /** The level model this world was built from (arena bounds, etc.). */
+    this.level = level;
     /** @type {import('./Entity.js').Entity[]} Every object, in build order. */
     this._all = [];
     /** @type {Map<Function, import('./Entity.js').Entity[]>} Class → its members. */

@@ -69,7 +69,8 @@ Set each object's **Class** (older Tiled: **Type**) to one of:
 | Class                | Shape  | Properties                          | Meaning |
 | -------------------- | ------ | ----------------------------------- | ------- |
 | `wall`               | rect   | —                                   | A solid wall (deflects balls). Any number. |
-| `spawn`              | point  | `who` = `"david"` \| `"ken"`        | A brother's start position. |
+| `david`              | point  | `radiusMult`, `massMult` (optional) | David's start position. Name the controlled one **David**. |
+| `ken`                | point  | `radiusMult`, `massMult` (optional) | Ken's start position. Name the controlled one **Ken**. |
 | `goal`               | point  | `radius` (number)                   | A goal zone. **Any number — reaching any one wins.** |
 | `teleporter-source`  | point  | `radius` (number), `retain` (0–1), `dest` (target name) | Portal entrance. Any number. |
 | `teleporter-target`  | point  | (Tiled **Name**)                    | Portal exit. Any number. |
@@ -78,6 +79,13 @@ Goals, sources, and targets are each independent — a level may have as many as
 you like. A source sends the pair to the `teleporter-target` whose Tiled **Name**
 matches its `dest` property; if `dest` is omitted (or names no target), it uses
 the **first** target. One target may be the destination of many sources.
+
+Normally there's one `david` and one `ken`. The slingshot pair is chosen by
+Tiled **Name** (`David`/`Ken`), so a level may later place extra, uncontrolled
+brothers (doppelgängers) that render but aren't slingshotted. `radiusMult` /
+`massMult` (optional) scale that brother off the base size/mass (default 1;
+David's default comes from the lab). Mass is independent of size unless
+`massMult` is set.
 
 Map-level custom properties:
 

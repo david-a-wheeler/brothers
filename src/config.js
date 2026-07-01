@@ -65,14 +65,15 @@ export const Config = {
   grid: { size: 64, color: 0xffffff, alpha: 0.06 },
 
   /**
-   * Shared rigid-body settings. `radius` is Ken's (the baseline); David's size
-   * and mass are expressed as multiples of Ken's via `davidRadiusMult` /
+   * Shared rigid-body settings — the base every brother is sized from. `radius`
+   * is the base radius; each brother scales it by its own `radiusMult`/`massMult`
+   * (default 1, i.e. Ken). David's defaults come from `davidRadiusMult` /
    * `davidMassMult`, which are lab-tunable and live in applyRubberBandDefaults()
-   * (so the lab's Reset restores them). Levels can further scale each brother
-   * (see levels.js kenRadiusMult / davidMassMult / etc.).
+   * (so the lab's Reset restores them). A level's `david`/`ken` object can
+   * override either per-brother multiplier (see world/Brother.js).
    */
   ball: {
-    radius: 30, // Ken's radius (the baseline both brothers are sized from)
+    radius: 30, // base radius (a brother with radiusMult 1, e.g. Ken)
     restitution: 0.8, // bounciness off walls and each other (plan: 0.7-0.9)
     frictionAir: 0.025, // passive per-frame slowdown
     // davidRadiusMult / davidMassMult are set in applyRubberBandDefaults().

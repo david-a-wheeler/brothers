@@ -1,0 +1,195 @@
+import { Config } from '../config.js';
+import { Entity } from './Entity.js';
+
+/**
+ * One brother: a dynamic circular body with an upright emoji face and a
+ * subclass-specific facial feature (David's glasses, Ken's mustache). A
+ * {@link Entity}, so the {@link World} builds it from the level's `david`/`ken`
+ * objects, its body carries `entity` for collision routing, and the pair can be
+ * found via `world.byType(David|Ken)`.
+ *
+ * A Brother owns only *itself* — its body and view. The interaction between the
+ * two real brothers (the elastic tether, the slingshot, turn-taking, teleport)
+ * lives in {@link Brothers}, which finds them and drives them. Splitting it this
+ * way lets a level place extra, non-controlled brothers later (e.g. doppelgänger
+ * Kens) that render but aren't part of the slingshot pair.
+ *
+ * Size and mass are multipliers of the shared base (`Config.ball`): assigning
+ * {@link radiusMult} or {@link massMult} reshapes the body immediately, and mass
+ * is kept **independent of size** — a bigger brother isn't heavier unless its
+ * `massMult` says so.
+ */
+export class Brother extends Entity {
+  /**
+   * @param {Phaser.Scene} scene
+   * @param {import('../levels.js').EntityDef} def  Uses `x`,`y`,`name`, optional `radiusMult`,`massMult`.
+   * @param {import('../levels.js').Level} level  For arena bounds (containment).
+   */
+  constructor(scene, def, level) {
+    super(scene, def);
+    /** Arena bounds, for per-ball containment (see {@link update}). */
+    this._arena = level.arena;
+    /** Display name (Tiled name, else the subclass default) — used by the HUD. */
+    this.name = def.name || this._defaultName;
+    /** CSS colour for this brother's UI text. */
+    this.color = this._cssColor;
+
+    const base = Config.ball;
+    /** The circle game object + its Matter body. */
+    this.go = scene.add.circle(def.x, def.y, base.radius, this._fillColor).setDepth(3);
+    scene.matter.add.gameObject(this.go, {
+      shape: { type: 'circle', radius: base.radius },
+      restitution: base.restitution,
+      frictionAir: base.frictionAir,
+    });
+    this.go.body.entity = this; // collision routing (replaces the old label 'brother')
+
+    /** Base radius/mass the multipliers scale from (captured before any scaling). */
+    this._baseRadius = base.radius;
+    this._baseMass = this.go.body.mass;
+    this._radiusMult = 1;
+    this._massMult = 1;
+
+    /** Upright emoji face; {@link Brothers} sets the actual expression. */
+    this.face = scene.add
+      .text(def.x, def.y, '🙂', { fontSize: '34px' })
+      .setOrigin(0.5)
+      .setDepth(6);
+
+    /** Subclass facial feature (glasses/mustache), positioned each frame. */
+    this.feature = this._createFeature();
+
+    // Apply the level's authored size/mass. Mass first, so the radius setter's
+    // mass re-assertion (Body.scale recomputes mass from area) uses it.
+    this.massMult = def.massMult ?? this._defaultMassMult;
+    this.radiusMult = def.radiusMult ?? this._defaultRadiusMult;
+  }
+
+  /** @returns {number} Current radius as a multiple of the base radius. */
+  get radiusMult() {
+    return this._radiusMult;
+  }
+
+  /**
+   * Resize the body (and its visual) to `m` × the base radius, keeping mass
+   * independent of size. Matter's `Body.scale` is relative, so we scale from the
+   * current radius to the target; it also recomputes mass from area, which we
+   * then override back to our own.
+   *
+   * @param {number} m
+   */
+  set radiusMult(m) {
+    if (m === this._radiusMult) return;
+    const target = this._baseRadius * m;
+    const factor = target / this.go.radius;
+    Phaser.Physics.Matter.Matter.Body.scale(this.go.body, factor, factor);
+    this.go.radius = target; // resize the visual circle to match
+    this._radiusMult = m;
+    this._applyMass();
+  }
+
+  /** @returns {number} Current mass as a multiple of the base mass. */
+  get massMult() {
+    return this._massMult;
+  }
+
+  /** @param {number} m  Sets mass to `m` × base mass (independent of radius). */
+  set massMult(m) {
+    this._massMult = m;
+    this._applyMass();
+  }
+
+  /** @returns {void} */
+  _applyMass() {
+    this.go.setMass(this._baseMass * this._massMult);
+  }
+
+  /**
+   * Glue the face + feature to the body (kept upright) and keep the ball inside
+   * the arena. Driven by {@link Brothers} each frame (Brothers stays needsUpdate
+   * = false so the World doesn't also tick it).
+   *
+   * @returns {void}
+   */
+  update() {
+    this._contain();
+    this.face.setPosition(this.go.x, this.go.y);
+    this.face.rotation = 0;
+    this._updateFeature();
+  }
+
+  /**
+   * Hard safety net: keep this ball inside the arena. Matter's world-bounds can
+   * be tunnelled at high launch speeds, so each frame we clamp a dynamic ball
+   * back inside and reflect the offending velocity component (matching the
+   * bounce the wall would have given).
+   *
+   * @returns {void}
+   */
+  _contain() {
+    const body = this.go.body;
+    if (body.isStatic) return; // a frozen ball isn't moving anywhere
+    const e = Config.ball.restitution;
+    const { width, height } = this._arena;
+    const r = this.go.radius;
+    let { x, y } = this.go;
+    let { x: vx, y: vy } = body.velocity;
+    let hit = false;
+    if (x < r) {
+      x = r;
+      vx = Math.abs(vx) * e;
+      hit = true;
+    } else if (x > width - r) {
+      x = width - r;
+      vx = -Math.abs(vx) * e;
+      hit = true;
+    }
+    if (y < r) {
+      y = r;
+      vy = Math.abs(vy) * e;
+      hit = true;
+    } else if (y > height - r) {
+      y = height - r;
+      vy = -Math.abs(vy) * e;
+      hit = true;
+    }
+    if (hit) {
+      this.go.setPosition(x, y);
+      this.go.setVelocity(vx, vy);
+    }
+  }
+
+  /** @param {string} emoji  Set this brother's face. */
+  setFace(emoji) {
+    this.face.setText(emoji);
+  }
+
+  // --- Subclass surface (David/Ken override these) ------------------------
+
+  /** @returns {number} 0xRRGGBB body fill. */
+  get _fillColor() {
+    return 0xffffff;
+  }
+  /** @returns {string} CSS colour for UI text. */
+  get _cssColor() {
+    return '#ffffff';
+  }
+  /** @returns {string} Display name when the Tiled object is unnamed. */
+  get _defaultName() {
+    return 'Brother';
+  }
+  /** @returns {number} Radius multiplier when the level doesn't set one. */
+  get _defaultRadiusMult() {
+    return 1;
+  }
+  /** @returns {number} Mass multiplier when the level doesn't set one. */
+  get _defaultMassMult() {
+    return 1;
+  }
+  /** @returns {Phaser.GameObjects.GameObject|null} The facial feature, or null. */
+  _createFeature() {
+    return null;
+  }
+  /** Position/refresh the facial feature over the face. Default: nothing. */
+  _updateFeature() {}
+}
