@@ -6,14 +6,45 @@
  * collisions to them, evaluates win conditions, and ticks the few that opt into
  * per-frame updates.
  *
- * Hooks (all optional — defaults are inert):
- * - `onBrotherContact()`  — a brother touched this object's body while a shot is
- *   in flight (collisionstart while MOVING). Teleporters use this.
- * - `isReached(brothers)` — settle-time win predicate. Goals use this.
- * - `needsUpdate` + `update(ctx)` — per-frame logic for *dynamic* objects.
- *   Defaults to off, so static objects (today: all of them) cost nothing per
- *   frame. The manager only ticks opt-in objects and culls them by viewport.
- * - `bounds()` — world AABB used for that culling.
+ * The four hooks below are the entire contract between a world object and the
+ * rest of the game. Every subclass is driven purely through them, and the base
+ * defaults are all inert, so a subclass overrides only the ones it cares about
+ * and inherits do-nothing behaviour for the rest. The two ways the world reacts
+ * to the brothers are deliberately split by *timing*:
+ *
+ * - `onBrotherContact()` — **fired the instant a brother's body overlaps this
+ *   object's sensor body, mid-flight** (Matter `collisionstart` while the shot
+ *   phase is MOVING; the scene's collision router looks up the struck body's
+ *   `worldObject` and calls this). Use it for triggers that must act *on touch*,
+ *   before the balls settle — e.g. a teleporter warps the pair the moment they
+ *   enter. Only sensor (pass-through) bodies get here; solid bodies (walls) are
+ *   handled by the scene as a snap and never call this. May fire on several
+ *   consecutive frames while the overlap persists, so a subclass that must act
+ *   once per pass debounces itself (see TeleportSource). Default: no-op.
+ *
+ * - `isReached(brothers)` — **a settle-time predicate, polled once after both
+ *   balls have come to rest** (from `WorldObjects.firstReachedGoal`, called in
+ *   `_resolveTurn`). Not tied to a physics contact: it asks a geometric
+ *   question ("is a brother at rest inside my zone?") via `brothers.anyInside`.
+ *   Return `true` to signal this object's win condition is met — the manager
+ *   wins the level on the first goal that does. Use this (not `onBrotherContact`)
+ *   for anything decided by where the balls *end up*, not what they touched in
+ *   flight. Default: returns `false` (never a win).
+ *
+ * - `needsUpdate` + `update(ctx)` — **opt-in per-frame tick for *dynamic*
+ *   objects** (moving hazards, timed gates, …). Static objects leave
+ *   `needsUpdate = false` (its default) and are never ticked, so they cost
+ *   nothing per frame — today every object is static, so this path is dormant.
+ *   Set `needsUpdate = true` to be added to the manager's updater list; then
+ *   `update(ctx)` runs each frame with `ctx = { brothers, view }` (`view` is the
+ *   camera's world-space `Geom.Rectangle`). The manager skips the call when the
+ *   object's `bounds()` lies outside `view`, so off-screen objects are free.
+ *
+ * - `bounds()` — **the world-space AABB used to cull `update`.** Return a
+ *   `Phaser.Geom.Rectangle` covering the object so the manager can test it
+ *   against the viewport; return `null` (the default) to always tick when
+ *   `needsUpdate` is set (no culling). Only consulted for objects that opt into
+ *   updates.
  *
  * Game objects and bodies are torn down automatically when the scene restarts,
  * so there is no explicit destroy step.
@@ -68,14 +99,29 @@ export class WorldObject {
     return body;
   }
 
-  // Default hooks — overridden as needed.
+  // Default hooks — all inert; subclasses override only what they need. See the
+  // class doc-comment above for exactly when each is called and by whom.
+
+  /** Mid-flight sensor touch. Default: do nothing. */
   onBrotherContact() {}
-  isReached() {
+
+  /**
+   * Settle-time win predicate.
+   * @param {import('../Brothers.js').Brothers} _brothers
+   * @returns {boolean} Default: `false` (never a win).
+   */
+  isReached(_brothers) {
     return false;
   }
-  /** @returns {Phaser.Geom.Rectangle|null} World AABB for culling, or null. */
+
+  /** @returns {Phaser.Geom.Rectangle|null} World AABB for culling, or `null` (no culling). */
   bounds() {
     return null;
   }
-  update() {}
+
+  /**
+   * Per-frame tick (only when `needsUpdate` is true). Default: do nothing.
+   * @param {{brothers: import('../Brothers.js').Brothers, view: Phaser.Geom.Rectangle}} _ctx
+   */
+  update(_ctx) {}
 }

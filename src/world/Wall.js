@@ -8,15 +8,17 @@ import { WorldObject } from './WorldObject.js';
 export class Wall extends WorldObject {
   /**
    * @param {Phaser.Scene} scene
-   * @param {{x:number, y:number, width:number, height:number}} def
-   * @param {number} restitution  Bounce coefficient (per level).
+   * @param {import('../levels.js').WorldObjectDef} def  Uses `x,y,width,height`.
+   * @param {import('../levels.js').Level} level  Provides `wallRestitution`.
    */
-  constructor(scene, def, restitution) {
+  constructor(scene, def, level) {
     super(scene, def);
     Wall.ensureBrickTexture(scene);
     scene.add.tileSprite(def.x, def.y, def.width, def.height, 'brick');
     scene.add.rectangle(def.x, def.y, def.width, def.height).setStrokeStyle(2, 0x2a1d15, 0.9);
-    this._rectBody(def.x, def.y, def.width, def.height, false, { restitution });
+    this._rectBody(def.x, def.y, def.width, def.height, false, {
+      restitution: level.wallRestitution,
+    });
   }
 
   /**

@@ -35,8 +35,15 @@ export class Brothers {
    */
   constructor(scene, level) {
     this.scene = scene;
-    /** Level data this pair lives in (spawns/walls/arena). */
+    /** Level data this pair lives in (spawns/objects/arena). */
     this._level = level;
+    /**
+     * Wall rectangles (centre `x,y` + `width,height`) pulled once from the
+     * generic object list — used by the aim-blocking geometry. The world layer
+     * owns wall *rendering/physics*; this is just the collision math for legal
+     * launches, so it only needs the shapes.
+     */
+    this._walls = (level.objects || []).filter((o) => o.kind === 'wall');
 
     // Ken is the baseline; David is sized/massed relative to him. Radii are set
     // at creation; masses (and live lab tweaks to David) are applied just below.
@@ -486,7 +493,7 @@ export class Brothers {
     const a = this.anchor.go;
     const r = l.radius; // launcher's own radius (David and Ken can differ)
     const { width, height } = this._level.arena;
-    const walls = this._level.walls;
+    const walls = this._walls;
 
     // Poking past an arena edge?
     if (l.x < r || l.x > width - r || l.y < r || l.y > height - r) return true;

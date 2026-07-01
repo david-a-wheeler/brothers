@@ -10,7 +10,7 @@ import { ensurePortalSpark } from './effects.js';
 export class TeleportTarget extends WorldObject {
   /**
    * @param {Phaser.Scene} scene
-   * @param {{name:string, x:number, y:number}} def
+   * @param {import('../levels.js').WorldObjectDef} def  Uses `name`, `x`, `y`.
    */
   constructor(scene, def) {
     super(scene, def);
