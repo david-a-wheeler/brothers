@@ -1,49 +1,94 @@
 #!/usr/bin/env python3
 """Tiny threaded static file server for local development.
 
-Optimized for modern frontend development (parallel ES module loading)
-with absolute directory isolation and file-backed password cookie
-authentication.
-
-This does *NOT* encrypt the connection (no TLS).
-
-We store the password as cleartext in file `.password`.
-We're presuming to reuse it locally, so it's important that it be
-easily available. The goal of the password is to prevent outsiders
-from being able to easily access the site.
-
+Optimized for parallel ES module loading, strict directory safety, 
+and 1-year encrypted (hashed) cookie authentication. The encrypted
+password is stored in ".password"; delete that at any time to
+force its regeneration.
 """
 
-import io
+import hashlib
 import os
-import re
 import secrets
 import string
 import sys
+import time
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
 PASSWORD_FILE = ".password"
+ONE_YEAR_SECONDS = 31536000  # 60 * 60 * 24 * 365
+
+# Global runtime containers for the authentication data
+STORED_HASH = None
+STORED_SALT = None
 
 
-def get_or_create_password():
-    """Reads the password from .password or creates a cryptographically secure 10-char one."""
+def init_authentication():
+    """Manages the password lifecycle.
+    
+    Loads existing hashes securely, checks for 1-year expiration,
+    or generates a new password and prints it strictly ONCE.
+    """
+    global STORED_HASH, STORED_SALT
+
     if os.path.exists(PASSWORD_FILE):
-        with open(PASSWORD_FILE, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    else:
-        # We pick characters that won't break HTML forms or HTTP Cookie headers 
-        # (avoiding spaces, quotes, semicolons, commas, and backslashes)
-        alphabet = string.ascii_letters + string.digits + "!@#$%^&*()-_=+[]{}|:"
-        password = "".join(secrets.choice(alphabet) for _ in range(10))
-        with open(PASSWORD_FILE, "w", encoding="utf-8") as f:
-            f.write(password)
-        return password
+        try:
+            with open(PASSWORD_FILE, "r", encoding="utf-8") as f:
+                parts = f.read().strip().split("|")
+            
+            if len(parts) == 3:
+                timestamp = float(parts[0])
+                STORED_SALT = bytes.fromhex(parts[1])
+                STORED_HASH = bytes.fromhex(parts[2])
+                
+                # Check if the 1-year mark has passed since creation
+                if time.time() - timestamp > ONE_YEAR_SECONDS:
+                    print("\n" + "!" * 70)
+                    print(" BIG WARNING: THE 1-YEAR COOKIE EXPIRATION LIFECYCLE HAS MET INDICES.")
+                    print(" THE LOCAL ENCRYPTED PASSWORD HAS EXPIRED AND WILL NOW REGENERATE.")
+                    print("!" * 70 + "\n")
+                    # Break out to trigger a brand new password generation sequence
+                else:
+                    print("[Security] Loaded encrypted password hash from disk. Session is active.")
+                    return
+        except Exception as e:
+            print(f"[Security Warning] Error reading password metadata ({e}). Resetting...")
+
+    # Generate a fresh 10-character password
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*()-_=+[]{}|:"
+    password = "".join(secrets.choice(alphabet) for _ in range(10))
+    
+    # BIG NOTE: Print out prominently on local console because this is the ONLY time it's visible
+    print("=" * 70)
+    print(" 🔑 A NEW WEB SERVER PASSWORD HAS BEEN GENERATED 🔑")
+    print(f" PASSWORD: {password}")
+    print("=" * 70)
+    print(" NOTE: This password is now securely encrypted on disk.")
+    print(" It will NEVER be printed on screen again upon server restarts.")
+    print(" Erase the .password file to force re-generation of a password.")
+    print("=" * 70)
+    
+    # Hash the password securely with PBKDF2, SHA-256, with iterations.
+    STORED_SALT = secrets.token_bytes(16)
+    STORED_HASH = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), STORED_SALT, 100000)
+    
+    # Save the creation timestamp, the salt, and the final hash to disk
+    with open(PASSWORD_FILE, "w", encoding="utf-8") as f:
+        f.write(f"{time.time()}|{STORED_SALT.hex()}|{STORED_HASH.hex()}")
 
 
-# Initialize the password globally on startup
-GLOBAL_PASSWORD = get_or_create_password()
+def verify_password(plain_password):
+    """Hashes the incoming client password text and checks it against the disk hash."""
+    if not STORED_HASH or not STORED_SALT:
+        return False
+    
+    # Hash the input using the exact same salt and iteration parameters
+    test_hash = hashlib.pbkdf2_hmac('sha256', plain_password.encode('utf-8'), STORED_SALT, 100000)
+    
+    # Constant-time comparison to prevent timing-attack side channels
+    return secrets.compare_digest(STORED_HASH, test_hash)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -59,27 +104,27 @@ class Handler(SimpleHTTPRequestHandler):
     }
 
     def is_authenticated(self):
-        """Checks if the browser sent a valid password cookie."""
+        """Checks if the browser's cookie payload hashes out correctly."""
         cookie_header = self.headers.get("Cookie")
         if cookie_header:
             cookie = SimpleCookie(cookie_header)
-            if "password" in cookie and cookie["password"].value == GLOBAL_PASSWORD:
-                return True
+            if "password" in cookie:
+                return verify_password(cookie["password"].value)
         return False
 
     def serve_login_form(self, error=False):
-        """Serves a trivial HTML form for password authentication."""
+        """Serves a minimalist password entry prompt."""
         html = f"""<!DOCTYPE html>
 <html>
 <head>
     <title>Server Authentication</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body {{ font-family: sans-serif; margin: 2rem; padding: 0; background: #f9f9f9; }}
-        .box {{ max-width: 400px; margin: 0 auto; padding: 2rem; background: #fff; border: 1px solid #ccc; border-radius: 5px; }}
+        body {{ font-family: sans-serif; margin: 2rem; background: #f9f9f9; }}
+        .box {{ max-width: 400px; margin: 5rem auto; padding: 2rem; background: #fff; border: 1px solid #ccc; border-radius: 5px; }}
         input[type="password"] {{ width: 100%; padding: 0.5rem; margin: 1rem 0; box-sizing: border-box; }}
-        input[type="submit"] {{ width: 100%; padding: 0.5rem; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }}
-        .error {{ color: red; margin-bottom: 1rem; }}
+        input[type="submit"] {{ width: 100%; padding: 0.5rem; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; }}
+        .error {{ color: #dc3545; margin-bottom: 1rem; font-weight: bold; }}
     </style>
 </head>
 <body>
@@ -88,7 +133,7 @@ class Handler(SimpleHTTPRequestHandler):
         { '<p class="error">Invalid password. Please try again.</p>' if error else '' }
         <form method="POST" action="/login">
             <label>Password: <input type="password" name="password" required autofocus></label>
-            <input type="submit" value="Submit">
+            <input type="submit" value="Unlock Server">
         </form>
     </div>
 </body>
@@ -102,23 +147,23 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        """Processes the password form submission."""
+        """Handles password payload processing."""
         if self.path == "/login":
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length).decode('utf-8')
             params = parse_qs(post_data)
-            
             submitted_password = params.get('password', [''])[0]
             
-            if submitted_password == GLOBAL_PASSWORD:
-                # Correct password! Issue cookie and redirect back to index
-                self.send_response(303)  # See Other redirect
+            if verify_password(submitted_password):
+                self.send_response(303)
                 self.send_header("Location", "/")
-                # HttpOnly prevents JavaScript access; SameSite=Strict mitigates CSRF attacks
-                self.send_header("Set-Cookie", f"password={GLOBAL_PASSWORD}; Path=/; HttpOnly; SameSite=Strict")
+                # Force Max-Age attribute to equal exactly 1 year in seconds
+                self.send_header(
+                    "Set-Cookie", 
+                    f"password={submitted_password}; Path=/; HttpOnly; SameSite=Strict; Max-Age={ONE_YEAR_SECONDS}"
+                )
                 self.end_headers()
             else:
-                # Password failed, serve form again with error flag
                 self.serve_login_form(error=True)
         else:
             self.send_error(404, "Not Found")
@@ -129,13 +174,11 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def send_head(self):
-        """Intercepts requests to validate cookies and enforce directory rules."""
-        # 1. Enforce Password Authentication
+        """Validates network boundary mechanics and cryptographic state."""
         if not self.is_authenticated():
             self.serve_login_form()
             return None
 
-        # 2. Directory Traversal Guard (Structural isolation via realpath)
         target_path = self.translate_path(self.path)
         base_dir = os.path.realpath(os.getcwd())
         abs_target = os.path.realpath(target_path)
@@ -156,7 +199,7 @@ class SecureThreadingHTTPServer(ThreadingHTTPServer):
 
 
 def main():
-    bind_address = "127.0.0.1"
+    bind_address = "0.0.0.0"
     port = 8000
 
     if len(sys.argv) > 1:
@@ -167,11 +210,10 @@ def main():
             if len(sys.argv) > 2 and sys.argv[2].isdigit():
                 port = int(sys.argv[2])
 
+    # Spin up cryptographic verification data maps
+    init_authentication()
+
     httpd = SecureThreadingHTTPServer((bind_address, port), Handler)
-    
-    print("-" * 50)
-    print(f"ACCESS PASSWORD: {GLOBAL_PASSWORD}")
-    print("-" * 50)
     print(f"Serving http://{bind_address}:{port}/  (Ctrl+C to stop)")
     
     try:
