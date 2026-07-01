@@ -1594,6 +1594,7 @@ export class GameScene extends Phaser.Scene {
       this._aimState = 'grabbed';
       this.brothers.beginAim();
       sfx.grab(); // soft "tick" so it's clear the launcher is grabbed
+      this._hideCursorForGrab(); // hide cursor (the label still reveals on press — see below)
       this._refreshHud(); // "X's turn, grabbed"
     });
 
@@ -1650,10 +1651,12 @@ export class GameScene extends Phaser.Scene {
     // we're truly aiming (a mere press-and-release stays "grabbed").
     this.input.on('dragstart', (_p, go) => {
       if (go !== this.brothers.launcher.go || !this.isAiming || this._aimState !== 'grabbed') return;
+      // The cursor is already hidden from the grab. The launcher's label was
+      // revealed on press (the only way to see it on touch) — now that we're
+      // actually aiming, hide and suppress it so it doesn't clutter the drag.
       this._aimState = 'dragging';
-      this.input.setDefaultCursor('none'); // hide cursor so the launcher's face shows
       this._infoSuppressed = true;
-      this.hideEntityInfo(this._infoEntity); // drop any label showing on the launcher
+      this.hideEntityInfo(this._infoEntity);
       this._refreshHud(); // "X's turn, aiming"
     });
 
@@ -1691,7 +1694,29 @@ export class GameScene extends Phaser.Scene {
     this._aimState = 'idle';
     this._aimBlocked = false;
     this._infoSuppressed = false;
+    // Restore the cursor across every path we hid it through.
     this.input.setDefaultCursor('default');
+    const io = this.brothers.launcher.go.input;
+    if (io) io.cursor = '';
+    this.input.manager.canvas.style.cursor = 'default';
+  }
+
+  /**
+   * On grabbing the launcher, hide the OS cursor so the ball's face reads clearly
+   * (the label still reveals on press — that's the only way to see it on touch;
+   * it's hidden later, on drag-start). The cursor is hidden through all of
+   * Phaser's paths — the default cursor, the launcher's own hover cursor
+   * (re-applied whenever the offset-dragged ball crosses the pointer), and the
+   * canvas directly for immediacy — since any one alone gets overridden by the
+   * others. Undone in {@link _endGrab}.
+   *
+   * @returns {void}
+   */
+  _hideCursorForGrab() {
+    this.input.setDefaultCursor('none');
+    const io = this.brothers.launcher.go.input;
+    if (io) io.cursor = 'none';
+    this.input.manager.canvas.style.cursor = 'none';
   }
 
   /**
