@@ -86,7 +86,7 @@ export class World {
   }
 
   /**
-   * Every object of a given class (e.g. `byType(TeleportTarget)`), so objects can
+   * Every object of a given class (e.g. `byType(TeleporterTarget)`), so objects can
    * find the peers they interact with. The returned array is the live internal
    * list — treat it as read-only.
    *

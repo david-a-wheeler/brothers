@@ -4,17 +4,18 @@ import { ensurePortalSpark } from './effects.js';
 
 /**
  * A teleporter exit: a calmly breathing marker with outward-bursting motes that
- * mirror a source's intake. It has no body — sources reference it by name and
- * warp the pair to its {@link point}. One target may serve many sources.
+ * mirror a teleporter's intake. It has no body — a {@link Teleporter} references
+ * it by name and warps the pair to its {@link point}. One target may serve many
+ * teleporters.
  */
-export class TeleportTarget extends Entity {
+export class TeleporterTarget extends Entity {
   /**
    * @param {Phaser.Scene} scene
    * @param {import('../levels.js').EntityDef} def  Uses `name`, `x`, `y`.
    */
   constructor(scene, def) {
     super(scene, def);
-    /** Tiled name used by sources to select this destination. */
+    /** Tiled name a teleporter's `target` property selects this destination by. */
     this.name = def.name;
     /** Where the pair lands. */
     this.point = { x: def.x, y: def.y };

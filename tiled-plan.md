@@ -75,14 +75,14 @@ two must match exactly.
 | `David`            | point  | `radiusMult`, `massMult` (optional) | David's start position. Name the controlled one **David**. |
 | `Ken`              | point  | `radiusMult`, `massMult` (optional) | Ken's start position. Name the controlled one **Ken**. |
 | `Goal`             | point  | `radius` (number)                   | A goal zone. **Any number — reaching any one wins.** |
-| `Teleporter`       | point  | `radius` (number), `retain` (0–1), `dest` (target name) | Portal entrance. Any number. |
-| `TeleportTarget`   | point  | (Tiled **Name**)                    | Portal exit. Any number. |
+| `Teleporter`       | point  | `radius` (number), `retain` (0–1), `target` (target name) | Portal entrance. Any number. |
+| `TeleporterTarget` | point  | (Tiled **Name**)                    | Portal exit. Any number. |
 
 Goals, teleporters, and targets are each independent — a level may have as many
-as you like. A teleporter sends the pair to the `TeleportTarget` whose Tiled
-**Name** matches its `dest` property; if `dest` is omitted (or names no target),
-it uses the **first** target. One target may be the destination of many
-teleporters.
+as you like. A teleporter sends the pair to the `TeleporterTarget` whose Tiled
+**Name** matches its `target` property (`dest`/`destination` are also accepted);
+if it's omitted (or names no target), the **first** target is used. One target
+may be the destination of many teleporters.
 
 Normally there's one `David` and one `Ken`. The slingshot pair is chosen by
 Tiled **Name** (`David`/`Ken`), so a level may later place extra, uncontrolled

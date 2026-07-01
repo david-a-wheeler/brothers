@@ -91,7 +91,7 @@ export function loadTiledLevel(map) {
     const cls = o.class ?? o.type ?? '';
     if (!cls) continue;
     level.objects.push({
-      ...propsToObject(o.properties), // custom props (radius, retain, dest, radiusMult, …)
+      ...propsToObject(o.properties), // custom props (radius, retain, target, radiusMult, …)
       kind: cls,
       name: o.name || '',
       x: o.x + (o.width || 0) / 2,
