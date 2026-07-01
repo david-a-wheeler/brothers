@@ -52,6 +52,7 @@ def init_authentication():
                     # Break out to trigger a brand new password generation sequence
                 else:
                     print("[Security] Loaded encrypted password hash from disk. Session is active.")
+                    print("Delete file .password to regenerate a password.")
                     return
         except Exception as e:
             print(f"[Security Warning] Error reading password metadata ({e}). Resetting...")
