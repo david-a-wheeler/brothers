@@ -34,7 +34,9 @@ export class David extends Brother {
    */
   _createFeature() {
     const g = this.scene.add.graphics().setDepth(7);
-    g.lineStyle(2, 0x000000, 1);
+    // Thin, slightly translucent frames so the eyes/eyebrows read through them
+    // (the lenses are open, but heavy black rims still hid his expression).
+    g.lineStyle(1, 0x000000, 0.7);
     g.strokeRoundedRect(-12.5, -4, 11, 7, 2); // left lens
     g.strokeRoundedRect(1.5, -4, 11, 7, 2); // right lens
     g.lineBetween(-1.5, -0.5, 1.5, -0.5); // bridge
