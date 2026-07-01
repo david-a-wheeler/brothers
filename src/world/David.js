@@ -3,6 +3,14 @@ import { FACES } from '../faces.js';
 import { Brother } from './Brother.js';
 
 /**
+ * Faces whose eyes sit low enough that David's glasses must drop ~3/4 of their
+ * height to stay over them: the aim faces (😏 launcher / 😳 anchor, shown grab
+ * through drag) and the flight anchor face (😨, David riding along while Ken is
+ * the launcher). Other faces keep the glasses at their default spot.
+ */
+const LOW_EYE_FACES = new Set([FACES.drag.launcher, FACES.drag.anchor, FACES.flight.anchor]);
+
+/**
  * David: the blue brother, bigger by default (his radius/mass multipliers
  * default to the lab-tunable `Config.ball.david*Mult`, unless the level object
  * overrides them). He wears rectangular glasses over his eyes on every
@@ -44,7 +52,10 @@ export class David extends Brother {
   }
 
   _updateFeature() {
-    this.feature.setPosition(this.go.x, this.go.y - 7);
-    this.feature.setVisible(this.face.text !== FACES.win);
+    // Drop the glasses ~3/4 of their height over the low-eyed faces (see
+    // LOW_EYE_FACES); 7 = the lens height, see _createFeature.
+    const t = this.face.text;
+    this.feature.setPosition(this.go.x, this.go.y - 7 + (LOW_EYE_FACES.has(t) ? 7 * 0.75 : 0));
+    this.feature.setVisible(t !== FACES.win);
   }
 }
