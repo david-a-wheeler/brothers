@@ -28,16 +28,16 @@
    "y":0,
    "draworder":"topdown",
    "objects":[
-    {"id":1,"name":"David","class":"david","point":true,"x":350,"y":540,"width":0,"height":0,"rotation":0,"visible":true},
-    {"id":2,"name":"Ken","class":"ken","point":true,"x":440,"y":540,"width":0,"height":0,"rotation":0,"visible":true},
-    {"id":3,"name":"goal","class":"goal","point":true,"x":880,"y":160,"width":0,"height":0,"rotation":0,"visible":true,
+    {"id":1,"name":"David","class":"David","point":true,"x":350,"y":540,"width":0,"height":0,"rotation":0,"visible":true},
+    {"id":2,"name":"Ken","class":"Ken","point":true,"x":440,"y":540,"width":0,"height":0,"rotation":0,"visible":true},
+    {"id":3,"name":"goal","class":"Goal","point":true,"x":880,"y":160,"width":0,"height":0,"rotation":0,"visible":true,
      "properties":[{"name":"radius","type":"float","value":60}]},
-    {"id":4,"name":"teleporter in","class":"teleporter-source","point":true,"x":620,"y":300,"width":0,"height":0,"rotation":0,"visible":true,
+    {"id":4,"name":"teleporter in","class":"TeleportSource","point":true,"x":620,"y":300,"width":0,"height":0,"rotation":0,"visible":true,
      "properties":[{"name":"radius","type":"float","value":44},{"name":"retain","type":"float","value":0.6}]},
-    {"id":5,"name":"teleporter out","class":"teleporter-target","point":true,"x":160,"y":160,"width":0,"height":0,"rotation":0,"visible":true},
-    {"id":6,"name":"","class":"wall","x":530,"y":459,"width":220,"height":22,"rotation":0,"visible":true},
-    {"id":7,"name":"","class":"wall","x":769,"y":215,"width":22,"height":170,"rotation":0,"visible":true},
-    {"id":8,"name":"","class":"wall","x":300,"y":239,"width":160,"height":22,"rotation":0,"visible":true}
+    {"id":5,"name":"teleporter out","class":"TeleportTarget","point":true,"x":160,"y":160,"width":0,"height":0,"rotation":0,"visible":true},
+    {"id":6,"name":"","class":"Wall","x":530,"y":459,"width":220,"height":22,"rotation":0,"visible":true},
+    {"id":7,"name":"","class":"Wall","x":769,"y":215,"width":22,"height":170,"rotation":0,"visible":true},
+    {"id":8,"name":"","class":"Wall","x":300,"y":239,"width":160,"height":22,"rotation":0,"visible":true}
    ]
   }
  ]

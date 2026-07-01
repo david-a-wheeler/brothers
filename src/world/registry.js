@@ -6,18 +6,16 @@ import { TeleportTarget } from './TeleportTarget.js';
 import { Wall } from './Wall.js';
 
 /**
- * The single manifest of world-object types: maps a Tiled object class (the
- * level model's `kind`) to its {@link Entity} subclass. This is the *only*
- * place that names the set of types, so the manager ({@link World}) stays
- * agnostic — it imports this table, never the concrete classes.
+ * The single manifest of world-object types. A level object's Tiled **Class**
+ * is the JS class name verbatim (PascalCase, e.g. `TeleportSource`), so the
+ * kind → class map is derived from the class list itself — there are no
+ * hand-written string keys to keep in sync. This is the *only* place that names
+ * the set of types, so the manager ({@link World}) stays agnostic (it imports
+ * this table, never the concrete classes).
  *
- * Adding a type is two steps: write the subclass file, then add one line here.
+ * Adding a type is two steps: write the subclass file, then add it here.
  */
-export const KINDS = {
-  david: David,
-  ken: Ken,
-  goal: Goal,
-  'teleporter-source': TeleportSource,
-  'teleporter-target': TeleportTarget,
-  wall: Wall,
-};
+const CLASSES = [David, Ken, Goal, Wall, TeleportSource, TeleportTarget];
+
+/** @type {Record<string, typeof import('./Entity.js').Entity>} kind → class. */
+export const KINDS = Object.fromEntries(CLASSES.map((C) => [C.name, C]));

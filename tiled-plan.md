@@ -64,23 +64,26 @@ The first pack is **Base** (`levels/base/`), currently one level.
 
 ## Schema (object classes & properties)
 
-Set each object's **Class** (older Tiled: **Type**) to one of:
+Set each object's **Class** (older Tiled: **Type**) to one of the following. The
+Class is the **JS class name verbatim** (PascalCase) — the loader is generic and
+the registry maps each Class straight to its `src/world/` class by name, so the
+two must match exactly.
 
-| Class                | Shape  | Properties                          | Meaning |
-| -------------------- | ------ | ----------------------------------- | ------- |
-| `wall`               | rect   | —                                   | A solid wall (deflects balls). Any number. |
-| `david`              | point  | `radiusMult`, `massMult` (optional) | David's start position. Name the controlled one **David**. |
-| `ken`                | point  | `radiusMult`, `massMult` (optional) | Ken's start position. Name the controlled one **Ken**. |
-| `goal`               | point  | `radius` (number)                   | A goal zone. **Any number — reaching any one wins.** |
-| `teleporter-source`  | point  | `radius` (number), `retain` (0–1), `dest` (target name) | Portal entrance. Any number. |
-| `teleporter-target`  | point  | (Tiled **Name**)                    | Portal exit. Any number. |
+| Class              | Shape  | Properties                          | Meaning |
+| ------------------ | ------ | ----------------------------------- | ------- |
+| `Wall`             | rect   | —                                   | A solid wall (deflects balls). Any number. |
+| `David`            | point  | `radiusMult`, `massMult` (optional) | David's start position. Name the controlled one **David**. |
+| `Ken`              | point  | `radiusMult`, `massMult` (optional) | Ken's start position. Name the controlled one **Ken**. |
+| `Goal`             | point  | `radius` (number)                   | A goal zone. **Any number — reaching any one wins.** |
+| `TeleportSource`   | point  | `radius` (number), `retain` (0–1), `dest` (target name) | Portal entrance. Any number. |
+| `TeleportTarget`   | point  | (Tiled **Name**)                    | Portal exit. Any number. |
 
 Goals, sources, and targets are each independent — a level may have as many as
-you like. A source sends the pair to the `teleporter-target` whose Tiled **Name**
+you like. A source sends the pair to the `TeleportTarget` whose Tiled **Name**
 matches its `dest` property; if `dest` is omitted (or names no target), it uses
 the **first** target. One target may be the destination of many sources.
 
-Normally there's one `david` and one `ken`. The slingshot pair is chosen by
+Normally there's one `David` and one `Ken`. The slingshot pair is chosen by
 Tiled **Name** (`David`/`Ken`), so a level may later place extra, uncontrolled
 brothers (doppelgängers) that render but aren't slingshotted. `radiusMult` /
 `massMult` (optional) scale that brother off the base size/mass (default 1;
@@ -108,15 +111,18 @@ one generic `level.objects` array (`kind`, centre `x,y`, size, `name`, custom
 props) and knows nothing about goals or teleporters. So adding a type is just
 two small steps:
 
-1. In Tiled, place an object and set its **Class** to the new name (+ any
-   properties). No project/types file is required — a plain class string works
-   in every Tiled version (the adapter reads `class`/`type`). A Tiled
-   `.tiled-project` defining the classes is *optional* and is intentionally
-   avoided here because that feature is version-specific. **No `loadTiledLevel`
-   change is needed** — the new `kind` flows through automatically.
-2. Add an `Entity` subclass that builds it, and one entry in the `KINDS`
-   registry in `registry.js` (mapping the class string to your subclass) —
-   the only place that knows the type set. Each subclass is constructed as
+1. In Tiled, place an object and set its **Class** to the new JS class name,
+   exactly (PascalCase), plus any properties. No project/types file is required —
+   a plain class string works in every Tiled version (the adapter reads
+   `class`/`type`). A Tiled `.tiled-project` defining the classes is *optional*
+   and is intentionally avoided here because that feature is version-specific.
+   **No `loadTiledLevel` change is needed** — the new `kind` flows through
+   automatically.
+2. Add an `Entity` subclass that builds it, and add the class to the `CLASSES`
+   list in `registry.js` — the only place that knows the type set. The kind →
+   class map is derived from that list by class name, so there is no separate
+   string key to keep in sync (the Tiled Class must equal the JS class name).
+   Each subclass is constructed as
    `new Cls(scene, def, level)`; override only the hooks it needs:
    `onBrotherContact()` (trigger sensors), `isReached(brothers)` (win
    conditions), or `needsUpdate`+`update(ctx)` (per-frame dynamics; culled to
