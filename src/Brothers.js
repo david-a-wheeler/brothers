@@ -71,6 +71,20 @@ export class Brothers {
     this.anchor.go.setStatic(true);
     this.setExpressions('idle');
     this._indicateLauncher();
+    this._updateDraggable();
+  }
+
+  /**
+   * Mark only the current launcher as draggable (the bodies are already
+   * interactive for their info labels). Phaser's drag system then owns the aim
+   * gesture — hit-testing, the grab offset, and per-frame position — so the
+   * scene just consumes its drag events. Re-run on every role swap.
+   *
+   * @returns {void}
+   */
+  _updateDraggable() {
+    this.scene.input.setDraggable(this.launcher.go, true);
+    this.scene.input.setDraggable(this.anchor.go, false);
   }
 
   /**
@@ -468,6 +482,7 @@ export class Brothers {
     this._settleFrames = 0;
     this.setExpressions('idle');
     this._indicateLauncher();
+    this._updateDraggable(); // the new launcher is now the draggable one
   }
 
   /**

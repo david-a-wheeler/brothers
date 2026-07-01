@@ -1547,9 +1547,11 @@ export class GameScene extends Phaser.Scene {
   // --- Input --------------------------------------------------------------
 
   /**
-   * Slingshot, pan, and zoom input. A drag only aims if it *starts* on the
-   * current launcher (a hit-test), so stray presses never fire a launch —
-   * those pan the camera instead. Wheel and pinch handle zoom.
+   * Slingshot, pan, and zoom input. The slingshot rides Phaser's own drag
+   * system: only the current launcher is draggable (see Brothers._updateDraggable),
+   * so a press on it grabs ('gameobjectdown'), the first move starts aiming
+   * ('dragstart'), and 'drag' reports an offset-corrected position — while any
+   * other press pans the camera. Wheel and pinch handle zoom.
    *
    * @returns {void}
    */
@@ -1572,24 +1574,27 @@ export class GameScene extends Phaser.Scene {
       if (p.y < this._hudHeight) return; // press is on the HUD ribbon, not the arena
       if (this._overDevPanel(p)) return; // press is on the dev panel
 
-      // Pressing on the launcher (while aiming, and not after the level ends)
-      // starts a shot; pressing anywhere else on the board pans the camera.
-      if (this.status !== 'ENDED' && this.phase === 'AIMING') {
-        const l = this.brothers.launcher.go;
-        const reach = l.radius * 1.4; // forgiving for touch; tracks the launcher's size
-        const w = this.cameras.main.getWorldPoint(p.x, p.y);
-        if (Phaser.Math.Distance.Between(w.x, w.y, l.x, l.y) <= reach) {
-          this.isAiming = true;
-          this._aimState = 'grabbed';
-          this.brothers.beginAim();
-          sfx.grab(); // soft "tick" so it's clear the launcher is grabbed
-          this._refreshHud(); // "X's turn, grabbed"
-          return;
-        }
-      }
+      // A press on the launcher is handled by Phaser's drag system (the
+      // 'gameobjectdown' grab + 'dragstart'/'drag' handlers below), which sets
+      // isAiming; anything else on the board pans the camera.
+      if (this.isAiming) return; // a launcher grab just started
       this._isPanning = true;
       this._panLast.x = p.x;
       this._panLast.y = p.y;
+    });
+
+    // Grab: a press on the current launcher (Phaser's own hit-testing, so it
+    // works across the world/HUD cameras). The drag itself is Phaser's, below.
+    this.input.on('gameobjectdown', (_p, go) => {
+      if (this._modalOpen || this._menuOpen || this._pinchDist) return;
+      if (this.status === 'ENDED' || this.phase !== 'AIMING') return;
+      if (go !== this.brothers.launcher.go) return;
+      this.isAiming = true;
+      this._isPanning = false; // never pan while grabbing (guards event ordering)
+      this._aimState = 'grabbed';
+      this.brothers.beginAim();
+      sfx.grab(); // soft "tick" so it's clear the launcher is grabbed
+      this._refreshHud(); // "X's turn, grabbed"
     });
 
     this.input.on('pointermove', (p) => {
@@ -1603,20 +1608,7 @@ export class GameScene extends Phaser.Scene {
         }
         return;
       }
-      if (this.isAiming) {
-        if (this._aimState === 'grabbed') {
-          // First movement after the grab: now we're aiming. Hide the cursor so
-          // the launcher's face is visible, suppress the info label, update prompt.
-          this._aimState = 'dragging';
-          this.input.setDefaultCursor('none');
-          this._infoSuppressed = true;
-          this.hideEntityInfo(this._infoEntity); // drop any label showing on the launcher
-          this._refreshHud(); // "X's turn, aiming"
-        }
-        const w = this.cameras.main.getWorldPoint(p.x, p.y);
-        this.brothers.dragTo(w.x, w.y);
-        return;
-      }
+      if (this.isAiming) return; // Phaser's drag moves the launcher; don't pan
       if (this._isPanning) {
         // Drag the world under the finger: scroll opposite to the move, scaled
         // by zoom, then clamp/centre to the arena.
@@ -1652,6 +1644,25 @@ export class GameScene extends Phaser.Scene {
       this.status = 'PLAYING'; // first launch leaves READY; later launches keep PLAYING
       this.phase = 'MOVING';
       this._refreshHud();
+    });
+
+    // Phaser fires 'dragstart' on the first movement after a grab: that's when
+    // we're truly aiming (a mere press-and-release stays "grabbed").
+    this.input.on('dragstart', (_p, go) => {
+      if (go !== this.brothers.launcher.go || !this.isAiming || this._aimState !== 'grabbed') return;
+      this._aimState = 'dragging';
+      this.input.setDefaultCursor('none'); // hide cursor so the launcher's face shows
+      this._infoSuppressed = true;
+      this.hideEntityInfo(this._infoEntity); // drop any label showing on the launcher
+      this._refreshHud(); // "X's turn, aiming"
+    });
+
+    // Phaser supplies dragX/dragY already offset for where the launcher was
+    // grabbed, so the ball tracks the pointer without snapping its centre under
+    // it (no jump on the first drag).
+    this.input.on('drag', (_p, go, dragX, dragY) => {
+      if (go !== this.brothers.launcher.go || !this.isAiming) return;
+      this.brothers.dragTo(dragX, dragY);
     });
 
     // Laptop: mouse wheel zooms toward the cursor.
