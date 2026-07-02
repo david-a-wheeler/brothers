@@ -359,26 +359,63 @@ export class GameScene extends Phaser.Scene {
    */
   _clampCamera() {
     const main = this.cameras.main;
+    const halfVW = main.width / 2;
+    const halfVH = main.height / 2;
+    const [midX, midY] = this._clampedCenter(
+      main.scrollX + halfVW,
+      main.scrollY + halfVH,
+      main.zoom
+    );
+    main.setScroll(midX - halfVW, midY - halfVH);
+  }
+
+  /**
+   * Clamp a desired world view-centre for a given zoom to the arena rules: if the
+   * view is wider than the arena + both margins on an axis, centre the arena on
+   * it; otherwise keep the view within the arena expanded by the margin. Shared
+   * by {@link _clampCamera} and the settle reframe ({@link _frameBrothers}).
+   *
+   * @param {number} cx @param {number} cy @param {number} zoom
+   * @returns {[number, number]} The clamped centre.
+   */
+  _clampedCenter(cx, cy, zoom) {
     const M = Config.zoom.edgeMargin;
     const aw = this.arena.width;
     const ah = this.arena.height;
-    const halfVW = main.width / 2;
-    const halfVH = main.height / 2;
-    const halfSpanX = main.width / main.zoom / 2; // half the world width in view
-    const halfSpanY = main.height / main.zoom / 2;
+    const halfSpanX = this.cameras.main.width / zoom / 2; // half the world width in view
+    const halfSpanY = this.cameras.main.height / zoom / 2;
+    return [
+      halfSpanX * 2 >= aw + 2 * M ? aw / 2 : Phaser.Math.Clamp(cx, -M + halfSpanX, aw + M - halfSpanX),
+      halfSpanY * 2 >= ah + 2 * M ? ah / 2 : Phaser.Math.Clamp(cy, -M + halfSpanY, ah + M - halfSpanY),
+    ];
+  }
 
-    let midX = main.scrollX + halfVW;
-    let midY = main.scrollY + halfVH;
-    midX =
-      halfSpanX * 2 >= aw + 2 * M
-        ? aw / 2
-        : Phaser.Math.Clamp(midX, -M + halfSpanX, aw + M - halfSpanX);
-    midY =
-      halfSpanY * 2 >= ah + 2 * M
-        ? ah / 2
-        : Phaser.Math.Clamp(midY, -M + halfSpanY, ah + M - halfSpanY);
+  /**
+   * Frame the settled pair: because Phaser follows only their midpoint (with a
+   * deadzone), a ball can end up at/over the edge. Once the shot settles, gently
+   * pan + zoom (Phaser's own camera tweens) to a view that fits the whole pair's
+   * box — zooming out only as needed (never tighter, never past the fit-all
+   * minimum) and centred on them within the arena clamp.
+   *
+   * @returns {void}
+   */
+  _frameBrothers() {
+    const cam = this.cameras.main;
+    const M = Config.zoom.edgeMargin;
+    const fit = Math.min(
+      cam.width / (this.brothers.spanWidth + 2 * M),
+      cam.height / (this.brothers.spanHeight + 2 * M)
+    );
+    const zoom = Phaser.Math.Clamp(Math.min(fit, cam.zoom), this._minZoom, Config.zoom.max);
+    const [x, y] = this._clampedCenter(this.brothers.x, this.brothers.y, zoom);
+    cam.zoomTo(zoom, 300, 'Sine.easeInOut');
+    cam.pan(x, y, 300, 'Sine.easeInOut');
+  }
 
-    main.setScroll(midX - halfVW, midY - halfVH);
+  /** Cancel any in-progress settle pan/zoom tween so manual input takes over. */
+  _stopCameraGlide() {
+    this.cameras.main.panEffect.reset();
+    this.cameras.main.zoomEffect.reset();
   }
 
   /**
@@ -1573,6 +1610,7 @@ export class GameScene extends Phaser.Scene {
   _wireInput() {
     this.input.on('pointerdown', (p) => {
       sfx.unlock(); // browsers need a user gesture to start audio
+      this._stopCameraGlide(); // any press cancels an in-progress settle pan/zoom
       if (this._modalOpen) return; // modal owns input; its buttons handle themselves
       if (this._menuOpen) {
         // The menu backdrop swallows game input; a press on the list starts a
@@ -1782,6 +1820,7 @@ export class GameScene extends Phaser.Scene {
    */
   _zoomBy(factor, screenX, screenY) {
     const cam = this.cameras.main;
+    this._stopCameraGlide(); // manual zoom cancels an in-progress settle pan/zoom
     const before = cam.getWorldPoint(screenX, screenY);
     cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, this._minZoom, Config.zoom.max));
     const after = cam.getWorldPoint(screenX, screenY);
@@ -1902,7 +1941,7 @@ export class GameScene extends Phaser.Scene {
    */
   _resolveTurn() {
     this.cameras.main.stopFollow(); // the shot has settled; hand the camera back to the player
-    this._clampCamera(); // re-settle into a clamped, centred resting view
+    this._frameBrothers(); // gently zoom/pan so both balls are fully framed at rest
     const reached = this.world.firstReached(this.brothers);
     if (reached) {
       // Record best score (most moves left) if we beat it.
