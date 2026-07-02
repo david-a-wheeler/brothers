@@ -24,7 +24,7 @@ const HELP_TEXT = [
   'Help brothers David and Ken reach the goal in as few moves as possible.',
   'Move: The glowing brother is the one you move. Drag it back and release to slingshot it toward its partner. The two are joined by an elastic band, so they travel together.',
   'Aim: A red X means that spot is blocked (a wall, the edge, or the other brother). Move and try again.',
-  'Turns: Each launch uses one move, then the other brother takes over. Moves left show as "#Left".',
+  'Turns: Each launch uses one turn, then the other brother takes over. Turns left show as "#Left".',
   'Goal: Land a brother at rest inside the goal ring to win.',
   'Teleporters warp the pair to a matching target. Bombs are hazards: a spinning arrow shows where each will go; touching one usually ends the game. Walls block and bounce.',
   'Camera: mouse wheel or pinch/spread to zoom in and out; drag empty space to pan.',
