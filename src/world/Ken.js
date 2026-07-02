@@ -25,7 +25,7 @@ export class Ken extends Brother {
    */
   _createFeature() {
     const g = this.scene.add.graphics().setDepth(7);
-    g.fillStyle(0x333333, 0.5); // dark grey, quite translucent so it hides little
+    g.fillStyle(0x000000, 0.85); // near-solid black: strong contrast on red, but not harsh
     // A thin crescent centred on his face: the curved bottom follows the face
     // edge (so it always connects), and the top edge dips down in the middle so
     // the centre is thin and reveals more of the face. `R` ~ the emoji face
