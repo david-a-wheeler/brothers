@@ -1755,16 +1755,33 @@ export class GameScene extends Phaser.Scene {
     y += this._menuSectionHeader(y, 'Levels');
     let hasScores = false;
     manifest.levelIds.forEach((file, i) => {
-      const best = scores.bestFor(`${manifest.id}/${file}`);
+      const entry = scores.entryFor(`${manifest.id}/${file}`);
+      const best = entry ? entry.best : null;
       if (best != null) hasScores = true;
       const allowed = this._canJump(manifest, i);
-      const value = best != null ? `✓  ${best} ★` : allowed ? '-' : '🔒';
-      const tip =
+      // Local date (YYYY-MM-DD) of the best, when recorded (new-format entries).
+      const localDate = entry && entry.localDateTime ? entry.localDateTime.slice(0, 10) : null;
+      // A number = cleared (its best score); date first so the numbers right-align
+      // into a clean column. '-' = available but not cleared; 🔒 = locked.
+      const value =
         best != null
-          ? `Cleared! Your best here is ${best} (moves left when you won; higher is better). Tap to play it again.`
+          ? localDate
+            ? `${localDate}   ${best}`
+            : `${best}`
           : allowed
-            ? 'Not cleared yet. Tap to play this level.'
-            : 'Locked: clear the previous level first (or turn on Test mode).';
+            ? '-'
+            : '🔒';
+      let tip;
+      if (best != null) {
+        tip = `Cleared! Your best here is ${best} (moves left when you won; higher is better). Tap to play it again.`;
+        if (localDate && entry.timezone) {
+          tip += ` Your best score was on ${localDate} in timezone ${entry.timezone}.`;
+        }
+      } else {
+        tip = allowed
+          ? 'Not cleared yet. Tap to play this level.'
+          : 'Locked: clear the previous level first (or turn on Test mode).';
+      }
       y += this._menuRow(y, `Level ${i + 1}`, value, {
         enabled: allowed,
         valueColor: best != null ? U.color.accentText : U.color.textDisabled,

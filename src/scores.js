@@ -7,6 +7,11 @@
  * stable level key the game uses elsewhere: `${packId}/${levelFilename}` (see
  * `currentLevelKey` in levels.js).
  *
+ * Each entry is an object `{best, localDateTime, timezone, offset, utcDateTime}`
+ * recording when the best was achieved. An *older* format stored just the number
+ * (the best) with no timestamp; readers accept both, treating the missing fields
+ * as `null` (see {@link bestOf} / {@link entryFor}).
+ *
  * All localStorage access is wrapped in try/catch so private-mode / disabled
  * storage degrades to an in-memory cache rather than breaking the game.
  */
@@ -32,18 +37,91 @@ function load() {
 }
 
 /**
+ * The best move count out of a stored value, accepting both the object format
+ * and the legacy bare number. `null` if the value isn't a completed score.
+ *
+ * @param {number|object|undefined} v
+ * @returns {number|null}
+ */
+function bestOf(v) {
+  if (typeof v === 'number') return v;
+  if (v && typeof v.best === 'number') return v.best;
+  return null;
+}
+
+/**
  * Best score for a level, or `null` if it has never been completed.
  *
  * @param {string} levelKey  `${packId}/${levelFilename}`.
  * @returns {number|null}
  */
 export function bestFor(levelKey) {
-  const v = load()[levelKey];
-  return typeof v === 'number' ? v : null;
+  return bestOf(load()[levelKey]);
 }
 
 /**
- * Record a win, keeping the higher (better) of any existing best. Persists the
+ * @typedef {Object} ScoreEntry
+ * @property {number} best  Moves left at the win (higher is better).
+ * @property {string|null} localDateTime  ISO-with-offset local time of the win.
+ * @property {string|null} timezone  IATA zone, e.g. "America/New_York".
+ * @property {string|null} offset  Local UTC offset, e.g. "-05:00".
+ * @property {string|null} utcDateTime  ISO UTC time of the win.
+ */
+
+/**
+ * The full normalized entry for a level, or `null` if not completed. Legacy
+ * number-only records return `best` with the timestamp fields `null`.
+ *
+ * @param {string} levelKey
+ * @returns {ScoreEntry|null}
+ */
+export function entryFor(levelKey) {
+  const v = load()[levelKey];
+  const best = bestOf(v);
+  if (best == null) return null;
+  const meta = v && typeof v === 'object' ? v : {};
+  return {
+    best,
+    localDateTime: meta.localDateTime ?? null,
+    timezone: meta.timezone ?? null,
+    offset: meta.offset ?? null,
+    utcDateTime: meta.utcDateTime ?? null,
+  };
+}
+
+/** Zero-pad to two digits. */
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+/** Local UTC offset of `d` as an ISO string, e.g. "-05:00". */
+function isoOffset(d) {
+  const mins = -d.getTimezoneOffset(); // getTimezoneOffset is minutes *behind* UTC
+  const sign = mins >= 0 ? '+' : '-';
+  const abs = Math.abs(mins);
+  return `${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
+}
+
+/** Local wall-clock time of `d` as an ISO-with-offset string. */
+function localIso(d) {
+  return (
+    `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` +
+    `T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}${isoOffset(d)}`
+  );
+}
+
+/** Best IATA zone name, or `null` if the environment doesn't expose one. */
+function localZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Record a win, keeping the higher (better) of any existing best. A new best
+ * captures when it happened (local + UTC time, zone, and offset). Persists the
  * whole blob back to localStorage.
  *
  * @param {string} levelKey  `${packId}/${levelFilename}`.
@@ -52,13 +130,20 @@ export function bestFor(levelKey) {
  */
 export function recordBest(levelKey, movesLeft) {
   const c = load();
-  if (c[levelKey] == null || movesLeft > c[levelKey]) {
-    c[levelKey] = movesLeft;
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(c));
-    } catch {
-      // Storage unavailable/full: keep the in-memory cache only.
-    }
+  const prev = bestOf(c[levelKey]);
+  if (prev != null && movesLeft <= prev) return; // not a new best
+  const now = new Date();
+  c[levelKey] = {
+    best: movesLeft,
+    localDateTime: localIso(now),
+    timezone: localZone(),
+    offset: isoOffset(now),
+    utcDateTime: now.toISOString(),
+  };
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(c));
+  } catch {
+    // Storage unavailable/full: keep the in-memory cache only.
   }
 }
 
@@ -111,8 +196,10 @@ export function packTotal(packName) {
   let total = 0;
   let completed = 0;
   for (const key in all) {
-    if (key.startsWith(prefix) && typeof all[key] === 'number') {
-      total += all[key];
+    if (!key.startsWith(prefix)) continue;
+    const b = bestOf(all[key]);
+    if (b != null) {
+      total += b;
       completed += 1;
     }
   }
