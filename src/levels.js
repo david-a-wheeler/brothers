@@ -142,6 +142,18 @@ export function activePackId() {
   return activePack.id;
 }
 
+/**
+ * The active pack's manifest shape (id, name, level file ids), for pack-wide
+ * computations like the HUD pack total. Unlike {@link loadPackManifest}, this
+ * reads the already-loaded active pack (no fetch) and reuses the same
+ * `{id, name, levelIds}` shape the menu helpers expect.
+ *
+ * @returns {{id:string, name:string, levelIds:string[]}}
+ */
+export function activePackManifest() {
+  return { id: activePack.id, name: activePack.name, levelIds: activePack.levelIds };
+}
+
 /** @type {Array<{id:string, name?:string}>|null} Cached pack registry. */
 let packList = null;
 

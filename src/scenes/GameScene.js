@@ -11,6 +11,7 @@ import {
   setLevelIndex,
   activePackName,
   activePackId,
+  activePackManifest,
   listPacks,
   loadPackManifest,
   loadPack,
@@ -131,6 +132,10 @@ export class GameScene extends Phaser.Scene {
     if (!this.registry.has(this._bestKey)) {
       this.registry.set(this._bestKey, scores.bestFor(currentLevelKey()));
     }
+    // Cached pack total (sum of bests across this pack) shown in the HUD. It only
+    // changes on a new best or when scores are forgotten, so it's recomputed at
+    // those points (see _refreshPackBest) — never per frame.
+    this._refreshPackBest();
 
     this._computeLayout(); // sets this._layout + this._hudHeight for the build
     this._buildHud();
@@ -212,7 +217,7 @@ export class GameScene extends Phaser.Scene {
       const probe = this.add.text(0, 0, '', { fontSize: '22px' }).setVisible(false);
       probe.setText("David's turn, can't do that");
       const a = probe.width;
-      probe.setText('Best: 00    #Left: 00');
+      probe.setText('Pack: 00    Best: 00    #Left: 00');
       this._maxTextW = Math.max(a, probe.width);
       probe.destroy();
     }
@@ -1449,10 +1454,28 @@ export class GameScene extends Phaser.Scene {
         this.scene.restart();
         return;
       }
-      if (inThisPack) this._refreshHud(); // -> "Best: -"
+      if (inThisPack) {
+        this._refreshPackBest(); // scores cleared -> pack total back to "-"
+        this._refreshHud(); // -> "Best: -"
+      }
       this._hideConfirm();
       this._showPackDetail(manifest); // re-render: scores cleared, button shaded
     });
+  }
+
+  /**
+   * Recompute the cached pack total shown in the HUD: the sum of best scores
+   * across every level in the current pack, or `null` when no level in the pack
+   * has a best yet (shown as "-"). Because a level won with 0 moves left counts,
+   * the value can be `0` (a real total) as distinct from `null` (nothing won).
+   * Call only when a best can have changed (a win, or forgetting scores) — never
+   * per frame.
+   *
+   * @returns {void}
+   */
+  _refreshPackBest() {
+    const { total, completed } = this._packTotal(activePackManifest());
+    this._packBest = completed > 0 ? total : null;
   }
 
   /**
@@ -2125,6 +2148,7 @@ export class GameScene extends Phaser.Scene {
         this.registry.set(this._bestKey, this.movesLeft);
       }
       scores.recordBest(currentLevelKey(), this.movesLeft); // persist across reloads
+      this._refreshPackBest(); // a new best may change the pack total
       reached.celebrate();
       sfx.win();
       this._endGame(message, FACES.win, '#7cfc8a', true);
@@ -2261,7 +2285,10 @@ export class GameScene extends Phaser.Scene {
     }
     this.turnText.setText(text).setColor(color);
     const best = this.registry.get(this._bestKey);
-    this.movesText.setText(`Best: ${best == null ? '-' : best}    #Left: ${this.movesLeft}`);
+    const pack = this._packBest == null ? '-' : this._packBest;
+    this.movesText.setText(
+      `Pack: ${pack}    Best: ${best == null ? '-' : best}    #Left: ${this.movesLeft}`
+    );
     this._refreshResetButton();
     this._refreshNavButtons();
     this._refreshStatusIcon();
