@@ -96,6 +96,29 @@ export function allBests() {
   return load();
 }
 
+/**
+ * A pack's total best score and completed-level count, computed purely from
+ * stored keys under `${packName}/` — so it works for ANY pack without knowing
+ * its level count (the menu's "All packs" list needs this). The trailing slash
+ * makes the prefix exact, so pack "Base" doesn't match "Base2/…".
+ *
+ * @param {string} packName
+ * @returns {{total:number, completed:number}}
+ */
+export function packTotal(packName) {
+  const prefix = `${packName}/`;
+  const all = load();
+  let total = 0;
+  let completed = 0;
+  for (const key in all) {
+    if (key.startsWith(prefix) && typeof all[key] === 'number') {
+      total += all[key];
+      completed += 1;
+    }
+  }
+  return { total, completed };
+}
+
 // --- Pack level counts ----------------------------------------------------
 // A pack's level count is discovered by probing (see levels.js). We persist the
 // last-known count per pack so the menu could later show counts for every pack

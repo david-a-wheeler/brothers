@@ -19,6 +19,23 @@ import {
 import * as scores from '../scores.js';
 import { World } from '../world/World.js';
 
+/** Body text for the Help modal (plain text; the modal word-wraps it). */
+const HELP_TEXT = [
+  'Help David and Ken reach the goal in as few moves as possible.',
+  'Move: The glowing brother is the one you move. Drag it back and release to slingshot it toward its partner. The two are joined by an elastic band, so they travel together.',
+  'Aim: A red X means that spot is blocked (a wall, the edge, or the other brother). Move and try again.',
+  'Turns: Each launch uses one move, then the other brother takes over. Moves left show as "#Left".',
+  'Goal: Land a brother at rest inside the goal ring to win.',
+  'Teleporters warp the pair to a matching target. Bombs are hazards: a spinning arrow shows where each will go; touching one usually ends the game. Walls block and bounce.',
+  'Camera: mouse wheel or pinch to zoom; drag empty space to pan.',
+  'Scoring: "Best" is the moves you had left on a win (higher is better). "Pack" adds up your Bests. "-" means not won yet; "0" is a real score.',
+].join('\n\n');
+
+/** Body text for the About modal (plain text; the modal word-wraps it). */
+const ABOUT_TEXT =
+  'This game was developed by David A. Wheeler based on an idea by Kenneth A. Wheeler. ' +
+  'It was built using the Phaser 2D game framework and Tiled level editor with help from Claude Code.';
+
 /**
  * Level state is tracked along two axes.
  *
@@ -767,7 +784,7 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0.8)
       .setInteractive({ useHandCursor: true });
     this.menuTooltip = this.add
-      .text(Config.view.width / 2 - 2 * gap, h + 12, 'Menu', {
+      .text(Config.view.width / 2 - 2 * gap, h + 12, 'Open the menu', {
         fontSize: '15px',
         color: '#ffffff',
         backgroundColor: '#000000',
@@ -1031,7 +1048,7 @@ export class GameScene extends Phaser.Scene {
     const parts = [
       this.add.rectangle(x0, y0, w, h, 0x000000, 0.72).setOrigin(0, 0).setDepth(20),
       this.add
-        .text(x0 + 10, y0 + 8, 'Rubber-band tuning', { fontSize: '14px', color: '#ffd479' })
+        .text(x0 + 10, y0 + 8, 'Lab tuning', { fontSize: '14px', color: '#ffd479' })
         .setDepth(21),
       // Close: red, to read differently from the gray "+" steppers.
       this._devButton(x0 + w - 20, y0 + 14, '×', () => this._toggleDevPanel(), '#c0392b', '#e74c3c'),
@@ -1113,7 +1130,10 @@ export class GameScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     btn.on('pointerover', () => btn.setBackgroundColor(bgHover));
     btn.on('pointerout', () => btn.setBackgroundColor(bg));
-    btn.on('pointerup', onClick);
+    btn.on('pointerup', () => {
+      sfx.tick();
+      onClick();
+    });
     return btn;
   }
 
@@ -1246,9 +1266,9 @@ export class GameScene extends Phaser.Scene {
    */
   _refreshStatusIcon() {
     const byStatus = {
-      READY: { key: 'icon-ready', tint: 0xd6b25e, label: 'Ready — not started' },
-      PLAYING: { key: 'icon-playing', tint: 0x7cfc8a, label: 'Playing — in progress' },
-      ENDED: { key: 'icon-ended', tint: 0x9aa0a6, label: 'Ended — level finished' },
+      READY: { key: 'icon-ready', tint: 0xd6b25e, label: 'Ready: not started' },
+      PLAYING: { key: 'icon-playing', tint: 0x7cfc8a, label: 'Playing: in progress' },
+      ENDED: { key: 'icon-ended', tint: 0x9aa0a6, label: 'Ended: level finished' },
     };
     const s = byStatus[this.status];
     this.statusIcon.setTexture(s.key).setTint(s.tint);
@@ -1256,81 +1276,175 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Open a Yes/No confirmation modal: a dimming backdrop plus a panel. Built on
-   * the fixed UI camera (so it ignores zoom/pan) and on the world camera's
-   * ignore list (so it isn't double-drawn). Game input is gated by `_modalOpen`
-   * while it's up. Yes runs `onYes`; No just dismisses.
+   * Open a modal: a dimming backdrop, a rounded panel with a centred title, an
+   * optional word-wrapped body, and one or more buttons. The panel auto-sizes to
+   * the content (capped to the viewport). Built on the fixed UI camera and on the
+   * world camera's ignore list; game input is gated by `_modalOpen` while it's
+   * up. Depths (40-42) sit ABOVE the menu (30-33), so a modal opened over the
+   * menu is never overdrawn. Used by {@link _showConfirm} and {@link _showMessage}.
    *
-   * @param {string} message  The question shown in the panel.
-   * @param {() => void} onYes  Action to run if the player confirms.
+   * @param {{title:string, body?:string,
+   *   buttons:Array<{label:string, bg:string, onClick:()=>void}>}} opts
    * @returns {void}
    */
-  _showConfirm(message, onYes) {
+  _openModal({ title, body = '', buttons }) {
     if (this._modalOpen) return;
     this._modalOpen = true;
     this._isPanning = false;
-    sfx.bonk(); // flag the unusual situation this modal is asking about
+    sfx.bonk(); // the shared "a modal appeared" cue
 
-    const cx = this._layout.w / 2;
-    const cy = this._layout.h / 2;
-    const pw = Math.min(380, this._layout.w - 2 * this._layout.pad);
-    const ph = 190;
+    const U = Config.ui;
+    const L = this._layout;
+    const cx = L.w / 2;
+    const cy = L.h / 2;
+    const pad = U.space.lg;
+    const pw = Math.min(440, L.w - 2 * L.pad);
+    const innerW = pw - 2 * pad;
 
-    // A strong dim: this modal can appear over the already-dimmed menu, so a
-    // light backdrop would let the busy menu leak through and hurt readability.
-    // Depths sit ABOVE the menu's 30-33 band so the panel/text/buttons are never
-    // overdrawn by menu content (whose container is at depth 32).
+    // Build the text first so we can measure it and size the panel to fit.
+    const titleTxt = this.add
+      .text(cx, 0, title, {
+        fontSize: '24px',
+        color: U.color.text,
+        fontStyle: 'bold',
+        align: 'center',
+        wordWrap: { width: innerW },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(42);
+    let bodyTxt = null;
+    if (body) {
+      bodyTxt = this.add
+        .text(cx, 0, body, {
+          ...U.type.body,
+          align: 'left',
+          lineSpacing: 5,
+          wordWrap: { width: innerW },
+        })
+        .setOrigin(0.5, 0)
+        .setDepth(42);
+    }
+
+    const btnH = 44;
+    const maxPh = L.h - 2 * L.pad;
+    // On a short screen a long body would overflow; shrink its font to fit.
+    if (bodyTxt) {
+      const availBody = maxPh - (pad + titleTxt.height + U.space.md + U.space.lg + btnH + pad);
+      for (let fs = 14; bodyTxt.height > availBody && fs >= 11; fs -= 1) bodyTxt.setFontSize(fs);
+    }
+    const contentH = titleTxt.height + (bodyTxt ? U.space.md + bodyTxt.height : 0);
+    const ph = Math.min(pad + contentH + U.space.lg + btnH + pad, maxPh);
+
     const dim = 0.82;
     const backdrop = this.add
-      .rectangle(cx, cy, this._layout.w, this._layout.h, 0x000000, dim)
+      .rectangle(cx, cy, L.w, L.h, 0x000000, dim)
       .setDepth(40)
       .setInteractive(); // swallow clicks on the dimmed area
     const panel = this.add.graphics().setDepth(41);
-    panel.fillStyle(0x23232c, 1).fillRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 14);
-    panel.lineStyle(2, 0x4d4d55, 1).strokeRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 14);
-    const title = this.add
-      .text(cx, cy - 48, message, { fontSize: '28px', color: '#ffffff' })
-      .setOrigin(0.5)
-      .setDepth(42);
-    const yes = this._modalButton(cx - 80, cy + 35, 'Yes', '#2e7d46', onYes);
-    const no = this._modalButton(cx + 80, cy + 35, 'No', '#555560', () => this._hideConfirm());
+    panel.fillStyle(U.color.surface, 1).fillRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, U.radius.card);
+    panel.lineStyle(2, U.color.surfaceStroke, 1).strokeRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, U.radius.card);
 
-    this._modalParts = [backdrop, panel, title, yes, no];
+    const top = cy - ph / 2 + pad;
+    titleTxt.setPosition(cx, top);
+    if (bodyTxt) bodyTxt.setPosition(cx, top + titleTxt.height + U.space.md);
+
+    const btnObjs = this._layoutModalButtons(cx, cy + ph / 2 - pad - btnH / 2, buttons);
+
+    this._modalParts = [backdrop, panel, titleTxt, ...(bodyTxt ? [bodyTxt] : []), ...btnObjs];
     this.cameras.main.ignore(this._modalParts); // HUD-camera only
 
     // Gentle fade-in so it doesn't pop in harshly.
     for (const part of this._modalParts) {
       const to = part === backdrop ? dim : 1;
       part.setAlpha(0);
-      this.tweens.add({ targets: part, alpha: to, duration: 130, ease: 'Sine.Out' });
+      this.tweens.add({ targets: part, alpha: to, duration: U.motion.dur, ease: U.motion.ease });
     }
   }
 
   /**
-   * A pill button for the modal: rounded text with a hover lift and a click
-   * handler. Returned so the caller can group/ignore/destroy it.
+   * A Yes/No confirmation. `Yes` runs `onYes` (which typically restarts or calls
+   * {@link _hideConfirm}); `No` just dismisses.
    *
-   * @param {number} x
-   * @param {number} y
-   * @param {string} label
-   * @param {string} bg     CSS background colour.
-   * @param {() => void} onClick
+   * @param {string} message @param {() => void} onYes @returns {void}
+   */
+  _showConfirm(message, onYes) {
+    this._openModal({
+      title: message,
+      buttons: [
+        { label: 'Yes', bg: '#2e7d46', onClick: onYes },
+        { label: 'No', bg: '#555560', onClick: () => this._hideConfirm() },
+      ],
+    });
+  }
+
+  /**
+   * An informational modal with word-wrapped body text and a single "OK" button
+   * (used for Help / About). `OK` dismisses, then runs the optional `onOk`.
+   *
+   * @param {string} title @param {string} body @param {() => void} [onOk]
+   * @returns {void}
+   */
+  _showMessage(title, body, onOk) {
+    this._openModal({
+      title,
+      body,
+      buttons: [
+        {
+          label: 'OK',
+          bg: '#3a3a44',
+          onClick: () => {
+            this._hideConfirm();
+            onOk?.();
+          },
+        },
+      ],
+    });
+  }
+
+  /**
+   * Create the modal's buttons and centre them as a row at `y`.
+   *
+   * @param {number} cx @param {number} y
+   * @param {Array<{label:string, bg:string, onClick:()=>void}>} buttons
+   * @returns {Phaser.GameObjects.Text[]}
+   */
+  _layoutModalButtons(cx, y, buttons) {
+    const gap = Config.ui.space.lg;
+    const objs = buttons.map((b) => this._modalButton(0, y, b.label, b.bg, b.onClick));
+    const total = objs.reduce((s, o) => s + o.width, 0) + gap * (objs.length - 1);
+    let x = cx - total / 2;
+    objs.forEach((o) => {
+      o.setPosition(x + o.width / 2, y);
+      x += o.width + gap;
+    });
+    return objs;
+  }
+
+  /**
+   * A pill button for a modal: rounded text with a hover lift, a click sound,
+   * and a handler. Returned so the caller can position/group/destroy it.
+   *
+   * @param {number} x @param {number} y @param {string} label
+   * @param {string} bg  CSS background colour. @param {() => void} onClick
    * @returns {Phaser.GameObjects.Text}
    */
   _modalButton(x, y, label, bg, onClick) {
     const btn = this.add
       .text(x, y, label, {
-        fontSize: '22px',
+        fontSize: '20px',
         color: '#ffffff',
         backgroundColor: bg,
-        padding: { x: 26, y: 8 },
+        padding: { x: 24, y: 8 },
       })
       .setOrigin(0.5)
       .setDepth(42) // above the modal panel (41), matching the modal title
       .setInteractive({ useHandCursor: true });
     btn.on('pointerover', () => btn.setAlpha(0.85));
     btn.on('pointerout', () => btn.setAlpha(1));
-    btn.on('pointerup', onClick);
+    btn.on('pointerup', () => {
+      sfx.tick();
+      onClick();
+    });
     return btn;
   }
 
@@ -1347,16 +1461,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   // --- Menu / scoreboard --------------------------------------------------
-
-  /** @returns {string} Lab toggle button label. */
-  _labLabel() {
-    return `Lab: ${this._devOpen ? 'On' : 'Off'}`;
-  }
-
-  /** @returns {string} Test-mode toggle button label. */
-  _testLabel() {
-    return `Test: ${this._testMode ? 'On' : 'Off'}`;
-  }
 
   /**
    * Toggle the menu from the menu button: open if closed, close if showing.
@@ -1381,9 +1485,27 @@ export class GameScene extends Phaser.Scene {
     this._menuOpen = true;
     this._isPanning = false;
     this._menuDragging = false;
+    this._scrollbarDragging = false;
     this._buildMenuPanel();
     this.menuButton.setDepth(33); // above the depth-30 backdrop so it stays clickable
-    this._showPackList();
+    this._showMainMenu();
+  }
+
+  /**
+   * Re-render the current menu view on the NEXT tick (not inside the current
+   * pointer event, which would destroy the row being tapped and can leave the
+   * drag-scroll flag stuck). Also clears the drag flags immediately as a belt.
+   *
+   * @returns {void}
+   */
+  _rerenderMenu() {
+    this._menuDragging = false;
+    this._scrollbarDragging = false;
+    this.time.delayedCall(0, () => {
+      if (!this._menuOpen) return;
+      if (this._menuView === 'detail') this._showPackDetail(this._menuDetail);
+      else this._showMainMenu();
+    });
   }
 
   /**
@@ -1391,11 +1513,12 @@ export class GameScene extends Phaser.Scene {
    * rounded card, a fixed header (title + close, plus Lab/Test toggles when
    * Config.devTools), a hidden Back button, and a mask-clipped scrollable
    * content container. Mirrors _showConfirm's camera/cleanup pattern. The list
-   * itself is filled by _showPackList / _showPackDetail.
+   * itself is filled by _showMainMenu / _showPackDetail.
    *
    * @returns {void}
    */
   _buildMenuPanel() {
+    const U = Config.ui;
     const L = this._layout;
     const cw = Math.min(440, L.w - 2 * L.pad);
     const ch = Math.min(L.h - 2 * L.pad, 560);
@@ -1408,16 +1531,10 @@ export class GameScene extends Phaser.Scene {
       .setDepth(30)
       .setInteractive(); // swallow clicks on the dimmed area
     const card = this.add.graphics().setDepth(31);
-    card.fillStyle(0x23232c, 1).fillRoundedRect(cx0, cy0, cw, ch, 14);
-    card.lineStyle(2, 0x4d4d55, 1).strokeRoundedRect(cx0, cy0, cw, ch, 14);
-    const title = this.add
-      .text(
-        cx0 + 16,
-        cy0 + 16,
-        `${activePackName()} Level ${currentIndex() + 1}/${levelCount()}`,
-        { fontSize: '18px', color: '#ffffff', fontStyle: 'bold' }
-      )
-      .setDepth(32);
+    card.fillStyle(U.color.surface, 1).fillRoundedRect(cx0, cy0, cw, ch, U.radius.card);
+    card.lineStyle(2, U.color.surfaceStroke, 1).strokeRoundedRect(cx0, cy0, cw, ch, U.radius.card);
+    // Title text set per view (_showMainMenu / _showPackDetail).
+    this._menuTitle = this.add.text(cx0 + 16, cy0 + 16, '', U.type.title).setDepth(32);
     const close = this._devButton(
       cx0 + cw - 20,
       cy0 + 22,
@@ -1427,36 +1544,26 @@ export class GameScene extends Phaser.Scene {
       '#e74c3c'
     ).setDepth(32);
 
-    this._menuParts = [backdrop, card, title, close];
+    // Shared menu tooltip (above the content, below modals). Hover/press-driven
+    // via _attachTooltip; destroyed with the menu.
+    this._uiTip = this.add
+      .text(0, 0, '', { fontSize: '14px', color: '#ffffff', backgroundColor: '#000000', padding: { x: 8, y: 5 } })
+      .setOrigin(0, 1)
+      .setDepth(34)
+      .setVisible(false);
 
-    let headerBottom = cy0 + 46;
-    if (Config.devTools) {
-      const ty = cy0 + 64;
-      const lab = this._devButton(cx0 + 16, ty, this._labLabel(), () => {
-        this._toggleDevPanel();
-        lab.setText(this._labLabel());
-      })
-        .setOrigin(0, 0.5)
-        .setDepth(32);
-      const test = this._devButton(cx0 + 150, ty, this._testLabel(), () => {
-        this._testMode = !this._testMode;
-        this.registry.set('testMode', this._testMode);
-        test.setText(this._testLabel());
-        if (this._menuView === 'detail') this._showPackDetail(this._menuDetail);
-      })
-        .setOrigin(0, 0.5)
-        .setDepth(32);
-      this._menuParts.push(lab, test);
-      headerBottom = ty + 18;
-    }
+    this._menuParts = [backdrop, card, this._menuTitle, close, this._uiTip];
+    this._attachTooltip(close, 'Close the menu.');
 
-    // Back affordance (only shown in a pack's level view).
+    const headerBottom = cy0 + 46;
+    // Back affordance (only shown in a pack's detail view).
     this._menuBackBtn = this._devButton(cx0 + 16, headerBottom + 16, '‹ Back', () =>
-      this._showPackList()
+      this._showMainMenu()
     )
       .setOrigin(0, 0.5)
       .setDepth(32)
       .setVisible(false);
+    this._attachTooltip(this._menuBackBtn, 'Back to the main menu.');
     this._menuParts.push(this._menuBackBtn);
 
     // Scroll viewport: a geometry mask (off-display-list make.graphics) clips a
@@ -1501,34 +1608,114 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * View A: list the available packs, each with the player's total score and
-   * completed/total count. Tapping a pack opens its per-level view.
+   * The main menu view: dev toggles (Lab/Test), Help & About, the current pack's
+   * info + Details, and the "All packs" list. Only the current pack's level count
+   * is known here (from boot); other packs show just name + total score from
+   * local storage (no probing), deferring their level count to Pack details.
    *
    * @returns {Promise<void>}
    */
-  async _showPackList() {
-    this._menuView = 'packs';
+  async _showMainMenu() {
+    if (!this._menuOpen) return; // may be deferred (see the Lab/Test toggles)
+    this._menuView = 'main';
+    this._menuTitle.setText('Main Menu');
     this._menuBackBtn.setVisible(false);
     this._menuScroll = 0;
     this._clearMenuContent();
-    const packs = await listPacks();
-    if (!this._menuOpen || this._menuView !== 'packs') return; // closed/changed mid-fetch
+    const U = Config.ui;
     let y = 0;
-    for (const { id } of packs) {
-      const m = await loadPackManifest(id);
-      if (!this._menuOpen || this._menuView !== 'packs') return;
-      const { total, completed } = this._packTotal(m);
-      this._menuRow(y, m.name, `${total} ★   ${completed}/${m.levelIds.length}`, {
-        onTap: () => this._showPackDetail(m),
+
+    if (Config.devTools) {
+      y += this._menuRow(y, 'Lab', this._devOpen ? 'On' : 'Off', {
+        valueColor: this._devOpen ? U.color.accentText : U.color.textMuted,
+        // Defer the re-render to the next tick: rebuilding the content inside this
+        // pointerup (which destroys the row being clicked) can eat the scene's
+        // pointerup, leaving the drag-scroll flag stuck on. See _rerenderMenu.
+        onTap: () => {
+          this._toggleDevPanel();
+          this._rerenderMenu();
+        },
+        tip: 'Developer tool: show a panel to live-tune slingshot and physics values.',
       });
-      y += 44;
+      y += this._menuRow(y, 'Test', this._testMode ? 'On' : 'Off', {
+        valueColor: this._testMode ? U.color.accentText : U.color.textMuted,
+        onTap: () => {
+          this._testMode = !this._testMode;
+          this.registry.set('testMode', this._testMode);
+          this._rerenderMenu();
+        },
+        tip: "Test mode: unlock every level and jump freely, ignoring the normal 'win to advance' rule.",
+      });
+    }
+    y += this._menuRow(y, 'Help', '›', {
+      onTap: () => this._showMessage('How to play', HELP_TEXT),
+      tip: 'How to play, and how scoring works.',
+    });
+    y += this._menuRow(y, 'About', '›', {
+      onTap: () => this._showMessage('About', ABOUT_TEXT),
+      tip: 'Credits and the tools behind the game.',
+    });
+
+    y += this._menuDivider(y);
+    y += this._menuSectionHeader(y, 'Current pack');
+    y += this._packInfoRows(y, activePackName(), levelCount(), true);
+    y += this._menuContentButton(y, 'Details', {
+      danger: false,
+      onTap: () => this._showPackDetail(activePackManifest()),
+      tip: 'See every level in this pack and your best on each.',
+    });
+
+    y += this._menuDivider(y);
+    y += this._menuSectionHeader(y, 'All packs');
+    const packs = await listPacks();
+    if (!this._menuOpen || this._menuView !== 'main') return; // closed/changed mid-fetch
+    for (const { id, name } of packs) {
+      const { total, completed } = scores.packTotal(id);
+      y += this._menuRow(y, name, completed > 0 ? `${total} ★` : '-', {
+        current: id === activePackId(),
+        valueColor: U.color.accentText,
+        onTap: async () => {
+          const m = await loadPackManifest(id);
+          if (this._menuOpen) this._showPackDetail(m);
+        },
+        tip: "Open this pack's details. The number is your total best score across it ('-' if you haven't cleared any).",
+      });
     }
     this._finishMenuContent(y);
   }
 
   /**
-   * View B: per-level best scores for a pack. Tapping a level jumps to it,
-   * subject to the gating rules (see _canJump); disallowed levels show a lock.
+   * The current-pack / pack-details info rows: Levels, Completed, Total. `count`
+   * is the pack's level count (known); completion/total come from stored scores.
+   *
+   * @param {number} y0 @param {string} packName @param {number} count
+   * @param {boolean} isCurrent  Mark the pack as the one being played.
+   * @returns {number} Vertical space consumed.
+   */
+  _packInfoRows(y0, packName, count, isCurrent) {
+    const U = Config.ui;
+    const { total, completed } = scores.packTotal(packName);
+    let y = y0;
+    y += this._menuRow(y, 'Pack name', packName, {
+      current: isCurrent,
+      valueColor: U.color.text,
+      tip: isCurrent ? "The name of the pack you're currently playing" : 'The name of this pack',
+    });
+    y += this._menuRow(y, 'Levels', String(count), { tip: 'Number of levels in this pack.' });
+    y += this._menuRow(y, 'Completed', String(completed), {
+      tip: "Levels in this pack you've cleared at least once.",
+    });
+    y += this._menuRow(y, 'Pack total', completed > 0 ? String(total) : '-', {
+      valueColor: U.color.accentText,
+      tip: "Sum of your best results across this pack (higher is better). '-' means none cleared yet.",
+    });
+    return y - y0;
+  }
+
+  /**
+   * Pack details: the pack's info section, then per-level rows (best score, or a
+   * lock/dash) with tap-to-jump (gated by {@link _canJump}), then "Forget pack
+   * scores". Reached from the main menu's Details button or an All-packs row.
    *
    * @param {{id:string, name:string, levelIds:string[]}} manifest
    * @returns {void}
@@ -1536,32 +1723,78 @@ export class GameScene extends Phaser.Scene {
   _showPackDetail(manifest) {
     this._menuView = 'detail';
     this._menuDetail = manifest;
+    this._menuTitle.setText('Pack details');
     this._menuBackBtn.setVisible(true);
     this._menuScroll = 0;
     this._clearMenuContent();
+    const U = Config.ui;
+    const isCurrentPack = manifest.id === activePackId();
     let y = 0;
+
+    y += this._menuSectionHeader(y, 'Pack');
+    y += this._packInfoRows(y, manifest.name, manifest.levelIds.length, isCurrentPack);
+
+    y += this._menuDivider(y);
+    y += this._menuSectionHeader(y, 'Levels');
     let hasScores = false;
     manifest.levelIds.forEach((file, i) => {
       const best = scores.bestFor(`${manifest.id}/${file}`);
       if (best != null) hasScores = true;
       const allowed = this._canJump(manifest, i);
-      const value = best != null ? `✓  ${best} ★` : allowed ? '—' : '🔒';
-      this._menuRow(y, `Level ${i + 1}`, value, {
+      const value = best != null ? `✓  ${best} ★` : allowed ? '-' : '🔒';
+      const tip =
+        best != null
+          ? `Cleared! Your best here is ${best} (moves left when you won; higher is better). Tap to play it again.`
+          : allowed
+            ? 'Not cleared yet. Tap to play this level.'
+            : 'Locked: clear the previous level first (or turn on Test mode).';
+      y += this._menuRow(y, `Level ${i + 1}`, value, {
         enabled: allowed,
-        valueColor: best != null ? '#ffd479' : '#7a7a85',
+        valueColor: best != null ? U.color.accentText : U.color.textDisabled,
+        current: isCurrentPack && i === currentIndex(),
         onTap: allowed ? () => this._jumpToLevel(manifest, i) : null,
+        tip,
       });
-      y += 44;
     });
     // "Forget pack scores" at the bottom of the scrollable list (shaded out when
-    // the pack has no scores). It scrolls with the levels, so it's reachable via
-    // the scrollbar/drag when the list overflows.
-    y += 10;
+    // the pack has no scores).
+    y += Config.ui.space.sm;
     y += this._menuContentButton(y, 'Forget pack scores', {
+      danger: true,
       enabled: hasScores,
       onTap: () => this._confirmForgetPack(manifest),
+      tip: hasScores
+        ? "Erase your saved best scores for this pack. This can't be undone."
+        : 'No saved scores in this pack to forget yet.',
     });
     this._finishMenuContent(y);
+  }
+
+  /**
+   * A section header row (uppercase, muted) added to the scrollable content.
+   *
+   * @param {number} y @param {string} text @returns {number} Space consumed.
+   */
+  _menuSectionHeader(y, text) {
+    const t = this.add
+      .text(2, y + 16, text.toUpperCase(), Config.ui.type.header)
+      .setOrigin(0, 0.5);
+    this._menuContent.add(t);
+    return 30;
+  }
+
+  /**
+   * A thin divider rule added to the scrollable content, with padding around it.
+   *
+   * @param {number} y @returns {number} Space consumed.
+   */
+  _menuDivider(y) {
+    const U = Config.ui;
+    const g = this.add
+      .rectangle(0, y + U.space.sm, this._menuListW, 1, U.color.divider, U.color.dividerAlpha)
+      .setOrigin(0, 0);
+    this._menuContent.add(g);
+    return U.space.md;
   }
 
   /**
@@ -1672,77 +1905,136 @@ export class GameScene extends Phaser.Scene {
    *
    * @param {number} localY  Top of the row in container-local space.
    * @param {string} label
-   * @param {string} value
-   * @param {{onTap?:(()=>void)|null, enabled?:boolean, valueColor?:string}} [opts]
-   * @returns {void}
+   * @param {string} value  Right-aligned value ('' to omit).
+   * @param {{onTap?:(()=>void)|null, enabled?:boolean, valueColor?:string,
+   *   current?:boolean, tip?:string|null}} [opts]
+   * @returns {number} The row height (so callers can advance `y`).
    */
   _menuRow(localY, label, value, opts = {}) {
-    const { onTap = null, enabled = true, valueColor = '#ffd479' } = opts;
+    const U = Config.ui;
+    const {
+      onTap = null,
+      enabled = true,
+      valueColor = U.color.textMuted,
+      current = false,
+      tip = null,
+    } = opts;
     const rowH = 44;
     const w = this._menuListW;
     const top = this._menuListTop;
     const midY = localY + (rowH - 6) / 2;
-    const bg = this.add.rectangle(0, localY, w, rowH - 6, 0xffffff, 0.06).setOrigin(0, 0);
-    const labelTxt = this.add
-      .text(12, midY, label, { fontSize: '17px', color: enabled ? '#ffffff' : '#7a7a85' })
-      .setOrigin(0, 0.5);
-    const valueTxt = this.add
-      // Top/bottom padding gives the text canvas room: Phaser under-measures
-      // emoji height (✓/★/🔒), so without it the glyph's top is clipped.
-      .text(w - 12, midY, value, {
-        fontSize: '17px',
-        color: valueColor,
-        padding: { top: 6, bottom: 6 },
-      })
-      .setOrigin(1, 0.5);
-    this._menuContent.add([bg, labelTxt, valueTxt]);
+    const bg = this.add
+      .rectangle(0, localY, w, rowH - 6, U.color.row, U.color.rowAlpha)
+      .setOrigin(0, 0);
+    const parts = [bg];
+    // "You are here" accent bar on the left edge.
+    if (current) parts.push(this.add.rectangle(0, localY, 3, rowH - 6, U.color.accent, 1).setOrigin(0, 0));
+    parts.push(
+      this.add
+        .text(14, midY, label, { fontSize: '17px', color: enabled ? U.color.text : U.color.textDisabled })
+        .setOrigin(0, 0.5)
+    );
+    if (value) {
+      parts.push(
+        // Top/bottom padding gives the text canvas room: Phaser under-measures
+        // emoji height (✓/★/🔒), so without it the glyph's top is clipped.
+        this.add
+          .text(w - 12, midY, value, { fontSize: '17px', color: valueColor, padding: { top: 6, bottom: 6 } })
+          .setOrigin(1, 0.5)
+      );
+    }
+    this._menuContent.add(parts);
+    if (onTap || tip) bg.setInteractive(onTap ? { useHandCursor: true } : {});
+    if (tip) this._attachTooltip(bg, tip);
     if (onTap) {
-      bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerover', () => bg.setFillStyle(0xffffff, 0.14));
-      bg.on('pointerout', () => bg.setFillStyle(0xffffff, 0.06));
+      bg.on('pointerover', () => bg.setFillStyle(U.color.row, U.color.rowHoverAlpha));
+      bg.on('pointerout', () => bg.setFillStyle(U.color.row, U.color.rowAlpha));
       bg.on('pointerup', (p) => {
+        if (this._scrollbarDragging) return; // grabbing the scrollbar, not tapping the row
         if (p.y < top || p.y > top + this._menuListH) return; // row scrolled out of view
         if (Math.abs(p.y - this._menuDownY) > 6) return; // this was a drag-scroll, not a tap
+        sfx.tick();
         onTap();
       });
     }
+    return rowH;
   }
 
   /**
-   * A centered button inside the scrollable content (e.g. "Forget pack
-   * scores"). Destructive-red when enabled, gray when disabled. Same off-clip /
-   * drag-vs-tap guards as _menuRow.
+   * A centered button inside the scrollable content. `danger` styles it red
+   * (destructive, e.g. "Forget pack scores"); otherwise neutral gray (e.g.
+   * "Details"). Disabled = grayed and inert (a tooltip still shows). Same
+   * off-clip / drag-vs-tap guards as _menuRow.
    *
    * @param {number} localY  Top of the button in container-local space.
    * @param {string} label
-   * @param {{onTap?:(()=>void)|null, enabled?:boolean}} [opts]
+   * @param {{onTap?:(()=>void)|null, enabled?:boolean, tip?:string|null, danger?:boolean}} [opts]
    * @returns {number} The vertical space the button occupies.
    */
   _menuContentButton(localY, label, opts = {}) {
-    const { onTap = null, enabled = true } = opts;
+    const U = Config.ui;
+    const { onTap = null, enabled = true, tip = null, danger = false } = opts;
     const h = 32;
     const top = this._menuListTop;
     const cx = this._menuListW / 2;
     const midY = localY + h / 2;
-    const baseColor = enabled ? 0x7a2e2e : 0x33333b; // red when actionable, gray when off
+    const base = danger ? (enabled ? U.color.danger : U.color.dangerOff) : 0x3a3a44;
+    const hover = danger ? U.color.dangerHover : 0x50505a;
     const rect = this.add
-      .rectangle(cx, midY, Math.min(220, this._menuListW), h, baseColor, 1)
+      .rectangle(cx, midY, Math.min(240, this._menuListW), h, base, 1)
       .setOrigin(0.5);
     const txt = this.add
       .text(cx, midY, label, { fontSize: '15px', color: enabled ? '#ffffff' : '#777' })
       .setOrigin(0.5);
     this._menuContent.add([rect, txt]);
-    if (enabled && onTap) {
-      rect.setInteractive({ useHandCursor: true });
-      rect.on('pointerover', () => rect.setFillStyle(0x9b3a3a, 1));
-      rect.on('pointerout', () => rect.setFillStyle(baseColor, 1));
+    const tappable = enabled && onTap;
+    if (tappable || tip) rect.setInteractive(tappable ? { useHandCursor: true } : {});
+    if (tip) this._attachTooltip(rect, tip);
+    if (tappable) {
+      rect.on('pointerover', () => rect.setFillStyle(hover, 1));
+      rect.on('pointerout', () => rect.setFillStyle(base, 1));
       rect.on('pointerup', (p) => {
+        if (this._scrollbarDragging) return; // grabbing the scrollbar, not tapping
         if (p.y < top || p.y > top + this._menuListH) return; // scrolled out of view
         if (Math.abs(p.y - this._menuDownY) > 6) return; // a drag-scroll, not a tap
+        sfx.tick();
         onTap();
       });
     }
     return h;
+  }
+
+  /**
+   * Wire a hover/press tooltip onto an interactive game object, using the shared
+   * menu tooltip (`_uiTip`) and the on-screen floating-label placement.
+   *
+   * @param {Phaser.GameObjects.GameObject} target @param {string} text
+   * @returns {void}
+   */
+  _attachTooltip(target, text) {
+    const show = () => this._showUiTip(text);
+    const hide = () => this._hideUiTip();
+    target.on('pointerover', show);
+    target.on('pointerdown', show);
+    target.on('pointerout', hide);
+    target.on('pointerup', hide);
+  }
+
+  /** Show the shared menu tooltip near the pointer, word-wrapped and on-screen. */
+  _showUiTip(text) {
+    if (!this._uiTip) return;
+    const p = this.input.activePointer;
+    // Masks don't clip input, so a scrolled-off row's hit area can leak outside
+    // the card; only show a tooltip when the pointer is actually over the card.
+    if (this._menuCard && !this._overMenuPanel(p)) return;
+    const maxW = Math.min(320, this.scale.width - 40);
+    this._uiTip.setWordWrapWidth(maxW, true).setText(text).setVisible(true);
+    this._placeFloatingLabel(this._uiTip, p.x, p.y);
+  }
+
+  /** Hide the shared menu tooltip. */
+  _hideUiTip() {
+    if (this._uiTip) this._uiTip.setVisible(false);
   }
 
   /** Destroy the current list rows (keeps the container + mask). */
@@ -1796,6 +2088,7 @@ export class GameScene extends Phaser.Scene {
     }
     const viewH = this._menuListH;
     const thumbH = Math.max(24, viewH * (viewH / this._menuContentH));
+    this._menuThumbH = thumbH; // for scrollbar-grab mapping (see _overScrollbar)
     const t = this._menuScroll / this._menuScrollMax;
     const y = this._menuListTop + t * (viewH - thumbH);
     bar.setSize(4, thumbH).setPosition(this._menuListX + this._menuListW - 3, y + thumbH / 2).setVisible(true);
@@ -1810,6 +2103,22 @@ export class GameScene extends Phaser.Scene {
     return p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h;
   }
 
+  /**
+   * @param {Phaser.Input.Pointer} p
+   * @returns {boolean} true if the pointer is in the scrollbar grab zone (the
+   *   right edge of the list) while the list actually overflows.
+   */
+  _overScrollbar(p) {
+    if (this._menuScrollMax <= 0) return false;
+    const right = this._menuListX + this._menuListW;
+    return (
+      p.x >= right - 16 &&
+      p.x <= right + 6 &&
+      p.y >= this._menuListTop &&
+      p.y <= this._menuListTop + this._menuListH
+    );
+  }
+
   /** Tear down the menu overlay (mirrors _hideConfirm). */
   _closeMenu() {
     if (!this._menuOpen) return;
@@ -1818,6 +2127,7 @@ export class GameScene extends Phaser.Scene {
     for (const part of this._menuParts) part.destroy();
     this._menuParts = null;
     this._menuContent = null;
+    this._uiTip = null; // was destroyed with _menuParts
     this._menuOpen = false;
     this._menuDragging = false;
     this.menuButton.setDepth(10).setAlpha(0.8); // restore normal HUD depth/look
@@ -1844,7 +2154,12 @@ export class GameScene extends Phaser.Scene {
         // drag-scroll (its own buttons handle their taps). _menuDownY lets a row
         // tell a tap from a drag (see _menuRow).
         this._menuDownY = p.y;
-        if (this._overMenuPanel(p)) {
+        // Grabbing the scrollbar drags the thumb (direct); grabbing the list body
+        // drags the content (natural). Both track from the grab point (no jump).
+        if (this._overScrollbar(p)) {
+          this._scrollbarDragging = true;
+          this._menuDragLastY = p.y;
+        } else if (this._overMenuPanel(p)) {
           this._menuDragging = true;
           this._menuDragLastY = p.y;
         }
@@ -1884,8 +2199,13 @@ export class GameScene extends Phaser.Scene {
       if (this._infoEntity) this._placeEntityInfo(p.x, p.y);
       if (this._modalOpen) return;
       if (this._menuOpen) {
-        if (this._menuDragging) {
-          this._menuScrollBy(this._menuDragLastY - p.y);
+        if (this._scrollbarDragging) {
+          // Thumb drag: move the thumb WITH the pointer (down -> content down).
+          const range = this._menuListH - (this._menuThumbH || 0);
+          if (range > 0) this._menuScrollBy(((p.y - this._menuDragLastY) * this._menuScrollMax) / range);
+          this._menuDragLastY = p.y;
+        } else if (this._menuDragging) {
+          this._menuScrollBy(this._menuDragLastY - p.y); // content drag: natural (inverted)
           this._menuDragLastY = p.y;
         }
         return;
@@ -1909,6 +2229,7 @@ export class GameScene extends Phaser.Scene {
       if (this._modalOpen) return;
       if (this._menuOpen) {
         this._menuDragging = false;
+        this._scrollbarDragging = false;
         return;
       }
       this._isPanning = false;
@@ -2027,28 +2348,32 @@ export class GameScene extends Phaser.Scene {
     this._placeEntityInfo(p.x, p.y);
   }
 
+  /** Place the entity info label near the pointer, fully on-screen. */
+  _placeEntityInfo(px, py) {
+    this._placeFloatingLabel(this.entityInfoText, px, py);
+  }
+
   /**
-   * Position the entity info label near the pointer but fully on-screen: prefer
-   * above-right of the pointer, flip to the other side of an edge (left / below),
-   * then clamp so the whole box stays within the viewport. Its size is known here
-   * because the text (and wrap) were already set.
+   * Position an origin-(0,1) label near the pointer but fully on-screen: prefer
+   * above-right, flip to the roomier side of an edge (left / below), then clamp
+   * so the whole box stays within the viewport. The label's text (and wrap) must
+   * already be set so its size is known. Shared by the entity info label and the
+   * menu tooltip.
    *
+   * @param {Phaser.GameObjects.Text} t
    * @param {number} px @param {number} py  Pointer position (screen px).
    * @returns {void}
    */
-  _placeEntityInfo(px, py) {
-    const t = this.entityInfoText;
+  _placeFloatingLabel(t, px, py) {
     const pad = 6;
     const W = this.scale.width;
     const H = this.scale.height;
     const w = t.width; // includes the label's own padding
     const h = t.height;
-    // Preferred above-right; flip to the roomier side near an edge.
     let x = px + 14;
     if (x + w > W - pad) x = px - 14 - w; // flip left
     let top = py - 8 - h;
     if (top < pad) top = py + 14; // flip below
-    // Final clamp guarantees it fits whatever the flips decided.
     x = Phaser.Math.Clamp(x, pad, Math.max(pad, W - pad - w));
     top = Phaser.Math.Clamp(top, pad, Math.max(pad, H - pad - h));
     t.setPosition(x, top + h); // origin (0,1): position is the box's bottom-left

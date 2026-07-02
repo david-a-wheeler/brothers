@@ -179,6 +179,17 @@ export class Sfx {
   }
 
   /**
+   * A soft, short UI click for menu taps and toggles — quieter and higher than
+   * {@link hit}, and distinct from the modal {@link bonk}.
+   *
+   * @returns {void}
+   */
+  tick() {
+    if (!this._ctx) return;
+    this._blip({ freq: 1300, type: 'sine', dur: 0.035, gain: 0.16, at: this._ctx.currentTime });
+  }
+
+  /**
    * Grab: a soft, short high "tick" when the launcher is picked up. Deliberately
    * a clean tonal pip (no noise), so it's clearly not the {@link hit} ball-click.
    *

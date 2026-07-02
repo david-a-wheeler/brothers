@@ -49,6 +49,41 @@ export const Config = {
   },
 
   /**
+   * Shared UI design tokens for the menu and modals (see menu-plan.md). Keeping
+   * spacing, radii, colours, type, and motion in one place makes the panels feel
+   * consistent by construction. Hex numbers are for shapes; CSS strings for text.
+   */
+  ui: {
+    space: { xs: 4, sm: 8, md: 16, lg: 24 },
+    radius: { card: 14, control: 8 },
+    color: {
+      surface: 0x23232c, // panel/card fill
+      surfaceStroke: 0x4d4d55, // panel/card border
+      row: 0xffffff, // row background tint (with rowAlpha)
+      rowAlpha: 0.06,
+      rowHoverAlpha: 0.12,
+      divider: 0xffffff, // section rule (with dividerAlpha)
+      dividerAlpha: 0.08,
+      accent: 0xffd479, // gold — scores + "you are here" marker
+      danger: 0x9b3a3a, // destructive (Forget)
+      dangerHover: 0xb34a4a,
+      dangerOff: 0x33333b, // destructive, disabled
+      text: '#ffffff',
+      textMuted: '#9aa0a6',
+      textDisabled: '#6b6b75',
+      accentText: '#ffd479',
+    },
+    type: {
+      title: { fontSize: '20px', color: '#ffffff', fontStyle: 'bold' },
+      header: { fontSize: '13px', color: '#9aa0a6', fontStyle: 'bold' },
+      row: { fontSize: '17px', color: '#ffffff' },
+      value: { fontSize: '17px', color: '#9aa0a6' },
+      body: { fontSize: '15px', color: '#dddddd' },
+    },
+    motion: { dur: 150, ease: 'Sine.Out', rowStagger: 25 },
+  },
+
+  /**
    * Camera zoom. The *minimum* zoom is computed at runtime so the whole arena
    * fits in the world camera's area below the HUD (see GameScene._setupCameras);
    * only the maximum and the wheel step live here.
