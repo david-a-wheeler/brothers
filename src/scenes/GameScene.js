@@ -21,8 +21,8 @@ import { World } from '../world/World.js';
 
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
 const HELP_TEXT = [
-  'Help brothers David and Ken reach the goal in as few moves as possible.',
-  'Move: The glowing brother is the one you move. Drag it back and release to slingshot it toward its partner. The two are joined by an elastic band, so they travel together.',
+  'Help the brothers, David and Ken, reach the goal in as few moves as possible.',
+  'Move: The glowing brother is the one you move. Drag it back and release to slingshot it toward its partner. The two brothers are joined by an elastic band, so they travel together.',
   'Aim: A red X means that spot is blocked (a wall, the edge, or the other brother). Move and try again.',
   'Turns: Each launch uses one turn, then the other brother takes over. Turns left show as "#Left".',
   'Goal: Land a brother at rest inside the goal ring to win.',
