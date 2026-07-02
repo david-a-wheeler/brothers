@@ -1756,6 +1756,13 @@ export class GameScene extends Phaser.Scene {
       this.isAiming = false;
       this._endGrab();
 
+      // A launch is impossible once the level is over (it may have ended mid-aim,
+      // e.g. a bomb strike). Cancel the aim instead of firing "one last launch".
+      if (this.status === 'ENDED') {
+        this.brothers.cancelAim();
+        return;
+      }
+
       const pull = this.brothers.release();
       if (pull < Config.slingshot.minPull) {
         this._refreshHud(); // mis-click: no move spent, back to "drag to aim"
@@ -2128,6 +2135,16 @@ export class GameScene extends Phaser.Scene {
   _endGame(message, face, color, won) {
     this.status = 'ENDED';
     this.world.notifyLevelEnd(); // freeze bombs so they can't trigger during the banner
+    // If the level ends mid-aim (e.g. a bomb strikes a brother while the player
+    // is drawing the slingshot), abort the aim: there must be no "one last
+    // launch" on the pending pointerup, and no frozen, stretched launcher left
+    // under the banner. Done before setBothFaces so the end faces stick (cancelAim
+    // resets them to idle).
+    if (this.isAiming) {
+      this.isAiming = false;
+      this._endGrab();
+      this.brothers.cancelAim();
+    }
     this.brothers.setBothFaces(face);
     this._refreshHud(); // -> "Game Ended" text, reset enabled, ENDED status icon
 
