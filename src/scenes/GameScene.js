@@ -402,6 +402,18 @@ export class GameScene extends Phaser.Scene {
   _frameBrothers() {
     const cam = this.cameras.main;
     const M = Config.zoom.edgeMargin;
+    const a = this.brothers.david.go;
+    const b = this.brothers.ken.go;
+    // If both balls are already fully in view, leave the camera where it is — no
+    // needless drift at rest. Only reframe when one ended up at/over the edge.
+    const view = cam.worldView;
+    const framed = (o) =>
+      o.x - o.radius >= view.x &&
+      o.x + o.radius <= view.right &&
+      o.y - o.radius >= view.y &&
+      o.y + o.radius <= view.bottom;
+    if (framed(a) && framed(b)) return;
+
     const fit = Math.min(
       cam.width / (this.brothers.spanWidth + 2 * M),
       cam.height / (this.brothers.spanHeight + 2 * M)
@@ -426,16 +438,37 @@ export class GameScene extends Phaser.Scene {
    *
    * @returns {void}
    */
-  _fitZoom() {
+  _keepBallsInView() {
+    if (this._isPanning || this._pinchDist) return; // a manual gesture owns the camera
     const cam = this.cameras.main;
     const M = Config.zoom.edgeMargin;
-    const fit = Math.min(
-      cam.width / (this.brothers.spanWidth + 2 * M),
-      cam.height / (this.brothers.spanHeight + 2 * M)
-    );
-    if (fit < cam.zoom) {
-      cam.setZoom(Phaser.Math.Linear(cam.zoom, Math.max(fit, this._minZoom), 0.05));
+    const a = this.brothers.david.go;
+    const b = this.brothers.ken.go;
+    // Axis-aligned box enclosing both balls (radii included).
+    const left = Math.min(a.x - a.radius, b.x - b.radius);
+    const right = Math.max(a.x + a.radius, b.x + b.radius);
+    const top = Math.min(a.y - a.radius, b.y - b.radius);
+    const bottom = Math.max(a.y + a.radius, b.y + b.radius);
+
+    // Zoom out (eased) only if the box no longer fits the view.
+    let view = cam.worldView;
+    if (right - left > view.width || bottom - top > view.height) {
+      const fit = Math.min(cam.width / (right - left + 2 * M), cam.height / (bottom - top + 2 * M));
+      cam.setZoom(Phaser.Math.Linear(cam.zoom, Math.max(fit, this._minZoom), 0.08));
+      view = cam.worldView; // zoom changed the visible area
     }
+
+    // Pan (eased) only when the box crosses a view edge — so a view that already
+    // shows both balls (e.g. fully zoomed out) never drifts.
+    let dx = 0;
+    if (left < view.x) dx = left - view.x;
+    else if (right > view.right) dx = right - view.right;
+    let dy = 0;
+    if (top < view.y) dy = top - view.y;
+    else if (bottom > view.bottom) dy = bottom - view.bottom;
+    if (dx || dy) cam.setScroll(cam.scrollX + dx * 0.12, cam.scrollY + dy * 0.12);
+
+    this._clampCamera();
   }
 
   // --- Level construction -------------------------------------------------
@@ -1698,11 +1731,6 @@ export class GameScene extends Phaser.Scene {
       this.movesLeft -= 1;
       this.status = 'PLAYING'; // first launch leaves READY; later launches keep PLAYING
       this.phase = 'MOVING';
-      // Let Phaser follow the pair (their midpoint) with a soft lerp + central
-      // deadzone while the shot is in flight; released at settle (_resolveTurn).
-      const cam = this.cameras.main;
-      cam.startFollow(this.brothers, false, 0.08, 0.08);
-      cam.setDeadzone(cam.width * 0.5, cam.height * 0.5);
       this._refreshHud();
     });
 
@@ -1928,7 +1956,7 @@ export class GameScene extends Phaser.Scene {
     this._updatePinch();
 
     if (this.status === 'PLAYING' && this.phase === 'MOVING') {
-      this._fitZoom(); // Phaser follows the pair (pan); this zooms out to fit both
+      this._keepBallsInView(); // gently pan/zoom only when a ball nears the edge
       this.brothers.brakeSlowMotion();
       if (this.brothers.isSettled()) this._resolveTurn();
     }
@@ -1940,7 +1968,6 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _resolveTurn() {
-    this.cameras.main.stopFollow(); // the shot has settled; hand the camera back to the player
     this._frameBrothers(); // gently zoom/pan so both balls are fully framed at rest
     const reached = this.world.firstReached(this.brothers);
     if (reached) {
