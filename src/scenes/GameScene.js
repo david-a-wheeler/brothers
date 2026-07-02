@@ -27,7 +27,7 @@ const HELP_TEXT = [
   'Turns: Each launch uses one move, then the other brother takes over. Moves left show as "#Left".',
   'Goal: Land a brother at rest inside the goal ring to win.',
   'Teleporters warp the pair to a matching target. Bombs are hazards: a spinning arrow shows where each will go; touching one usually ends the game. Walls block and bounce.',
-  'Camera: mouse wheel or pinch to zoom; drag empty space to pan.',
+  'Camera: mouse wheel or pinch/spread to zoom in and out; drag empty space to pan.',
   'Scoring: "Best" is the moves you had left on a win (higher is better). "Pack" adds up your Bests. "-" means not won yet; "0" is a real score.',
 ].join('\n\n');
 
