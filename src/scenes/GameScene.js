@@ -327,15 +327,12 @@ export class GameScene extends Phaser.Scene {
     const main = this.cameras.main;
     main.setViewport(0, hudHeight, w, h - hudHeight);
     this.uiCamera.setViewport(0, 0, w, h);
-    // Constrain panning to the arena expanded by the edge margin; Phaser clamps
-    // the camera (and any follow) to this in preRender and centres it when the
-    // view is larger than the bounds (fully zoomed out).
-    main.setBounds(-M, -M, this.arena.width + 2 * M, this.arena.height + 2 * M);
     this._minZoom = Math.min(
       main.width / (this.arena.width + 2 * M),
       main.height / (this.arena.height + 2 * M)
     );
     if (resetZoom || main.zoom < this._minZoom) main.setZoom(this._minZoom);
+    this._clampCamera();
   }
 
   /**
@@ -347,6 +344,41 @@ export class GameScene extends Phaser.Scene {
     this._computeLayout();
     this._layoutHud();
     this._layoutCameras(false);
+  }
+
+  /**
+   * Constrain the world camera in world space. We clamp by hand instead of with
+   * Phaser's `setBounds` because, when the arena is smaller than the view (zoomed
+   * out so gray shows), `setBounds` pins the arena to an edge rather than
+   * centring it. Per axis: if the view is wider than the arena + both margins,
+   * centre the arena; otherwise clamp scroll so the view stays within the arena
+   * expanded by the margin (up to `M` of gray past any edge). Any zoom, any arena
+   * size. Call after every pan/zoom (follow uses its own path during flight).
+   *
+   * @returns {void}
+   */
+  _clampCamera() {
+    const main = this.cameras.main;
+    const M = Config.zoom.edgeMargin;
+    const aw = this.arena.width;
+    const ah = this.arena.height;
+    const halfVW = main.width / 2;
+    const halfVH = main.height / 2;
+    const halfSpanX = main.width / main.zoom / 2; // half the world width in view
+    const halfSpanY = main.height / main.zoom / 2;
+
+    let midX = main.scrollX + halfVW;
+    let midY = main.scrollY + halfVH;
+    midX =
+      halfSpanX * 2 >= aw + 2 * M
+        ? aw / 2
+        : Phaser.Math.Clamp(midX, -M + halfSpanX, aw + M - halfSpanX);
+    midY =
+      halfSpanY * 2 >= ah + 2 * M
+        ? ah / 2
+        : Phaser.Math.Clamp(midY, -M + halfSpanY, ah + M - halfSpanY);
+
+    main.setScroll(midX - halfVW, midY - halfVH);
   }
 
   /**
@@ -1602,6 +1634,7 @@ export class GameScene extends Phaser.Scene {
           cam.scrollX - (p.x - this._panLast.x) / cam.zoom,
           cam.scrollY - (p.y - this._panLast.y) / cam.zoom
         );
+        this._clampCamera();
         this._panLast.x = p.x;
         this._panLast.y = p.y;
       }
@@ -1753,6 +1786,7 @@ export class GameScene extends Phaser.Scene {
     cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, this._minZoom, Config.zoom.max));
     const after = cam.getWorldPoint(screenX, screenY);
     cam.setScroll(cam.scrollX + (before.x - after.x), cam.scrollY + (before.y - after.y));
+    this._clampCamera();
   }
 
   /**
@@ -1868,6 +1902,7 @@ export class GameScene extends Phaser.Scene {
    */
   _resolveTurn() {
     this.cameras.main.stopFollow(); // the shot has settled; hand the camera back to the player
+    this._clampCamera(); // re-settle into a clamped, centred resting view
     const reached = this.world.firstReached(this.brothers);
     if (reached) {
       // Record best score (most moves left) if we beat it.
