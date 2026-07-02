@@ -181,6 +181,19 @@ export class Brothers {
   }
 
   /**
+   * The level has ended (win or loss, for any reason). Turn off every turn cue so
+   * nothing keeps signalling "it's your move" after the game is over: the launcher
+   * glow and any refusal marks. Mirrors the {@link Entity#onLevelEnd} hook so the
+   * scene can shut the pair down the same way it does world entities.
+   *
+   * @returns {void}
+   */
+  onLevelEnd() {
+    this._hideIndicator();
+    this._refusalXs.forEach((x) => x.setVisible(false));
+  }
+
+  /**
    * Per-frame: let each brother glue its own face/feature and stay in-arena,
    * then draw the pair-level bits (tether band + sound, glow, refusal Xs). Call
    * once per frame from the scene's update.

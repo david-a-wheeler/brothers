@@ -2151,6 +2151,7 @@ export class GameScene extends Phaser.Scene {
   _endGame(message, face, color, won) {
     this.status = 'ENDED';
     this.world.notifyLevelEnd(); // freeze bombs so they can't trigger during the banner
+    this.brothers.onLevelEnd(); // turn off the "your move" cues (glow, refusal marks)
     // If the level ends mid-aim (e.g. a bomb strikes a brother while the player
     // is drawing the slingshot), abort the aim: there must be no "one last
     // launch" on the pending pointerup, and no frozen, stretched launcher left
