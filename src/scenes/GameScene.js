@@ -223,13 +223,18 @@ export class GameScene extends Phaser.Scene {
   _hudTextMetrics() {
     if (!this._hudTextW) {
       const turnStr = "David's turn, can't do that"; // longest turn prompt
-      const movesStr = 'Pack: 00    Best: 00    #Left: 00'; // longest right-side line
       const measure = (size) => {
         const probe = this.add.text(0, 0, '', { fontSize: size }).setVisible(false);
         probe.setText(turnStr);
         const turn = probe.width;
-        probe.setText(movesStr);
-        const moves = probe.width;
+        // The right side is three separate stats with statGap between them; sum the
+        // worst-case (two-digit) label widths plus the gaps so the breakpoints match
+        // the real group width laid out by _layoutRightGroup.
+        let moves = -Config.hud.statGap;
+        for (const s of ['Pack: 00', 'Best: 00', '#Left: 00']) {
+          probe.setText(s);
+          moves += probe.width + Config.hud.statGap;
+        }
         probe.destroy();
         return { turn, moves };
       };
@@ -284,18 +289,17 @@ export class GameScene extends Phaser.Scene {
     // state text centred on row 0, Best/#Left centred on row 1 (no collision).
     const fontSize = L.mode === 'wide' ? '22px' : '18px';
     this.turnText.setFontSize(fontSize);
-    this.movesText.setFontSize(fontSize);
+    for (const s of [this.packText, this.bestText, this.leftText]) s.setFontSize(fontSize);
     if (L.mode === 'narrow') {
-      // Two tight text rows: centres at half and one-and-a-half text-row heights.
+      // Two tight text rows: turn on row 0, the Pack/Best/#Left group on row 1.
       this.turnText.setOrigin(0.5, 0.5).setPosition(cx, L.textRow / 2);
-      this.movesText.setOrigin(0.5, 0.5).setPosition(cx, L.textRow * 1.5);
     } else {
       // One row of edge text. Compact: its own tight row above the icons. Wide:
       // shares the single icon row (centred on it).
       const textY = L.mode === 'compact' ? L.textRow / 2 : rh / 2;
       this.turnText.setOrigin(0, 0.5).setPosition(L.pad, textY);
-      this.movesText.setOrigin(1, 0.5).setPosition(L.w - L.pad, textY);
     }
+    this._layoutRightGroup(); // position the Pack/Best/#Left stats + their tooltips
 
     // Banner + backing panel centred; sized/scaled to fit narrow screens.
     const panelW = Math.min(L.w - 2 * L.pad, 520);
@@ -303,6 +307,36 @@ export class GameScene extends Phaser.Scene {
     this.banner.setPosition(cx, L.h / 2).setFontSize(L.mode === 'wide' ? '52px' : '34px');
 
     this._layoutDevPanel();
+  }
+
+  /**
+   * Position the right-hand Pack/Best/#Left stats (and their tooltips) as one
+   * group: right-aligned to the edge in wide/compact, centred on its own row in
+   * narrow. Laid out right-to-left from each entry's current width, so it reflows
+   * as the values change. Each tooltip is centred under its stat, just below the
+   * HUD, and clamped to stay on-screen. Called from {@link _layoutHud} (resize)
+   * and {@link _refreshHud} (value change).
+   *
+   * @returns {void}
+   */
+  _layoutRightGroup() {
+    const L = this._layout;
+    const gap = Config.hud.statGap; // spacing between the three stats
+    const stats = [this.packText, this.bestText, this.leftText];
+    const tips = [this.packTooltip, this.bestTooltip, this.leftTooltip];
+    const y =
+      L.mode === 'narrow' ? L.textRow * 1.5 : L.mode === 'compact' ? L.textRow / 2 : L.rowHeight / 2;
+    const total = stats.reduce((s, e) => s + e.width, 0) + gap * (stats.length - 1);
+    // Right edge of the group: the HUD edge (wide/compact) or centred (narrow).
+    let x = L.mode === 'narrow' ? L.w / 2 + total / 2 : L.w - L.pad;
+    for (let i = stats.length - 1; i >= 0; i--) {
+      stats[i].setOrigin(1, 0.5).setPosition(x, y);
+      const center = x - stats[i].width / 2;
+      const half = tips[i].width / 2;
+      const tx = Phaser.Math.Clamp(center, half + L.pad, L.w - L.pad - half);
+      tips[i].setPosition(tx, L.hudHeight + 6);
+      x -= stats[i].width + gap;
+    }
   }
 
   /**
@@ -336,7 +370,12 @@ export class GameScene extends Phaser.Scene {
       this.hudBar,
       this.hudBorder,
       this.turnText,
-      this.movesText,
+      this.packText,
+      this.packTooltip,
+      this.bestText,
+      this.bestTooltip,
+      this.leftText,
+      this.leftTooltip,
       this.restartButton,
       this.restartTooltip,
       this.attractGlow,
@@ -564,10 +603,17 @@ export class GameScene extends Phaser.Scene {
       .setDepth(9);
 
     this.turnText = this.add.text(20, 18, '', { fontSize: '22px' }).setDepth(10);
-    this.movesText = this.add
-      .text(Config.view.width - 20, 18, '', { fontSize: '22px', color: '#dddddd' })
-      .setOrigin(1, 0)
-      .setDepth(10);
+    // Right-hand stats — Pack / Best / #Left — each its own interactive text with
+    // a hover/press tooltip (see _buildHudStat), laid out as a right-aligned group
+    // by _layoutRightGroup and filled with values in _refreshHud. The pack name is
+    // fixed for the scene (switching packs restarts it), so it's baked in here.
+    [this.packText, this.packTooltip] = this._buildHudStat(
+      `Total best results of current pack (${activePackName()})`
+    );
+    [this.bestText, this.bestTooltip] = this._buildHudStat(
+      'Best result on this level: the most moves ever left when you won'
+    );
+    [this.leftText, this.leftTooltip] = this._buildHudStat('Moves left in the current game');
 
     // Restart button: the clockwise-arrow icon, vertically centred in the
     // ribbon. Clicking opens a confirmation modal (see _showConfirm).
@@ -744,6 +790,43 @@ export class GameScene extends Phaser.Scene {
       .setDepth(10)
       .setShadow(2, 3, '#000000', 6, true, true)
       .setVisible(false);
+  }
+
+  /**
+   * Build a right-hand HUD stat: an interactive (right-aligned) text plus a
+   * tooltip revealed on hover or press and hidden on out/release — mirroring the
+   * icon tooltips so the two read the same. The value string and positions are
+   * set later (see {@link _refreshHud} / {@link _layoutRightGroup}).
+   *
+   * @param {string} tooltipText  The explanation shown on hover/press.
+   * @returns {[Phaser.GameObjects.Text, Phaser.GameObjects.Text]}  [stat, tooltip]
+   */
+  _buildHudStat(tooltipText) {
+    const stat = this.add
+      .text(0, 0, '', { fontSize: '18px', color: '#dddddd' })
+      .setOrigin(1, 0.5)
+      .setDepth(10)
+      .setInteractive();
+    const tip = this.add
+      .text(0, 0, tooltipText, {
+        fontSize: '15px',
+        color: '#ffffff',
+        backgroundColor: '#000000',
+        padding: { x: 8, y: 4 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(11)
+      .setVisible(false);
+    const reveal = () => tip.setVisible(true);
+    const hide = () => tip.setVisible(false);
+    stat.on('pointerover', reveal);
+    stat.on('pointerout', hide);
+    stat.on('pointerdown', (_p, _x, _y, e) => {
+      e?.stopPropagation(); // don't let the press reach the aim/pan router
+      reveal();
+    });
+    stat.on('pointerup', hide);
+    return [stat, tip];
   }
 
   /**
@@ -2300,9 +2383,10 @@ export class GameScene extends Phaser.Scene {
     this.turnText.setText(text).setColor(color);
     const best = this.registry.get(this._bestKey);
     const pack = this._packBest == null ? '-' : this._packBest;
-    this.movesText.setText(
-      `Pack: ${pack}    Best: ${best == null ? '-' : best}    #Left: ${this.movesLeft}`
-    );
+    this.packText.setText(`Pack: ${pack}`);
+    this.bestText.setText(`Best: ${best == null ? '-' : best}`);
+    this.leftText.setText(`#Left: ${this.movesLeft}`);
+    this._layoutRightGroup(); // widths changed -> reflow the group
     this._refreshResetButton();
     this._refreshNavButtons();
     this._refreshStatusIcon();

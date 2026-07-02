@@ -44,6 +44,7 @@ export const Config = {
     compactIcon: 44, // icon display size (px) on small screens (touch target)
     normalGap: 44, // spacing between icon centres, wide
     compactGap: 56, // spacing between icon centres, compact
+    statGap: 30, // spacing between the right-hand Pack/Best/#Left stats
     pad: 14, // edge padding for text
   },
 
