@@ -465,6 +465,11 @@ export class GameScene extends Phaser.Scene {
     this._computeLayout();
     this._layoutHud();
     this._layoutCameras(false);
+    // An open modal was sized for the old screen; reflow it to the new one.
+    if (this._modalOpen) {
+      for (const part of this._modalParts) part.destroy();
+      this._buildModal(false);
+    }
   }
 
   /**
@@ -1301,20 +1306,36 @@ export class GameScene extends Phaser.Scene {
    *   buttons:Array<{label:string, bg:string, onClick:()=>void}>}} opts
    * @returns {void}
    */
-  _openModal({ title, body = '', buttons, warn = true }) {
+  _openModal(spec) {
     if (this._modalOpen) return;
     this._modalOpen = true;
     this._isPanning = false;
+    this._modalSpec = spec; // kept so the modal can be rebuilt on resize
     // Yes/No confirms bonk (an unusual situation to decide); info modals don't —
     // the tick from the control that opened them is enough.
-    if (warn) sfx.bonk();
+    if (spec.warn !== false) sfx.bonk();
+    this._buildModal(true);
+  }
 
+  /**
+   * Build the modal's visuals from {@link _modalSpec} and the current layout.
+   * Called on open (`animate` = fade in) and again from {@link _onResize} to
+   * reflow to a new screen size (`animate` = false, no re-fade).
+   *
+   * @param {boolean} animate  Fade in (open) vs. appear at once (resize rebuild).
+   * @returns {void}
+   */
+  _buildModal(animate) {
+    const { title, body = '', buttons } = this._modalSpec;
     const U = Config.ui;
     const L = this._layout;
     const cx = L.w / 2;
     const cy = L.h / 2;
     const pad = U.space.lg;
-    const pw = Math.min(440, L.w - 2 * L.pad);
+    // Confirms stay narrow (a short question); a modal with body text (Help/About)
+    // may grow wider on a wide screen so it isn't a tall, narrow column — but
+    // still capped so lines don't get uncomfortably long to read.
+    const pw = Math.min(body ? 640 : 440, L.w - 2 * L.pad);
     const innerW = pw - 2 * pad;
 
     // Build the text first so we can measure it and size the panel to fit.
@@ -1369,11 +1390,14 @@ export class GameScene extends Phaser.Scene {
     this._modalParts = [backdrop, panel, titleTxt, ...(bodyTxt ? [bodyTxt] : []), ...btnObjs];
     this.cameras.main.ignore(this._modalParts); // HUD-camera only
 
-    // Gentle fade-in so it doesn't pop in harshly.
     for (const part of this._modalParts) {
       const to = part === backdrop ? dim : 1;
-      part.setAlpha(0);
-      this.tweens.add({ targets: part, alpha: to, duration: U.motion.dur, ease: U.motion.ease });
+      if (animate) {
+        part.setAlpha(0);
+        this.tweens.add({ targets: part, alpha: to, duration: U.motion.dur, ease: U.motion.ease });
+      } else {
+        part.setAlpha(to); // resize rebuild: appear at once
+      }
     }
   }
 
@@ -1474,6 +1498,7 @@ export class GameScene extends Phaser.Scene {
     if (!this._modalParts) return;
     for (const part of this._modalParts) part.destroy();
     this._modalParts = null;
+    this._modalSpec = null;
     this._modalOpen = false;
   }
 
