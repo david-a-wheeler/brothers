@@ -95,6 +95,8 @@ export class GameScene extends Phaser.Scene {
     /** @type {TurnPhase} */
     this.phase = 'AIMING';
     this.movesLeft = this.level.moves;
+    /** True once the first launch has connected (first snap); gates {@link _kickoff}. */
+    this._kickedOff = false;
     // Best winning result = the most moves ever left over on a win. Mirrored in
     // the registry (keyed per level) for fast access during play; seeded from
     // persistent storage below so it survives a full page reload, not just a
@@ -1769,13 +1771,11 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      const firstLaunch = this.status === 'READY';
       this.movesLeft -= 1;
       this.status = 'PLAYING'; // first launch leaves READY; later launches keep PLAYING
       this.phase = 'MOVING';
-      // Bombs (and any future dynamic objects) stay inert until play begins, so
-      // the board is calm while the player aims the very first shot.
-      if (firstLaunch) this.world.notifyPlayStart();
+      // Hazards stay inert (and show their preview arrows) until the shot connects
+      // — see _kickoff, fired from the first snap in the collision router.
       this._refreshHud();
     });
 
@@ -1961,6 +1961,7 @@ export class GameScene extends Phaser.Scene {
           if (moving) {
             sfx.hit(); // billiard-style click on every brother-on-brother contact
             this.brothers.snap();
+            this._kickoff(); // the launcher reached the anchor: hazards go live
           }
           continue;
         }
@@ -1982,6 +1983,7 @@ export class GameScene extends Phaser.Scene {
           } else if (moving) {
             sfx.hit(); // brother off a wall or the arena edge — same click, no debounce
             this.brothers.snap(); // hitting a solid also frees the anchor
+            this._kickoff(); // shot has connected with the world: hazards go live
           }
           continue;
         }
@@ -2053,6 +2055,20 @@ export class GameScene extends Phaser.Scene {
       this.brothers.brakeSlowMotion();
       if (this.brothers.isSettled()) this._resolveTurn();
     }
+  }
+
+  /**
+   * Kickoff: the first launch has connected (the launcher's first impact — the
+   * anchor, or a wall). Fired once; brings dynamic hazards to life and clears
+   * their pre-launch preview arrows (see World.notifyPlayStart / Hazard). Until
+   * now the board stays calm so the player can read the hazard cues and aim.
+   *
+   * @returns {void}
+   */
+  _kickoff() {
+    if (this._kickedOff) return;
+    this._kickedOff = true;
+    this.world.notifyPlayStart();
   }
 
   /**

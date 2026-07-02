@@ -207,6 +207,28 @@ export const Config = {
       outlineWidth: 1,
       outlineAlpha: 0.5,
     },
+    /**
+     * Pre-launch direction arrow (a general indicator, see effects.directionArrow):
+     * shown for a dynamic hazard before play begins so the player can read where
+     * it will go and — from the spinning head's rate — roughly how fast. The head
+     * revolves once per `spinBaseMs / speed` ms (faster hazard → faster spin),
+     * clamped so extremes stay legible. Translucent fill + a contrasting outline
+     * keep it visible over any background while still showing what's underneath.
+     */
+    arrow: {
+      length: 34, // shaft length (px)
+      thickness: 6, // shaft thickness
+      headSize: 11, // arrowhead half-height
+      gap: 8, // clearance between the hazard's edge and the arrow's tail
+      color: 0xffffff, // fill
+      fillAlpha: 0.5, // translucent so what's underneath still reads
+      outlineColor: 0x101014, // dark rim so the light fill stays visible on light art
+      outlineAlpha: 0.7,
+      outlineWidth: 2,
+      spinBaseMs: 1600, // ms per revolution at speed 1; period = spinBaseMs / speed
+      spinMinMs: 90, // clamp so a very fast hazard doesn't strobe
+      spinMaxMs: 2600, // clamp so a very slow hazard still visibly turns
+    },
   },
 };
 

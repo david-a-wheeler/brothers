@@ -72,6 +72,7 @@ export class Bomb extends Hazard {
    * @returns {void}
    */
   onActorContact(_actor) {
+    if (this.body.isStatic) return; // dormant (pre-kickoff) or frozen (level end): inert
     const p = this.body.position;
     spawnRing(this.scene, p.x, p.y, this.radius, Config.anim.bomb.explosionColor);
     sfx.explode();

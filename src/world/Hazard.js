@@ -1,5 +1,6 @@
 import { Config } from '../config.js';
 import { Entity } from './Entity.js';
+import { directionArrow } from './effects.js';
 
 /** Matter's Body namespace (raw-body manipulation; no game object here). */
 const Body = Phaser.Physics.Matter.Matter.Body;
@@ -12,12 +13,15 @@ const Body = Phaser.Physics.Matter.Matter.Body;
  * hits and Matter's small energy drift never speed it up or slow it down — and
  * it teleports like an actor when it enters a teleporter ({@link onTeleport}).
  *
- * A hazard is **dormant** (its body static) until play begins: the scene calls
- * {@link onPlayStart} on the first launch (via {@link World#notifyPlayStart}),
- * which {@link activate}s it, and {@link onLevelEnd} freezes it again so it stops
- * acting during the end-of-level banner. Because the body is a raw Matter body
- * (not a Phaser game object), the subclass supplies a display object as
- * `this.view` and this base keeps it glued to the body each frame.
+ * A hazard is **dormant** (its body static) until kickoff — the first launch's
+ * first impact — when the scene calls {@link onPlayStart} (via
+ * {@link World#notifyPlayStart}), which {@link activate}s it and clears its
+ * preview arrow; {@link onLevelEnd} freezes it again so it stops acting during
+ * the end-of-level banner. While dormant it shows a translucent direction arrow
+ * (heading + spin-rate speed cue) so the player can plan before starting.
+ * Because the body is a raw Matter body (not a Phaser game object), the subclass
+ * supplies a display object as `this.view` and this base keeps it glued to the
+ * body each frame.
  *
  * Concrete behaviour on touching a brother lives in the subclass
  * ({@link onActorContact}); {@link Bomb} is the first, ending the level or the
@@ -67,6 +71,20 @@ export class Hazard extends Entity {
      * @type {{x:number, y:number}|null}
      */
     this._bounceNormal = null;
+
+    /**
+     * Pre-launch preview arrow: shows the heading and (by its spin rate) the
+     * speed this hazard will move at, so the player can plan before starting.
+     * Cleared at kickoff in {@link onPlayStart}.
+     * @type {Phaser.GameObjects.Container|null}
+     */
+    this._indicator = directionArrow(scene, {
+      x: def.x,
+      y: def.y,
+      angleDeg: this.angleDeg,
+      speed: this.speed,
+      offset: this.radius + Config.anim.arrow.gap,
+    });
   }
 
   /**
@@ -87,8 +105,18 @@ export class Hazard extends Entity {
     Body.setStatic(this.body, true);
   }
 
-  /** Begin moving when the level starts play. */
+  /**
+   * Kickoff (the first launch has connected): clear the preview arrow and begin
+   * moving. Also re-arms on a resumed level (dev "More turns"), where the arrow
+   * is already gone.
+   */
   onPlayStart() {
+    if (this._indicator) {
+      const spin = this._indicator.getData('spin');
+      if (spin) spin.remove();
+      this._indicator.destroy();
+      this._indicator = null;
+    }
     this.activate();
   }
 
