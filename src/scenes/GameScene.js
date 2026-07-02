@@ -1062,8 +1062,10 @@ export class GameScene extends Phaser.Scene {
       this.add
         .text(x0 + 10, y0 + 8, 'Lab tuning', { fontSize: '14px', color: '#ffd479' })
         .setDepth(21),
-      // Close: red, to read differently from the gray "+" steppers.
-      this._devButton(x0 + w - 20, y0 + 14, '×', () => this._toggleDevPanel(), '#c0392b', '#e74c3c'),
+      // Close: red, to read differently from the gray "+" steppers. Raised above
+      // the menu band (30-34, below modals at 40) so it stays clickable when the
+      // menu — which was used to open the Lab — is still up over the panel.
+      this._devButton(x0 + w - 20, y0 + 14, '×', () => this._toggleDevPanel(), '#c0392b', '#e74c3c').setDepth(35),
     ];
 
     // Shared explanation line, updated on hover/press of a parameter's controls.
