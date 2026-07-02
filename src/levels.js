@@ -130,27 +130,52 @@ let activeIndex = 0;
 const levelCountCache = new Map();
 
 /**
- * Count a pack's consecutive `levelN.tmj` files by HEAD-probing from level 1
- * until the first miss — no bodies are downloaded. Relies on levels being
- * numbered consecutively from 1, which is the whole point: dropping `levelN.tmj`
- * into the pack directory makes it appear, with no manifest to edit. The result
- * is cached ({@link levelCountCache}) so repeat callers (e.g. re-opening the
- * menu) don't re-probe.
+ * Count a pack's consecutive `levelN.tmj` files with HEAD requests (no bodies
+ * downloaded). Relies on levels being numbered consecutively from 1 — the whole
+ * point: dropping `levelN.tmj` into the pack directory makes it appear, with no
+ * manifest to edit. Rather than scan linearly (N+1 requests), it **gallops** —
+ * probe indices 1, 2, 4, 8, … until one is missing — then **binary-searches**
+ * the boundary, so it's O(log N) requests. The result is cached
+ * ({@link levelCountCache}) so repeat callers (e.g. re-opening the menu) don't
+ * re-probe.
  *
  * @param {string} packName  Pack directory name.
- * @returns {Promise<number>}
+ * @returns {Promise<number>}  Number of consecutive levels present (0-based
+ *   index of the first missing level).
  */
 async function probeLevelCount(packName) {
   const cached = levelCountCache.get(packName);
   if (cached !== undefined) return cached;
-  let n = 0;
-  while (n < MAX_LEVELS) {
-    const res = await fetch(`${PACKS_ROOT}/${packName}/${levelFile(n)}`, { method: 'HEAD' });
-    if (!res.ok) break;
-    n += 1;
+
+  /** @param {number} i 0-based level index. @returns {Promise<boolean>} */
+  const exists = async (i) =>
+    (await fetch(`${PACKS_ROOT}/${packName}/${levelFile(i)}`, { method: 'HEAD' })).ok;
+
+  let count;
+  if (!(await exists(0))) {
+    count = 0; // empty pack (no level1.tmj)
+  } else {
+    // Gallop to an upper bound: `lo` stays a present index, `hi` becomes a
+    // missing one (or the runaway cap MAX_LEVELS).
+    let lo = 0;
+    let hi = 1;
+    while (hi < MAX_LEVELS && (await exists(hi))) {
+      lo = hi;
+      hi *= 2;
+    }
+    hi = Math.min(hi, MAX_LEVELS);
+    // Binary-search the boundary. Invariant: level `lo` present, level `hi`
+    // missing; narrow until adjacent, so `hi` is the first missing index.
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (await exists(mid)) lo = mid;
+      else hi = mid;
+    }
+    count = hi;
   }
-  levelCountCache.set(packName, n);
-  return n;
+
+  levelCountCache.set(packName, count);
+  return count;
 }
 
 /**
