@@ -95,3 +95,65 @@ export function forget(levelKeys) {
 export function allBests() {
   return load();
 }
+
+// --- Pack level counts ----------------------------------------------------
+// A pack's level count is discovered by probing (see levels.js). We persist the
+// last-known count per pack so the menu could later show counts for every pack
+// without re-probing them all. This is advisory: it's refreshed whenever a pack
+// is actually probed/loaded, so a stale value self-corrects. Nothing reads it
+// for display yet — see menu-plan.md ("Record number of levels...").
+
+const LC_KEY = 'brothers:levelcounts';
+
+/** @type {Record<string, number>|null} Lazily-loaded cache of pack -> count. */
+let lcCache = null;
+
+/** @returns {Record<string, number>} */
+function loadCounts() {
+  if (lcCache) return lcCache;
+  try {
+    lcCache = JSON.parse(localStorage.getItem(LC_KEY) || '{}') || {};
+  } catch {
+    lcCache = {};
+  }
+  return lcCache;
+}
+
+/**
+ * Last-known level count for a pack, or `null` if never recorded.
+ *
+ * @param {string} packName
+ * @returns {number|null}
+ */
+export function levelCountFor(packName) {
+  const v = loadCounts()[packName];
+  return typeof v === 'number' ? v : null;
+}
+
+/**
+ * Persist a pack's level count (no-op if unchanged). Called whenever the count
+ * is determined, so the stored value tracks reality.
+ *
+ * @param {string} packName
+ * @param {number} count
+ * @returns {void}
+ */
+export function recordLevelCount(packName, count) {
+  const c = loadCounts();
+  if (c[packName] === count) return;
+  c[packName] = count;
+  try {
+    localStorage.setItem(LC_KEY, JSON.stringify(c));
+  } catch {
+    // Storage unavailable: keep the in-memory cache only.
+  }
+}
+
+/**
+ * The full pack -> level-count cache (for the menu, later).
+ *
+ * @returns {Record<string, number>}
+ */
+export function allLevelCounts() {
+  return loadCounts();
+}

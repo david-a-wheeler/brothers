@@ -13,6 +13,8 @@
  * - it tries to "just work" on imperfect input.
  */
 
+import { recordLevelCount } from './scores.js';
+
 /** Defaults applied when a level omits something. */
 const DEFAULTS = {
   moves: 6,
@@ -175,6 +177,7 @@ async function probeLevelCount(packName) {
   }
 
   levelCountCache.set(packName, count);
+  recordLevelCount(packName, count); // persist for the menu (advisory; see scores.js)
   return count;
 }
 
