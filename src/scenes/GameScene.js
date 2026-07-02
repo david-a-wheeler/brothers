@@ -327,11 +327,16 @@ export class GameScene extends Phaser.Scene {
     const main = this.cameras.main;
     main.setViewport(0, hudHeight, w, h - hudHeight);
     this.uiCamera.setViewport(0, 0, w, h);
+    // Were we fitted to the arena (at the min zoom)? Capture before recomputing.
+    // If so, stay fitted across the resize — otherwise shrinking the window drops
+    // the min zoom below the current one, so the arena would stay zoomed in and
+    // off-centre. A deliberate zoom-in (zoom above min) is preserved.
+    const wasFitted = main.zoom <= this._minZoom + 1e-3;
     this._minZoom = Math.min(
       main.width / (this.arena.width + 2 * M),
       main.height / (this.arena.height + 2 * M)
     );
-    if (resetZoom || main.zoom < this._minZoom) main.setZoom(this._minZoom);
+    if (resetZoom || wasFitted || main.zoom < this._minZoom) main.setZoom(this._minZoom);
     this._clampCamera();
   }
 
