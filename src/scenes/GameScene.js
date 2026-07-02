@@ -465,11 +465,43 @@ export class GameScene extends Phaser.Scene {
     this._computeLayout();
     this._layoutHud();
     this._layoutCameras(false);
-    // An open modal was sized for the old screen; reflow it to the new one.
+    // An open menu / modal was sized for the old screen; reflow to the new one.
+    // A resize or rotation fires a BURST of events, so we respond to the
+    // first event (leading throttle),
+    // then coalesence later events for a short period of time.
+    // This is better for responsiveness than traditional debouncing and/or
+    // waitng for things to settle, because
+    // that can introduce a perceptable lack of responsiveness.
+    // Menu rebuild takes some time, so we handle it specially.
+    // The modal is cheap, so reflow it at once for responsiveness.
+    if (this._menuOpen) this._scheduleMenuRebuild();
     if (this._modalOpen) {
       for (const part of this._modalParts) part.destroy();
       this._buildModal(false);
     }
+  }
+
+  /**
+   * Throttled menu rebuild: respond to the first resize immediately (leading
+   * edge), then coalesce further events into at most one rebuild per ~30ms so a
+   * burst (a device rotation, a window drag) stays responsive without thrashing.
+   * A trailing tick after the last event captures the settled size.
+   *
+   * @returns {void}
+   */
+  _scheduleMenuRebuild() {
+    this._menuRebuildPending = true;
+    if (this._menuRebuildTimer) return; // already within a throttle window
+    const tick = () => {
+      if (!this._menuRebuildPending) {
+        this._menuRebuildTimer = null; // burst ended
+        return;
+      }
+      this._menuRebuildPending = false;
+      if (this._menuOpen) this._rebuildMenu();
+      this._menuRebuildTimer = this.time.delayedCall(30, tick);
+    };
+    tick(); // leading: rebuild now, then throttle
   }
 
   /**
@@ -1573,7 +1605,7 @@ export class GameScene extends Phaser.Scene {
    *
    * @returns {void}
    */
-  _buildMenuPanel() {
+  _buildMenuPanel(animate = true) {
     const U = Config.ui;
     const L = this._layout;
     const cw = Math.min(440, L.w - 2 * L.pad);
@@ -1652,9 +1684,41 @@ export class GameScene extends Phaser.Scene {
 
     for (const part of this._menuParts) {
       const to = part === backdrop ? 0.6 : 1;
-      part.setAlpha(0);
-      this.tweens.add({ targets: part, alpha: to, duration: 130, ease: 'Sine.Out' });
+      if (animate) {
+        part.setAlpha(0);
+        this.tweens.add({ targets: part, alpha: to, duration: 130, ease: 'Sine.Out' });
+      } else {
+        part.setAlpha(to); // resize rebuild: appear at once
+      }
     }
+  }
+
+  /**
+   * Rebuild the whole menu against the current layout (window resize / device
+   * rotation): tear down the old chrome + content, rebuild without animating, and
+   * re-run the current view, preserving the view/detail/scroll state. See
+   * {@link _finishMenuContent}, which skips its fade and restores the scroll while
+   * a rebuild is in progress.
+   *
+   * @returns {void}
+   */
+  _rebuildMenu() {
+    const savedScroll = this._menuScroll;
+    const view = this._menuView;
+    const detail = this._menuDetail;
+    const from = this._detailFrom;
+    // Tear down the current overlay.
+    this._menuContent.clearMask(true);
+    this._menuMaskGfx.destroy();
+    for (const part of this._menuParts) part.destroy();
+    this._menuDragging = false;
+    this._scrollbarDragging = false;
+    // Rebuild chrome (no fade), then repopulate the same view with scroll kept.
+    this._buildMenuPanel(false);
+    this._restoreScroll = savedScroll; // consumed by _finishMenuContent
+    if (view === 'detail') this._showPackDetail(detail, from);
+    else if (view === 'packs') this._showPacksAvailable();
+    else this._showMainMenu();
   }
 
   /**
@@ -2206,11 +2270,18 @@ export class GameScene extends Phaser.Scene {
     if (!this._menuContent) return; // menu closed mid-populate
     this._menuContentH = contentH;
     this._menuScrollMax = Math.max(0, contentH - this._menuListH);
-    this._menuScroll = Phaser.Math.Clamp(this._menuScroll, 0, this._menuScrollMax);
+    // On a resize rebuild (_restoreScroll set), keep the prior scroll and don't
+    // re-fade; on a normal open/navigation, start at the current scroll and fade.
+    const rebuilding = this._restoreScroll != null;
+    const target = rebuilding ? this._restoreScroll : this._menuScroll;
+    this._restoreScroll = null;
+    this._menuScroll = Phaser.Math.Clamp(target, 0, this._menuScrollMax);
     this._menuContent.y = this._menuListTop - this._menuScroll;
     this.cameras.main.ignore(this._menuContent); // re-walk: new children too
-    this._menuContent.setAlpha(0);
-    this.tweens.add({ targets: this._menuContent, alpha: 1, duration: 150, ease: 'Sine.Out' });
+    if (!rebuilding) {
+      this._menuContent.setAlpha(0);
+      this.tweens.add({ targets: this._menuContent, alpha: 1, duration: 150, ease: 'Sine.Out' });
+    }
     this._updateScrollbar();
   }
 
@@ -2283,6 +2354,13 @@ export class GameScene extends Phaser.Scene {
     this._uiTip = null; // was destroyed with _menuParts
     this._menuOpen = false;
     this._menuDragging = false;
+    this._scrollbarDragging = false;
+    this._restoreScroll = null;
+    this._menuRebuildPending = false;
+    if (this._menuRebuildTimer) {
+      this._menuRebuildTimer.remove();
+      this._menuRebuildTimer = null;
+    }
     this.menuButton.setDepth(10).setAlpha(0.8); // restore normal HUD depth/look
   }
 
