@@ -104,93 +104,177 @@ export function loadTiledLevel(map) {
   return level;
 }
 
-/** @type {{id:string, name:string, levels:Level[]}|null} */
+/** Root directory holding every pack (one sub-directory per pack). */
+const PACKS_ROOT = 'packs';
+/** A pack's level filename for a 0-based index (levels are 1-based, consecutive). */
+const levelFile = (index) => `level${index + 1}.tmj`;
+/** Guard so a mis-served directory can't make probing loop forever. */
+const MAX_LEVELS = 999;
+
+/**
+ * The active pack: its directory name (which is also its id and display name)
+ * plus a sparse cache of loaded {@link Level}s (filled lazily by
+ * {@link ensureLevel}). `count` is discovered by probing; level bodies are
+ * fetched only when first needed.
+ * @type {{name:string, count:number, levels:Level[]}|null}
+ */
 let activePack = null;
 let activeIndex = 0;
 
 /**
- * Fetch a pack's manifest and all its level files, adapting each.
- * Sets it as the active pack.
- * Throws if a file can't be fetched/parsed (the resilient bootstrap
- * in boot.js turns that into a retry).
- *
- * @param {string} packId  Directory name under `levels/`.
- * @returns {Promise<{id:string, name:string, levels:Level[]}>}
+ * Session cache of probed level counts, keyed by pack name. Held in memory only
+ * (not persisted): a pack's level count can't change mid-session but may differ
+ * after a reload, so it's recomputed fresh each page load and reused thereafter.
+ * @type {Map<string, number>}
  */
-export async function loadPack(packId) {
-  const base = `levels/${packId}`;
-  const manifest = await (await fetch(`${base}/pack.json`)).json();
-  const levels = [];
-  const levelIds = []; // stable per-level ids (the source filenames)
-  for (const file of manifest.levels || []) {
-    const tiled = await (await fetch(`${base}/${file}`)).json();
-    levels.push(loadTiledLevel(tiled));
-    levelIds.push(file);
+const levelCountCache = new Map();
+
+/**
+ * Count a pack's consecutive `levelN.tmj` files by HEAD-probing from level 1
+ * until the first miss — no bodies are downloaded. Relies on levels being
+ * numbered consecutively from 1, which is the whole point: dropping `levelN.tmj`
+ * into the pack directory makes it appear, with no manifest to edit. The result
+ * is cached ({@link levelCountCache}) so repeat callers (e.g. re-opening the
+ * menu) don't re-probe.
+ *
+ * @param {string} packName  Pack directory name.
+ * @returns {Promise<number>}
+ */
+async function probeLevelCount(packName) {
+  const cached = levelCountCache.get(packName);
+  if (cached !== undefined) return cached;
+  let n = 0;
+  while (n < MAX_LEVELS) {
+    const res = await fetch(`${PACKS_ROOT}/${packName}/${levelFile(n)}`, { method: 'HEAD' });
+    if (!res.ok) break;
+    n += 1;
   }
-  activePack = { id: packId, name: manifest.name || packId, levels, levelIds };
-  activeIndex = 0;
-  return activePack;
+  levelCountCache.set(packName, n);
+  return n;
 }
 
-/** @returns {string} Human-readable name of the active pack. */
+/**
+ * Fetch and adapt one level of a pack.
+ *
+ * @param {string} packName @param {number} index  0-based.
+ * @returns {Promise<Level>}
+ */
+async function fetchLevel(packName, index) {
+  const res = await fetch(`${PACKS_ROOT}/${packName}/${levelFile(index)}`);
+  if (!res.ok) throw new Error(`Missing level: ${packName}/${levelFile(index)}`);
+  return loadTiledLevel(await res.json());
+}
+
+/**
+ * Make a pack current: probe how many levels it has (no bodies downloaded) and
+ * load only its first level, ready to play. Throws if the pack has no levels
+ * (the resilient bootstrap in boot.js turns a throw into a retry).
+ *
+ * @param {string} packName  Pack directory name (also its id and display name).
+ * @returns {Promise<void>}
+ */
+export async function loadPack(packName) {
+  const count = await probeLevelCount(packName);
+  if (count === 0) throw new Error(`Pack "${packName}" has no levels`);
+  activePack = { name: packName, count, levels: new Array(count) };
+  activeIndex = 0;
+  await ensureLevel(0);
+}
+
+/**
+ * Ensure the given level of the active pack is loaded (fetched + cached), then
+ * return it. Cheap if already cached.
+ *
+ * @param {number} index  0-based (clamped to the pack).
+ * @returns {Promise<Level>}
+ */
+export async function ensureLevel(index) {
+  const i = Math.max(0, Math.min(index, activePack.count - 1));
+  if (!activePack.levels[i]) activePack.levels[i] = await fetchLevel(activePack.name, i);
+  return activePack.levels[i];
+}
+
+/**
+ * Make `index` the current level, loading it first if needed. Await this before
+ * restarting the scene onto another level, so {@link currentLevel} is ready
+ * synchronously in the scene's create().
+ *
+ * @param {number} index  0-based (clamped to the pack).
+ * @returns {Promise<void>}
+ */
+export async function selectLevel(index) {
+  await ensureLevel(index);
+  activeIndex = Math.max(0, Math.min(index, activePack.count - 1));
+}
+
+/** @returns {string} The active pack's name (also its id). */
 export function activePackName() {
   return activePack.name;
 }
 
-/** @returns {string} Id of the active pack. */
+/** @returns {string} The active pack's id (its directory name). */
 export function activePackId() {
-  return activePack.id;
+  return activePack.name;
 }
 
 /**
- * The active pack's manifest shape (id, name, level file ids), for pack-wide
- * computations like the HUD pack total. Unlike {@link loadPackManifest}, this
- * reads the already-loaded active pack (no fetch) and reuses the same
- * `{id, name, levelIds}` shape the menu helpers expect.
+ * The active pack's manifest shape `{id, name, levelIds}` for pack-wide UI (e.g.
+ * the HUD pack total). Level ids are the deterministic filenames; no fetch.
  *
  * @returns {{id:string, name:string, levelIds:string[]}}
  */
 export function activePackManifest() {
-  return { id: activePack.id, name: activePack.name, levelIds: activePack.levelIds };
+  return {
+    id: activePack.name,
+    name: activePack.name,
+    levelIds: Array.from({ length: activePack.count }, (_, i) => levelFile(i)),
+  };
 }
 
-/** @type {Array<{id:string, name?:string}>|null} Cached pack registry. */
+/** @type {Array<{id:string, name:string}>|null} Cached pack registry. */
 let packList = null;
 
 /**
- * The list of available packs from `levels/packs.json` (cached after first
- * fetch). Each entry has at least an `id`; names come from each pack's own
- * `pack.json` (see {@link loadPackManifest}).
+ * The available packs from `packs/index.json` — a minimal array of pack
+ * directory names, e.g. `["Base"]` (cached after first fetch). The directory
+ * name is the pack's id and display name; everything else about a pack is
+ * discovered by convention, so this file is the only per-pack ceremony.
  *
- * @returns {Promise<Array<{id:string, name?:string}>>}
+ * @returns {Promise<Array<{id:string, name:string}>>}
  */
 export async function listPacks() {
   if (packList) return packList;
-  packList = await (await fetch('levels/packs.json')).json();
+  const names = await (await fetch(`${PACKS_ROOT}/index.json`)).json();
+  packList = names.map((name) => ({ id: name, name }));
   return packList;
 }
 
 /**
- * Fetch only a pack's manifest (its `pack.json`) — NOT its level files — so the
- * menu can show a pack's name, level list, and per-level best scores without
- * disturbing the active pack/level. Level keys are `${id}/${levelId}`.
+ * A pack's manifest `{id, name, levelIds}` WITHOUT loading any level bodies — so
+ * the menu can show another pack's level list and per-level bests. The level
+ * count is HEAD-probed; ids are the deterministic filenames. Level keys are
+ * `${id}/${levelId}` (see {@link currentLevelKey}).
  *
- * @param {string} packId
+ * @param {string} packName
  * @returns {Promise<{id:string, name:string, levelIds:string[]}>}
  */
-export async function loadPackManifest(packId) {
-  const manifest = await (await fetch(`levels/${packId}/pack.json`)).json();
-  return { id: packId, name: manifest.name || packId, levelIds: manifest.levels || [] };
+export async function loadPackManifest(packName) {
+  const count = await probeLevelCount(packName);
+  return {
+    id: packName,
+    name: packName,
+    levelIds: Array.from({ length: count }, (_, i) => levelFile(i)),
+  };
 }
 
-/** @returns {Level} The current level model. */
+/** @returns {Level} The current level model (loaded — see {@link selectLevel}). */
 export function currentLevel() {
   return activePack.levels[activeIndex];
 }
 
 /** @returns {number} Number of levels in the active pack. */
 export function levelCount() {
-  return activePack.levels.length;
+  return activePack.count;
 }
 
 /** @returns {number} Index of the current level within the pack. */
@@ -199,23 +283,11 @@ export function currentIndex() {
 }
 
 /**
- * Select the current level by index (clamped to the pack).
- *
- * @param {number} i
- * @returns {void}
- */
-export function setLevelIndex(i) {
-  activeIndex = Math.max(0, Math.min(i, activePack.levels.length - 1));
-}
-
-/**
- * Stable identity for the current level: pack id + the level's file id
- * (not its ordinal index, so reordering a pack doesn't reassign
- * per-level state like best scores).
- * Used to key the per-level "best" value (which is nil until first won).
+ * Stable identity for the current level: pack name + the level's filename, used
+ * to key the per-level "best" value. Stable as long as levels aren't renumbered.
  *
  * @returns {string}
  */
 export function currentLevelKey() {
-  return `${activePack.id}/${activePack.levelIds[activeIndex]}`;
+  return `${activePack.name}/${levelFile(activeIndex)}`;
 }

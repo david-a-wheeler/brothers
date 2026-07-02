@@ -1,12 +1,14 @@
 import { Config } from './config.js';
 import { GameScene } from './scenes/GameScene.js';
 import { sfx } from './Sfx.js';
-import { loadPack } from './levels.js';
+import { listPacks, loadPack } from './levels.js';
 
-// Load the level pack before the game boots, so the scene has level data ready.
-// Top-level await means boot.js's `await import('./main.js')` waits for this,
-// and a failed fetch becomes a retry/reload there.
-await loadPack('base');
+// Load the first pack before the game boots, so the scene has level data ready.
+// The starting pack is just the first entry in packs/index.json (no hardcoded
+// pack name). Top-level await means boot.js's `await import('./main.js')` waits
+// for this, and a failed fetch becomes a retry/reload there.
+const packs = await listPacks();
+await loadPack(packs[0].id);
 
 /**
  * Boot the game. `Phaser` is the global from the CDN script in index.html.

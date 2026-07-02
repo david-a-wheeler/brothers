@@ -48,19 +48,27 @@ Levels are Tiled **JSON maps** (`.tmj` — save as JSON in Tiled). They're fetch
 with `fetch()` and `response.json()` (which parses regardless of MIME), so the
 dev server doesn't need special configuration.
 
-Levels are grouped into **packs**. A pack is a directory with a manifest:
+Levels are grouped into **packs**, discovered by convention (no per-pack
+manifest):
 
 ```
-levels/
-  <packId>/
-    pack.json        # { "name": "...", "levels": ["level1.tmj", ...] }  (ordered)
+packs/
+  index.json         # minimal list of pack names, e.g. ["Base"]
+  <PackName>/
     level1.tmj
-    level2.tmj
+    level2.tmj        # consecutive level1.tmj, level2.tmj, … (no gaps)
     ...
 ```
 
-`pack.json` gives the pack a display name and the ordered list of level files.
-The first pack is **Base** (`levels/base/`), currently one level.
+A pack is a sub-directory of `packs/`; its **directory name is its id and
+display name**. Levels are the consecutive files `level1.tmj`, `level2.tmj`, …
+— the loader finds them by HEAD-probing until the first missing number, and
+fetches a level's body only when it's about to be played (lazy). So adding a
+level is just dropping `levelN.tmj` in the pack directory; no manifest to edit.
+
+The one bit of ceremony is `packs/index.json`, a bare array of pack directory
+names — needed only because a browser can't enumerate directories. The starting
+pack is its first entry. (A per-pack metafile for i18n may come later.)
 
 ## Schema (object classes & properties)
 
@@ -156,12 +164,13 @@ else changes — old levels without the new type still load.
 
 ## Loading architecture
 
-- **`src/levels.js`** — `loadTiledLevel(map)` (the adapter) and `loadPack(id)`
-  (fetches `pack.json` + each level file, adapts them). Exposes the active pack,
-  the current level, and level metadata.
-- **`src/main.js`** — `await loadPack('base')` *before* creating the Phaser game
-  (top-level await; the resilient loader in `boot.js` already awaits this, so a
-  failed fetch retries/reloads).
+- **`src/levels.js`** — `loadTiledLevel(map)` (the adapter) and `loadPack(name)`
+  (probes the pack's level count, loads only the first level; the rest are
+  fetched lazily via `ensureLevel`/`selectLevel`). Exposes the active pack, the
+  current level, and level metadata.
+- **`src/main.js`** — reads `packs/index.json`, then `await loadPack(firstPack)`
+  *before* creating the Phaser game (top-level await; the resilient loader in
+  `boot.js` already awaits this, so a failed fetch retries/reloads).
 - **`src/scenes/GameScene.js`** — reads the current level model and builds from
   it. Everything level-specific (arena size, moves, walls, spawns, goal,
   teleporter) comes from the level data, not from `Config`. `Config` keeps only
@@ -174,7 +183,8 @@ rectangle, the floor grid, and the camera fit/clamp.
 
 ## Workflow
 
-1. Open `levels/base/level1.tmj` in Tiled (or start a new JSON map, object layer).
-2. Edit objects / map properties; save as `.tmj` in `levels/<pack>/`.
-3. New level? Add its filename to that pack's `pack.json` (ordered).
-4. Reload the tab.
+1. Open `packs/Base/level1.tmj` in Tiled (or start a new JSON map, object layer).
+2. Edit objects / map properties; save as `levelN.tmj` in `packs/<PackName>/`,
+   using the next consecutive number (a new pack directory also needs its name
+   added to `packs/index.json`).
+3. Reload the tab.

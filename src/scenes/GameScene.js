@@ -8,7 +8,7 @@ import {
   currentLevelKey,
   levelCount,
   currentIndex,
-  setLevelIndex,
+  selectLevel,
   activePackName,
   activePackId,
   activePackManifest,
@@ -967,13 +967,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Switch to another level in the pack and rebuild the scene for it.
+   * Switch to another level in the pack and rebuild the scene for it. Loads the
+   * target level first (levels are fetched lazily) so create() has it ready.
    *
    * @param {number} index
-   * @returns {void}
+   * @returns {Promise<void>}
    */
-  _goToLevel(index) {
-    setLevelIndex(index);
+  async _goToLevel(index) {
+    await selectLevel(index);
     this.scene.restart();
   }
 
@@ -1585,8 +1586,7 @@ export class GameScene extends Phaser.Scene {
       if (!this._testMode && inThisPack && currentIndex() > 0) {
         this._hideConfirm();
         this._closeMenu();
-        setLevelIndex(0);
-        this.scene.restart();
+        selectLevel(0).then(() => this.scene.restart()); // level 0 is already loaded
         return;
       }
       if (inThisPack) {
@@ -1658,7 +1658,7 @@ export class GameScene extends Phaser.Scene {
     const proceed = async () => {
       this._closeMenu();
       if (manifest.id !== activePackId()) await loadPack(manifest.id);
-      setLevelIndex(index);
+      await selectLevel(index);
       this.scene.restart();
     };
     if (this.status === 'PLAYING') this._showConfirm('Abandon current game?', proceed);
