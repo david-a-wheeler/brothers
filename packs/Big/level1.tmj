@@ -1,0 +1,69 @@
+{ "compressionlevel":-1,
+ "width":120,
+ "height":75,
+ "tilewidth":32,
+ "tileheight":32,
+ "infinite":false,
+ "orientation":"orthogonal",
+ "renderorder":"right-down",
+ "type":"map",
+ "version":"1.10",
+ "tiledversion":"1.12.2-2-geb83ddb9",
+ "nextlayerid":2,
+ "nextobjectid":24,
+ "tilesets":[],
+ "properties":[
+        { "name":"moves", "type":"int", "value":25 },
+        { "name":"wallRestitution", "type":"float", "value":0.6 }],
+ "layers":[
+        {
+         "draworder":"topdown",
+         "id":1,
+         "name":"objects",
+         "type":"objectgroup",
+         "visible":true,
+         "opacity":1,
+         "x":0,
+         "y":0,
+         "objects":[
+                { "id":1, "type":"David", "name":"David", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":250, "y":650 },
+                { "id":2, "type":"Ken", "name":"Ken", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":340, "y":650 },
+
+                { "id":3, "type":"Goal", "name":"goal", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":3300, "y":2100 },
+
+                { "id":4, "type":"Teleporter", "name":"Teleport from Region 1 to 2", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":2000, "y":650,
+                  "properties":[{ "name":"target", "type":"string", "value":"Teleport Target from Region 1 to 2" }] },
+                { "id":5, "type":"Teleporter", "name":"Teleport from Region 2 to 3", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":3100, "y":1200,
+                  "properties":[{ "name":"target", "type":"string", "value":"Teleport Target from Region 2 to 3" }] },
+                { "id":6, "type":"Teleporter", "name":"Teleport from Region 2 to 1", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":1900, "y":900,
+                  "properties":[{ "name":"target", "type":"string", "value":"Teleport Target from Region 2 to 1" }] },
+                { "id":7, "type":"Teleporter", "name":"Teleport from Region 3 to 2", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":2900, "y":2000,
+                  "properties":[{ "name":"target", "type":"string", "value":"Teleport Target from Region 3 to 2" }] },
+
+                { "id":8, "type":"TeleporterTarget", "name":"Teleport Target from Region 1 to 2", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":700, "y":1200 },
+                { "id":9, "type":"TeleporterTarget", "name":"Teleport Target from Region 2 to 3", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":600, "y":2000 },
+                { "id":10, "type":"TeleporterTarget", "name":"Teleport Target from Region 2 to 1", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":700, "y":250 },
+                { "id":11, "type":"TeleporterTarget", "name":"Teleport Target from Region 3 to 2", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":3100, "y":1450 },
+
+                { "id":12, "type":"Wall", "name":"Divider 1-2", "visible":true, "opacity":1, "rotation":0, "x":0, "y":785, "width":3840, "height":30 },
+                { "id":13, "type":"Wall", "name":"Divider 2-3", "visible":true, "opacity":1, "rotation":0, "x":0, "y":1585, "width":3840, "height":30 },
+
+                { "id":14, "type":"Wall", "name":"R1 pillar", "visible":true, "opacity":1, "rotation":0, "x":1100, "y":0, "width":30, "height":450 },
+                { "id":15, "type":"Wall", "name":"R1 shelf", "visible":true, "opacity":1, "rotation":0, "x":2400, "y":200, "width":700, "height":30 },
+
+                { "id":16, "type":"Wall", "name":"R2 pillar", "visible":true, "opacity":1, "rotation":0, "x":1400, "y":815, "width":30, "height":300 },
+                { "id":17, "type":"Wall", "name":"R2 shelf", "visible":true, "opacity":1, "rotation":0, "x":1800, "y":1350, "width":900, "height":30 },
+
+                { "id":18, "type":"Wall", "name":"R3 pillar", "visible":true, "opacity":1, "rotation":0, "x":1050, "y":1750, "width":30, "height":500 },
+                { "id":19, "type":"Wall", "name":"R3 shelf", "visible":true, "opacity":1, "rotation":0, "x":1700, "y":2050, "width":700, "height":30 },
+
+                { "id":20, "type":"Bomb", "name":"bomb-a", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":3000, "y":300,
+                  "properties":[{ "name":"angle", "type":"float", "value":135 }, { "name":"speed", "type":"float", "value":0.3 }] },
+                { "id":21, "type":"Bomb", "name":"bomb-b", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":1800, "y":1300,
+                  "properties":[{ "name":"angle", "type":"float", "value":45 }, { "name":"speed", "type":"float", "value":0.3 }] },
+                { "id":22, "type":"Bomb", "name":"bomb-c", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":2000, "y":1850,
+                  "properties":[{ "name":"angle", "type":"float", "value":315 }, { "name":"speed", "type":"float", "value":0.3 }] },
+                { "id":23, "type":"Bomb", "name":"bomb-d", "point":true, "visible":true, "opacity":1, "rotation":0, "width":0, "height":0, "x":1600, "y":680,
+                  "properties":[{ "name":"angle", "type":"float", "value":225 }, { "name":"speed", "type":"float", "value":0.3 }] }]
+        }]
+}
