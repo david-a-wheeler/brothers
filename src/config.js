@@ -32,13 +32,12 @@ export const Config = {
    */
   hud: {
     // Layout tiers. Wide: one row — turn text and Best/#Left at the edges with
-    // the icons centred between. The wide→compact breakpoint isn't a fixed width:
-    // it's computed from the measured text width so the edge text never collides
-    // with the icon cluster (see GameScene._computeLayout). Compact: two rows —
-    // the info text on one line, icons below. Narrow (<= narrowMaxWidth): three
-    // rows — state text, then Best/#Left, then icons — so the two texts can't
-    // collide on a phone in portrait.
-    narrowMaxWidth: 520,
+    // the icons centred between. Compact: two rows — the info text on one line
+    // (turn left, Best/#Left right), icons below. Narrow: three rows — state text,
+    // then Best/#Left, then icons — so the two texts can't collide on a phone in
+    // portrait. BOTH the wide→compact and compact→narrow breakpoints are computed
+    // from the measured text widths (see GameScene._computeLayout), not fixed
+    // pixel thresholds, so text never overlaps whatever the font renders to.
     rowHeight: 52, // height of one HUD row (sized for the icon touch targets)
     narrowTextRow: 30, // height of a text-only row in narrow mode (tighter than icons)
     normalIcon: 30, // icon display size (px) on wide screens

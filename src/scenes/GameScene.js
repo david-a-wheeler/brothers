@@ -157,12 +157,14 @@ export class GameScene extends Phaser.Scene {
    * Decide the HUD metrics for the current window size, choosing 1, 2, or 3
    * rows so nothing collides:
    *  - wide   (wide enough that the edge text clears the centred icons; the
-   *           threshold is computed from the text width, see _maxHudTextWidth):
+   *           threshold is computed from the text width, see _hudTextMetrics):
    *           1 row — turn text and Best/#Left at the edges, icons centred.
-   *  - compact(narrower than that): 2 rows — the info text on one line (turn
-   *           left, Best/#Left right), icons below; larger touch icons.
-   *  - narrow (<= narrowMaxWidth): 3 rows — state text, then Best/#Left, then
-   *           icons — so the two texts can't overlap on a phone in portrait.
+   *  - compact(narrower than that, but the two edge texts still fit side by side):
+   *           2 rows — the info text on one line (turn left, Best/#Left right),
+   *           icons below; larger touch icons.
+   *  - narrow (narrower still — the two texts would overlap on one row): 3 rows —
+   *           state text, then Best/#Left, then icons. This breakpoint, like the
+   *           wide one, is computed from the measured text so nothing overlaps.
    * Stores `this._layout` and keeps `this._hudHeight` in sync (input guard, dev
    * panel, camera viewport). Re-run on every resize/rotation (see _onResize).
    *
@@ -172,13 +174,17 @@ export class GameScene extends Phaser.Scene {
     const H = Config.hud;
     const w = this.scale.width;
     const h = this.scale.height;
-    // Use the single-row (wide) layout only when the edge text can't collide with
-    // the centred icon cluster: each side needs pad + the widest text + a gap,
-    // clear of the cluster's half-width. Measured from the real font so it adapts
-    // (rather than a fixed breakpoint that overlaps for long text / wide fonts).
+    const T = this._hudTextMetrics();
+    // Wide (1 row): icons centred with the edge text on the same row — each side
+    // needs pad + the widest text + a gap, clear of the icon cluster's half-width.
     const clusterHalf = ((5 - 1) / 2) * H.normalGap + H.normalIcon / 2; // 5 icons, wide spacing
-    const wideMin = 2 * (H.pad + this._maxHudTextWidth() + 16 + clusterHalf);
-    const mode = w >= wideMin ? 'wide' : w <= H.narrowMaxWidth ? 'narrow' : 'compact';
+    const wideMin = 2 * (H.pad + Math.max(T.wide.turn, T.wide.moves) + 16 + clusterHalf);
+    // Compact (2 rows): the turn text (left) and Best/#Left (right) share the top
+    // row, so they overlap unless both fit side by side with a gap between; below
+    // that we drop to narrow (3 rows), one text per centred row. Measured at the
+    // real compact font so the two lines can never collide.
+    const compactMin = 2 * H.pad + T.small.turn + T.small.moves + 24; // 24 = min gap between them
+    const mode = w >= wideMin ? 'wide' : w >= compactMin ? 'compact' : 'narrow';
     const rows = mode === 'wide' ? 1 : mode === 'narrow' ? 3 : 2;
     const touch = mode !== 'wide'; // bigger icons/gaps on small screens
     // Small screens stack text line(s) above the icon row: compact has one
@@ -205,23 +211,31 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Widest possible wide-mode edge text (the longest turn prompt or Best/#Left
-   * line), measured once from the real font and cached. Drives the wide/compact
-   * breakpoint (see {@link _computeLayout}) so the text can't overlap the icons
-   * whatever the font renders to.
+   * Measure the two HUD edge texts — the longest turn prompt and the longest
+   * Pack/Best/#Left line — at both font sizes the HUD uses (22px in wide mode,
+   * 18px in compact/narrow), cached once. Drives both layout breakpoints in
+   * {@link _computeLayout}: the wide one (text vs. the centred icons, 22px) and
+   * the compact→narrow one (the two texts vs. each other on one row, 18px), so
+   * neither can overlap whatever the font renders to.
    *
-   * @returns {number}
+   * @returns {{wide:{turn:number, moves:number}, small:{turn:number, moves:number}}}
    */
-  _maxHudTextWidth() {
-    if (this._maxTextW === undefined) {
-      const probe = this.add.text(0, 0, '', { fontSize: '22px' }).setVisible(false);
-      probe.setText("David's turn, can't do that");
-      const a = probe.width;
-      probe.setText('Pack: 00    Best: 00    #Left: 00');
-      this._maxTextW = Math.max(a, probe.width);
-      probe.destroy();
+  _hudTextMetrics() {
+    if (!this._hudTextW) {
+      const turnStr = "David's turn, can't do that"; // longest turn prompt
+      const movesStr = 'Pack: 00    Best: 00    #Left: 00'; // longest right-side line
+      const measure = (size) => {
+        const probe = this.add.text(0, 0, '', { fontSize: size }).setVisible(false);
+        probe.setText(turnStr);
+        const turn = probe.width;
+        probe.setText(movesStr);
+        const moves = probe.width;
+        probe.destroy();
+        return { turn, moves };
+      };
+      this._hudTextW = { wide: measure('22px'), small: measure('18px') };
     }
-    return this._maxTextW;
+    return this._hudTextW;
   }
 
   /**
