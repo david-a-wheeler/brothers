@@ -12,6 +12,12 @@ import { Wall } from './world/Wall.js';
  * *between* them: the elastic tether, the upright faces' expressions, role
  * swapping, the "Hybrid Snap", settle detection, and teleporting. The scene
  * creates exactly one of these (after the world) and drives it.
+ *
+ * A pair coordinator, not a placed world object, so it is *not* an {@link Entity}
+ * — but it shares the level lifecycle, which it opts into by convention (see
+ * {@link import('./lifecycle.js').LevelParticipant}) rather than by inheritance.
+ *
+ * @implements {import('./lifecycle.js').LevelParticipant}
  */
 export class Brothers {
   /**

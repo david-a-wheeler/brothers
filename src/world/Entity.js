@@ -59,6 +59,8 @@
  *
  * Game objects and bodies are torn down automatically when the scene restarts,
  * so there is no explicit destroy step.
+ *
+ * @implements {import('../lifecycle.js').LevelParticipant}
  */
 export class Entity {
   /** Set false by subclasses; only `true` objects are ticked each frame. */
