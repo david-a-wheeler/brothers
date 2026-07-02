@@ -1571,9 +1571,14 @@ export class GameScene extends Phaser.Scene {
     this._menuParts = [backdrop, card, this._menuTitle, close, this._uiTip];
     this._attachTooltip(close, 'Close the menu.');
 
-    const headerBottom = cy0 + 46;
-    // Back affordance (only shown in a pack's detail view).
-    this._menuBackBtn = this._devButton(cx0 + 16, headerBottom + 16, '‹ Back', () =>
+    this._menuHeaderBottom = cy0 + 46;
+    this._menuCardBottom = cy0 + ch;
+    this._menuListX = cx0 + 16;
+    this._menuListW = cw - 32;
+    // Back affordance (only shown in a pack's detail view). The list starts below
+    // it there, but higher in the main menu where there's no Back (see
+    // _setMenuListArea), so the main menu doesn't waste that space.
+    this._menuBackBtn = this._devButton(cx0 + 16, this._menuHeaderBottom + 16, '‹ Back', () =>
       this._showMainMenu()
     )
       .setOrigin(0, 0.5)
@@ -1585,30 +1590,19 @@ export class GameScene extends Phaser.Scene {
     // Scroll viewport: a geometry mask (off-display-list make.graphics) clips a
     // content container we shift vertically. The uiCamera is at scroll 0/zoom 1,
     // so screen px == mask px == container-local px (no coordinate conversion).
-    const listTop = headerBottom + 34;
-    this._menuListX = cx0 + 16;
-    this._menuListW = cw - 32;
-    this._menuListTop = listTop;
-    // The card is already clamped to the viewport; floor the list height so an
-    // extremely short screen can't collapse it to zero/negative (which would
-    // break the mask) — at worst it shows ~one row and stays scrollable.
-    this._menuListH = Math.max(44, cy0 + ch - 14 - listTop);
     this._menuScroll = 0;
     this._menuScrollMax = 0;
-
     this._menuMaskGfx = this.make.graphics();
-    this._menuMaskGfx
-      .fillStyle(0xffffff)
-      .fillRect(this._menuListX, listTop, this._menuListW, this._menuListH);
-    this._menuContent = this.add.container(this._menuListX, listTop).setDepth(32);
+    this._menuContent = this.add.container(this._menuListX, 0).setDepth(32);
     this._menuContent.setMask(this._menuMaskGfx.createGeometryMask());
     this._menuParts.push(this._menuContent);
+    this._setMenuListArea(false); // establishes listTop/H + the mask rect
 
     // Scrollbar indicator (right edge of the viewport). Shown only when the
     // content overflows; sized/positioned by _updateScrollbar. Not in the
     // content container, so it stays put while the list scrolls.
     this._menuScrollbar = this.add
-      .rectangle(this._menuListX + this._menuListW - 3, listTop, 4, 20, 0xffffff, 0.45)
+      .rectangle(this._menuListX + this._menuListW - 3, this._menuListTop, 4, 20, 0xffffff, 0.45)
       .setOrigin(0.5, 0.5)
       .setDepth(32)
       .setVisible(false);
@@ -1621,6 +1615,26 @@ export class GameScene extends Phaser.Scene {
       part.setAlpha(0);
       this.tweens.add({ targets: part, alpha: to, duration: 130, ease: 'Sine.Out' });
     }
+  }
+
+  /**
+   * Set the scrollable list's vertical area based on whether the Back row is
+   * shown: the main menu (no Back) starts higher, reclaiming that space; a pack
+   * detail view starts below the Back button. Updates the mask rect and the
+   * content origin. Call from each view before populating it.
+   *
+   * @param {boolean} withBack @returns {void}
+   */
+  _setMenuListArea(withBack) {
+    const listTop = this._menuHeaderBottom + (withBack ? 34 : 10);
+    this._menuListTop = listTop;
+    // Floor the height so an extremely short screen can't collapse the mask.
+    this._menuListH = Math.max(44, this._menuCardBottom - 14 - listTop);
+    this._menuMaskGfx
+      .clear()
+      .fillStyle(0xffffff)
+      .fillRect(this._menuListX, listTop, this._menuListW, this._menuListH);
+    this._menuContent.y = listTop - this._menuScroll;
   }
 
   /**
@@ -1637,6 +1651,7 @@ export class GameScene extends Phaser.Scene {
     this._menuTitle.setText('Main Menu');
     this._menuBackBtn.setVisible(false);
     this._menuScroll = 0;
+    this._setMenuListArea(false); // no Back here: start the list higher
     this._clearMenuContent();
     const U = Config.ui;
     let y = 0;
@@ -1727,6 +1742,7 @@ export class GameScene extends Phaser.Scene {
     this._menuTitle.setText('Pack details');
     this._menuBackBtn.setVisible(true);
     this._menuScroll = 0;
+    this._setMenuListArea(true); // leave room for the Back button
     this._clearMenuContent();
     const U = Config.ui;
     const isCurrentPack = manifest.id === activePackId();
