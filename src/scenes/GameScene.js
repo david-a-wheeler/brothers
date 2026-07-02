@@ -164,6 +164,16 @@ export class GameScene extends Phaser.Scene {
     // game-level, so remove the listener when the scene shuts down (restart).
     this.scale.on('resize', this._onResize, this);
     this.events.once('shutdown', () => this.scale.off('resize', this._onResize, this));
+
+    // Web Audio only starts on a user gesture. The scene's own pointerdown unlocks
+    // it, but HUD icons stopPropagation() (aborting that handler), so the first
+    // click on one wouldn't unlock audio. A DOM-level listener sees every press
+    // regardless of Phaser's propagation, so audio is ready by the time any sound
+    // (e.g. a HUD tick) plays on the following pointerup.
+    const canvas = this.game.canvas;
+    const unlockAudio = () => sfx.unlock();
+    canvas.addEventListener('pointerdown', unlockAudio);
+    this.events.once('shutdown', () => canvas.removeEventListener('pointerdown', unlockAudio));
     // Safety net: re-layout next tick in case the final window size only settles
     // after create() (common on mobile when the scale manager reports late).
     this.time.delayedCall(0, () => this._onResize());
@@ -725,7 +735,8 @@ export class GameScene extends Phaser.Scene {
     });
     this.restartButton.on('pointerup', () => {
       hideTip();
-      if (!this._resetEnabled()) return; // pristine level: nothing to reset
+      if (!this._resetEnabled()) return; // not lit: nothing to reset, no sound
+      sfx.tick();
       // After the level is over there's nothing else to do, so skip the
       // confirmation and just restart; mid-play, confirm first.
       if (this.status === 'ENDED') this.scene.restart();
@@ -974,7 +985,8 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _navClicked(dir) {
-    if (!this._navEnabled(dir)) return;
+    if (!this._navEnabled(dir)) return; // not lit: no action, no sound
+    sfx.tick();
     const target = currentIndex() + (dir === 'prev' ? -1 : 1);
     if (this.status === 'PLAYING') {
       this._showConfirm('Abandon current game?', () => this._goToLevel(target));
@@ -1469,6 +1481,7 @@ export class GameScene extends Phaser.Scene {
    */
   _toggleMenu() {
     if (this._modalOpen) return; // a confirm is up; let it resolve first
+    sfx.tick(); // opening or closing the menu always succeeds
     if (this._menuOpen) this._closeMenu();
     else this._openMenu();
   }

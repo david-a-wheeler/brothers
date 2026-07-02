@@ -186,7 +186,11 @@ export class Sfx {
    */
   tick() {
     if (!this._ctx) return;
-    this._blip({ freq: 1300, type: 'sine', dur: 0.035, gain: 0.16, at: this._ctx.currentTime });
+    // Schedule a hair in the future, not exactly at currentTime: this blip is very
+    // short, and scheduling at currentTime can land a render quantum in the past,
+    // clipping the attack so the tick intermittently goes silent. A small lookahead
+    // (and a slightly longer/louder blip) makes it fire reliably.
+    this._blip({ freq: 1200, type: 'triangle', dur: 0.05, gain: 0.22, at: this._ctx.currentTime + 0.02 });
   }
 
   /**
