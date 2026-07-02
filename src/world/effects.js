@@ -61,14 +61,18 @@ export function directionArrow(scene, { x, y, angleDeg, speed, offset }) {
     .setStrokeStyle(A.outlineWidth, A.outlineColor, A.outlineAlpha);
   // Arrowhead drawn around its own origin (points centred so it spins in place),
   // placed at the shaft tip.
-  const h = A.headSize;
+  // Arrowhead: a flat triangular blade with its tip forward on the shaft axis, so
+  // the arrow always points the right way. We fake spinning it about the shaft
+  // axis in 3D by oscillating only its width (scaleY): full when face-on, a thin
+  // spike when edge-on. The tip sits on the axis (y = 0), so scaling never moves
+  // it; the base corners (at x = 0) are what sweep in and out.
   const head = scene.add.graphics({ x: offset + A.length, y: 0 });
   head.fillStyle(A.color, A.fillAlpha);
   head.lineStyle(A.outlineWidth, A.outlineColor, A.outlineAlpha);
   head.beginPath();
-  head.moveTo(0.9 * h, 0);
-  head.lineTo(-0.5 * h, -h);
-  head.lineTo(-0.5 * h, h);
+  head.moveTo(A.headLength, 0); // tip, forward along the shaft
+  head.lineTo(0, -A.headHalfWidth); // base corner
+  head.lineTo(0, A.headHalfWidth); // base corner
   head.closePath();
   head.fillPath();
   head.strokePath();
@@ -79,8 +83,19 @@ export function directionArrow(scene, { x, y, angleDeg, speed, offset }) {
     .setDepth(5); // above world objects; translucency still reveals them
   scene.uiCamera?.ignore(arrow); // world-space cue, never on the fixed HUD camera
 
-  const period = Phaser.Math.Clamp(A.spinBaseMs / Math.max(speed, 1e-4), A.spinMinMs, A.spinMaxMs);
-  const spin = scene.tweens.add({ targets: head, angle: 360, duration: period, repeat: -1 });
+  // scaleY 1 -> -1 under Sine.InOut + yoyo traces a cosine, so the blade appears
+  // to rotate steadily about the shaft axis (passing edge-on at scaleY 0, then
+  // showing its back face). Faster hazard -> shorter half-turn -> faster spin
+  // (a full revolution takes ~2 * duration).
+  const duration = Phaser.Math.Clamp(A.spinBaseMs / Math.max(speed, 1e-4), A.spinMinMs, A.spinMaxMs);
+  const spin = scene.tweens.add({
+    targets: head,
+    scaleY: { from: 1, to: -1 },
+    duration,
+    ease: 'Sine.InOut',
+    yoyo: true,
+    repeat: -1,
+  });
   arrow.setData('spin', spin);
   return arrow;
 }
