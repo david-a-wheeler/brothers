@@ -21,15 +21,16 @@
  *   lazily, at trigger time, so it always sees the current world). Override as
  *   `setup(world) { super.setup(world); … }` to keep the `this.world` default.
  *
- * - `onBrotherContact()` — **fired the instant a brother's body overlaps this
- *   object's sensor body, mid-flight** (Matter `collisionstart` while the shot
- *   phase is MOVING; the scene's collision router looks up the struck body's
- *   `entity` and calls this). Use it for triggers that must act *on touch*,
- *   before the balls settle — e.g. a teleporter warps the pair the moment they
- *   enter. Only sensor (pass-through) bodies get here; solid bodies (walls) are
- *   handled by the scene as a snap and never call this. May fire on several
- *   consecutive frames while the overlap persists, so a subclass that must act
- *   once per pass debounces itself (see Teleporter). Default: no-op.
+ * - `onActorContact(actor)` — **fired the instant a moving actor's body overlaps
+ *   this object's body** (Matter `collisionstart`; the scene's collision router
+ *   looks up the struck body's `entity` and calls this with the actor entity —
+ *   a brother, or a dynamic hazard). Use it for triggers that must act *on
+ *   touch* — e.g. a teleporter warps whatever entered it (`actor.onTeleport(…)`),
+ *   and a hazard ends the level/turn. Sensor triggers (teleporter) are routed
+ *   only while a shot is in flight; a hazard is lethal on contact in any phase.
+ *   May fire on several consecutive frames while the overlap persists, so a
+ *   subclass that must act once per pass debounces itself (see Teleporter).
+ *   Default: no-op.
  *
  * - `isReached(brothers)` — **a settle-time predicate, polled once after both
  *   balls have come to rest** (from `World.firstReached`, called in
@@ -37,7 +38,7 @@
  *   question ("is a brother at rest inside my zone?") via `brothers.anyInside`.
  *   Return `true` to signal this object's win condition is met — the manager
  *   wins the level on the first object that does (goals today, but any type may
- *   define one). Use this (not `onBrotherContact`) for anything decided by where
+ *   define one). Use this (not `onActorContact`) for anything decided by where
  *   the balls *end up*, not what they touched in flight. When it wins, the
  *   manager calls `celebrate()` on that object. Default: returns `false`.
  *
@@ -103,6 +104,31 @@ export class Entity {
     const body = this.scene.matter.add.rectangle(x, y, w, h, {
       isSensor: sensor,
       isStatic: true,
+      ...opts,
+    });
+    body.entity = this;
+    return body;
+  }
+
+  /**
+   * Create a *dynamic*, solid circular body tagged with a back-reference — for
+   * self-propelled entities that the physics engine moves and bounces (see
+   * {@link import('./Hazard.js').Hazard}). Frictionless and perfectly elastic by
+   * default so a body keeps its speed between collisions; `opts` overrides any of
+   * that. Created live; a caller that wants it dormant flips it static itself.
+   *
+   * @param {number} x @param {number} y @param {number} r
+   * @param {object} [opts]  Extra Matter body options (e.g. restitution).
+   * @returns {MatterJS.BodyType}
+   */
+  _dynCircleBody(x, y, r, opts = {}) {
+    const body = this.scene.matter.add.circle(x, y, r, {
+      isSensor: false,
+      isStatic: false,
+      frictionAir: 0,
+      friction: 0,
+      frictionStatic: 0,
+      restitution: 1,
       ...opts,
     });
     body.entity = this;
@@ -197,8 +223,36 @@ export class Entity {
     });
   }
 
-  /** Mid-flight sensor touch. Default: do nothing. */
-  onBrotherContact() {}
+  /**
+   * Contact with a moving *actor* (a brother, or a dynamic hazard). Fired by the
+   * scene's collision router when an actor's body touches this entity's body.
+   * Default: do nothing. A trigger (teleporter) acts on the actor here; a hazard
+   * ends the level/turn here.
+   * @param {import('./Entity.js').Entity} _actor  The entity that made contact.
+   */
+  onActorContact(_actor) {}
+
+  /**
+   * Warp this entity to a destination, keeping `retain` of its velocity. Called
+   * by a teleporter on whatever actor entered it, so warping is polymorphic: a
+   * brother moves the whole pair, a hazard moves itself. Default: do nothing
+   * (a static entity can't be teleported).
+   * @param {{x:number, y:number}} _dest @param {number} _retain
+   */
+  onTeleport(_dest, _retain) {}
+
+  /**
+   * The level has started play (the first launch). Default: do nothing. Dynamic
+   * entities (hazards) use this to begin moving; see {@link World#notifyPlayStart}.
+   */
+  onPlayStart() {}
+
+  /**
+   * The level has ended (win or loss). Default: do nothing. Dynamic entities use
+   * this to freeze so they stop acting during the banner; see
+   * {@link World#notifyLevelEnd}.
+   */
+  onLevelEnd() {}
 
   /**
    * Settle-time win predicate.

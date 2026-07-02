@@ -108,12 +108,15 @@ export class Teleporter extends Entity {
   }
 
   /**
-   * Warp the pair to this teleporter's target, debounced so overlapping the
-   * sensor for several frames fires only once.
+   * Warp whatever entered to this teleporter's target, debounced so overlapping
+   * the sensor for several frames fires only once. The warp is polymorphic:
+   * `actor.onTeleport` moves the whole brother pair for a brother, or just the
+   * body for a hazard.
    *
+   * @param {import('./Entity.js').Entity} actor  The brother or hazard that entered.
    * @returns {void}
    */
-  onBrotherContact() {
+  onActorContact(actor) {
     const target = this._resolveTarget();
     if (!target) return; // a teleporter with no target is inert
     const now = this.scene.time.now;
@@ -126,6 +129,6 @@ export class Teleporter extends Entity {
     spawnRing(this.scene, target.point.x, target.point.y, 18, 0xe67e22);
     sfx.teleport();
 
-    this.scene.brothers.teleport(target.point, this.retain);
+    actor.onTeleport(target.point, this.retain);
   }
 }

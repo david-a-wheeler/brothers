@@ -169,6 +169,18 @@ export class Brother extends Entity {
     return this.go;
   }
 
+  /**
+   * Teleporter contact on a single brother warps the whole pair (so they stay
+   * together), delegating to {@link Brothers#teleport}. Overrides the inert
+   * {@link Entity#onTeleport} default.
+   *
+   * @param {{x:number, y:number}} dest @param {number} retain
+   * @returns {void}
+   */
+  onTeleport(dest, retain) {
+    this.scene.brothers.teleport(dest, retain);
+  }
+
   // --- Subclass surface (David/Ken override these) ------------------------
 
   /** @returns {number} 0xRRGGBB body fill. */

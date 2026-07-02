@@ -72,6 +72,7 @@ export class Brothers {
     this.setExpressions('idle');
     this._indicateLauncher();
     this._updateDraggable();
+    this.markTurnStart(); // level-start positions, for a 'turn ends' hazard reset
   }
 
   /**
@@ -483,6 +484,48 @@ export class Brothers {
     this.setExpressions('idle');
     this._indicateLauncher();
     this._updateDraggable(); // the new launcher is now the draggable one
+    this.markTurnStart(); // the balls are at rest here: this is the new turn's start
+  }
+
+  /**
+   * Snapshot both brothers' resting positions as the start of the current turn,
+   * so a 'turn ends' hazard penalty can restore them (see {@link resetTurn}).
+   * Called whenever a fresh turn begins at rest (construction and every
+   * {@link swapRoles}).
+   *
+   * @returns {void}
+   */
+  markTurnStart() {
+    this._turnStart = {
+      david: { x: this.david.go.x, y: this.david.go.y },
+      ken: { x: this.ken.go.x, y: this.ken.go.y },
+    };
+  }
+
+  /**
+   * Undo the current turn: stop both brothers, return them to the positions
+   * captured at the start of this turn, and re-arm the SAME launcher for a fresh
+   * aim (roles unchanged). Used by the 'turn ends' hazard outcome, which also
+   * charges a move (see GameScene.hazardStruck).
+   *
+   * @returns {void}
+   */
+  resetTurn() {
+    if (!this._turnStart) return;
+    for (const b of [this.david, this.ken]) {
+      b.go.setVelocity(0, 0);
+      b.go.setAngularVelocity(0);
+    }
+    this.david.go.setPosition(this._turnStart.david.x, this._turnStart.david.y);
+    this.ken.go.setPosition(this._turnStart.ken.x, this._turnStart.ken.y);
+    this.anchor.go.setStatic(true);
+    this.launcher.go.setStatic(false);
+    this._settleFrames = 0;
+    this._aiming = false;
+    this._refusalXs.forEach((x) => x.setVisible(false));
+    this.setExpressions('idle');
+    this._indicateLauncher();
+    this._updateDraggable();
   }
 
   /**

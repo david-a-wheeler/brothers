@@ -98,6 +98,27 @@ export class World {
   }
 
   /**
+   * Broadcast that play has started (the first launch). Dynamic objects
+   * (hazards) begin moving; static ones ignore it. Also used to re-arm on a
+   * resume (dev "More turns").
+   *
+   * @returns {void}
+   */
+  notifyPlayStart() {
+    for (const o of this._all) o.onPlayStart();
+  }
+
+  /**
+   * Broadcast that the level has ended (win or loss) so dynamic objects freeze
+   * and stop triggering during the end-of-level banner.
+   *
+   * @returns {void}
+   */
+  notifyLevelEnd() {
+    for (const o of this._all) o.onLevelEnd();
+  }
+
+  /**
    * Settle-time win check: the first object whose win predicate is satisfied.
    * Generic — any object type may define a win via `isReached` (goals do today).
    *

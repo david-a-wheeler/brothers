@@ -1,6 +1,7 @@
 import { Config, applyRubberBandDefaults } from '../config.js';
 import { Brothers, FACES } from '../Brothers.js';
 import { Brother } from '../world/Brother.js';
+import { Hazard } from '../world/Hazard.js';
 import { sfx } from '../Sfx.js';
 import {
   currentLevel,
@@ -1007,6 +1008,7 @@ export class GameScene extends Phaser.Scene {
       this.phase = 'AIMING';
       this._clearEndDisplay();
       this.brothers.swapRoles(); // clean next-turn handoff: faces, glow, refreeze
+      this.world.notifyPlayStart(); // re-arm bombs frozen by the level end
     }
     this._refreshHud();
   }
@@ -1760,9 +1762,13 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
+      const firstLaunch = this.status === 'READY';
       this.movesLeft -= 1;
       this.status = 'PLAYING'; // first launch leaves READY; later launches keep PLAYING
       this.phase = 'MOVING';
+      // Bombs (and any future dynamic objects) stay inert until play begins, so
+      // the board is calm while the player aims the very first shot.
+      if (firstLaunch) this.world.notifyPlayStart();
       this._refreshHud();
     });
 
@@ -1929,32 +1935,57 @@ export class GameScene extends Phaser.Scene {
    */
   _wireCollisions() {
     this.matter.world.on('collisionstart', (event) => {
-      // Snap and teleport are only meaningful while a shot is in flight. The
-      // pull-only tether lets the pair rest in contact, so a contact while
-      // AIMING must NOT trigger the snap (it would unfreeze the anchor and let
-      // a drag move the brother that's supposed to be immobile).
-      if (this.status !== 'PLAYING' || this.phase !== 'MOVING') return;
+      // Nothing in the world reacts before the first launch or after the level
+      // ends. Snap and teleport are further gated to flight (MOVING) below; a
+      // hazard, by contrast, is lethal on contact in ANY phase while PLAYING.
+      if (this.status !== 'PLAYING') return;
+      const moving = this.phase === 'MOVING';
 
       for (const pair of event.pairs) {
-        const aBro = pair.bodyA.entity instanceof Brother;
-        const bBro = pair.bodyB.entity instanceof Brother;
+        const entA = pair.bodyA.entity;
+        const entB = pair.bodyB.entity;
+        const aBro = entA instanceof Brother;
+        const bBro = entB instanceof Brother;
 
+        // Two brothers colliding: the Hybrid Snap. The pull-only tether lets the
+        // pair rest in contact, so this must fire only in flight (MOVING) — never
+        // while AIMING, where it would unfreeze the immobile anchor.
         if (aBro && bBro) {
-          sfx.hit(); // billiard-style click on every brother-on-brother contact
-          this.brothers.snap();
+          if (moving) {
+            sfx.hit(); // billiard-style click on every brother-on-brother contact
+            this.brothers.snap();
+          }
           continue;
         }
-        const other = aBro ? pair.bodyB : bBro ? pair.bodyA : null;
-        if (!other) continue; // neither is a brother
 
-        if (other.isSensor) {
-          // A trigger object (e.g. teleporter) handles itself; goals are
-          // checked at settle, so their no-op handler does nothing here.
-          other.entity?.onBrotherContact();
-        } else {
-          sfx.hit(); // brother off a wall or the arena edge — same click, no debounce
-          this.brothers.snap(); // hitting a solid also frees the anchor
+        // Exactly one brother against something else.
+        if (aBro || bBro) {
+          const bro = aBro ? entA : entB;
+          const other = aBro ? entB : entA;
+          const otherBody = aBro ? pair.bodyB : pair.bodyA;
+          if (other instanceof Hazard) {
+            // A hazard hit ends the level/turn — lethal in any phase. One lethal
+            // contact per event is enough; stop scanning this event.
+            other.onActorContact(bro);
+            break;
+          } else if (otherBody.isSensor) {
+            // A trigger (teleporter) warps the pair; only in flight, as before.
+            // Goals are checked at settle, so their no-op handler does nothing.
+            if (moving) other?.onActorContact(bro);
+          } else if (moving) {
+            sfx.hit(); // brother off a wall or the arena edge — same click, no debounce
+            this.brothers.snap(); // hitting a solid also frees the anchor
+          }
+          continue;
         }
+
+        // Neither is a brother: a hazard entering a trigger (teleporter) warps
+        // itself. Hazard/wall and hazard/hazard are pure physics bounces.
+        const hazard = entA instanceof Hazard ? entA : entB instanceof Hazard ? entB : null;
+        if (!hazard) continue;
+        const otherEnt = hazard === entA ? entB : entA;
+        const otherBody = hazard === entA ? pair.bodyB : pair.bodyA;
+        if (otherEnt && otherBody.isSensor) otherEnt.onActorContact(hazard);
       }
     });
   }
@@ -1992,6 +2023,38 @@ export class GameScene extends Phaser.Scene {
       this.brothers.brakeSlowMotion();
       if (this.brothers.isSettled()) this._resolveTurn();
     }
+  }
+
+  /**
+   * A hazard (bomb) struck a brother. Apply its outcome (the bomb has already
+   * played its own burst/boom in {@link import('../world/Bomb.js').Bomb#onActorContact}):
+   *  - `gameover` (default): the level ends immediately as a failure.
+   *  - `turnend`: undo this turn (both brothers back to their turn-start spots)
+   *    and charge a move; if that empties the move count it's an out-of-moves
+   *    loss, otherwise a fresh aiming turn begins.
+   * No-op unless PLAYING, so a second bomb in the same frame can't double-fire.
+   *
+   * @param {import('../world/Hazard.js').Hazard} bomb
+   * @returns {void}
+   */
+  hazardStruck(bomb) {
+    if (this.status !== 'PLAYING') return;
+
+    if (bomb.mode === 'turnend') {
+      this.brothers.resetTurn();
+      this.movesLeft -= 1;
+      this.phase = 'AIMING';
+      if (this.movesLeft <= 0) {
+        sfx.lose();
+        this._endGame('Out of moves', FACES.lose, '#ff7a6b', false);
+        return;
+      }
+      this._refreshHud();
+      return;
+    }
+
+    sfx.lose();
+    this._endGame('Game over', FACES.lose, '#ff7a6b', false);
   }
 
   /**
@@ -2041,6 +2104,7 @@ export class GameScene extends Phaser.Scene {
    */
   _endGame(message, face, color, won) {
     this.status = 'ENDED';
+    this.world.notifyLevelEnd(); // freeze bombs so they can't trigger during the banner
     this.brothers.setBothFaces(face);
     this._refreshHud(); // -> "Game Ended" text, reset enabled, ENDED status icon
 

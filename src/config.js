@@ -81,6 +81,28 @@ export const Config = {
   },
 
   /**
+   * Default hazard ("Bomb") settings — a self-propelled body that bounces
+   * around the arena at a constant speed and menaces the brothers. A level
+   * object overrides any of these per-bomb (Tiled `speed`, `angle`, `radius`/
+   * `size`, `mode`). `speed` is in the same per-frame units as the slingshot
+   * speeds; `restitution: 1` (perfectly elastic) plus the frictionless body in
+   * Entity._dynCircleBody is what keeps a bounce from bleeding off energy.
+   *
+   * TUNNELING: a bomb is dynamic and can be small + fast — the case the
+   * `physics.substeps` note below warns about. Keep radius/speed within the
+   * substep budget (fastest per-sub-step move < obstacle thickness + 2·radius),
+   * or raise `physics.substeps`, or a fast bomb can pass through a thin wall.
+   */
+  bomb: {
+    radius: 22, // default circle radius when the level omits `radius`/`size`
+    // Constant travel speed in the same per-frame units as the slingshot speeds
+    // (a full launch is ~220; below ~3 is a near-stopped crawl). 15 drifts across
+    // the arena in ~1s — a deliberate, dodgeable menace. Expect to tune this.
+    speed: 15,
+    restitution: 1, // perfectly elastic: bounces preserve speed
+  },
+
+  /**
    * The elastic tether joining the two brothers.
    * A small non-zero rest length keeps them from grinding together at the
    * same point, and damping bleeds spring energy so a turn can settle.
@@ -169,6 +191,13 @@ export const Config = {
     ring: {
       growScale: 2.6, // how far the ring expands from its start radius
       duration: 480,
+    },
+    /** Bomb: the fuse spark flicker (a looping tween) + explosion ring colour. */
+    bomb: {
+      sparkFlickerDuration: 180, // ms per half-cycle of the fuse-tip flicker
+      sparkAlphaLow: 0.35, // dimmest the spark fades to
+      sparkScaleHigh: 1.4, // largest the spark swells to
+      explosionColor: 0xff7a1a, // one-shot burst ring on contact
     },
   },
 };

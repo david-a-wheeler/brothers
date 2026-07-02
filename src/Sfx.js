@@ -16,6 +16,8 @@ export class Sfx {
     this._master = null;
     /** @type {AudioBuffer|null} Cached short white-noise used by the click. */
     this._noise = null;
+    /** @type {AudioBuffer|null} Cached longer white-noise used by the explosion. */
+    this._boomNoise = null;
     /** @type {Object|null} Live nodes of the stretching-band sound, or null. */
     this._band = null;
     /** Flip to false to silence the game. */
@@ -124,6 +126,42 @@ export class Sfx {
     src.stop(t + dur);
 
     this._blip({ freq: 300 + Math.random() * 80, type: 'triangle', dur: 0.05, gain: 0.22, at: t });
+  }
+
+  /**
+   * Explosion: a lowpass noise "boom" whose cutoff sweeps down as it decays,
+   * plus a low sine thump for body — the cue when a bomb strikes a brother.
+   *
+   * @returns {void}
+   */
+  explode() {
+    if (!this._ctx) return;
+    const ctx = this._ctx;
+    const t = ctx.currentTime;
+    const dur = 0.5;
+
+    // A longer noise buffer than the click's, cached separately.
+    if (!this._boomNoise) {
+      const len = Math.ceil(ctx.sampleRate * 0.6);
+      this._boomNoise = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = this._boomNoise.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = this._boomNoise;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1800, t);
+    lp.frequency.exponentialRampToValueAtTime(120, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.9, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(lp).connect(g).connect(/** @type {GainNode} */ (this._master));
+    src.start(t);
+    src.stop(t + dur);
+
+    // Low body thump gliding down under the boom.
+    this._blip({ freq: 90, glideTo: 30, dur: 0.4, type: 'sine', gain: 0.5, at: t });
   }
 
   /**
