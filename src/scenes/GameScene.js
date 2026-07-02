@@ -930,7 +930,8 @@ export class GameScene extends Phaser.Scene {
   /**
    * Whether a nav direction is currently usable. Previous needs an earlier
    * level; next needs a later level AND the current level to have been won
-   * (best is non-nil) — you must complete a level to proceed.
+   * (best is non-nil) — you must complete a level to proceed. Test mode lifts
+   * the win requirement, so next is usable whenever a later level exists.
    *
    * @param {'prev'|'next'} dir
    * @returns {boolean}
@@ -939,7 +940,7 @@ export class GameScene extends Phaser.Scene {
     if (dir === 'prev') return currentIndex() > 0;
     const hasNext = currentIndex() < levelCount() - 1;
     const wonCurrent = this.registry.get(this._bestKey) != null;
-    return hasNext && wonCurrent;
+    return hasNext && (wonCurrent || this._testMode);
   }
 
   /** Dim (gray) the prev/next icons that aren't currently usable. */
@@ -1217,7 +1218,8 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Reset only makes sense once the level has progressed past READY (i.e. it's
-   * PLAYING or ENDED). A pristine, not-yet-started level can't be usefully reset.
+   * PLAYING or ENDED). A pristine, not-yet-started level can't be usefully reset
+   * — even in test mode, restarting an unstarted game is meaningless.
    *
    * @returns {boolean}
    */
