@@ -1299,11 +1299,13 @@ export class GameScene extends Phaser.Scene {
    *   buttons:Array<{label:string, bg:string, onClick:()=>void}>}} opts
    * @returns {void}
    */
-  _openModal({ title, body = '', buttons }) {
+  _openModal({ title, body = '', buttons, warn = true }) {
     if (this._modalOpen) return;
     this._modalOpen = true;
     this._isPanning = false;
-    sfx.bonk(); // the shared "a modal appeared" cue
+    // Yes/No confirms bonk (an unusual situation to decide); info modals don't —
+    // the tick from the control that opened them is enough.
+    if (warn) sfx.bonk();
 
     const U = Config.ui;
     const L = this._layout;
@@ -1400,6 +1402,7 @@ export class GameScene extends Phaser.Scene {
     this._openModal({
       title,
       body,
+      warn: false, // info-only: no bonk (the opening control already ticked)
       buttons: [
         {
           label: 'OK',
