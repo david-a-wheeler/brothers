@@ -165,6 +165,20 @@ export class Sfx {
   }
 
   /**
+   * Bonk: a short, comic two-tone downward "boink" — played when a modal pops up
+   * to flag an unusual request/situation. Deliberately distinct from the ball
+   * click and the win/lose cues.
+   *
+   * @returns {void}
+   */
+  bonk() {
+    if (!this._ctx) return;
+    const t = this._ctx.currentTime;
+    this._blip({ freq: 420, glideTo: 90, dur: 0.2, type: 'triangle', gain: 0.5, at: t });
+    this._blip({ freq: 210, glideTo: 60, dur: 0.22, type: 'sine', gain: 0.28, at: t });
+  }
+
+  /**
    * Grab: a soft, short high "tick" when the launcher is picked up. Deliberately
    * a clean tonal pip (no noise), so it's clearly not the {@link hit} ball-click.
    *

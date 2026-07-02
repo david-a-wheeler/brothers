@@ -1268,6 +1268,7 @@ export class GameScene extends Phaser.Scene {
     if (this._modalOpen) return;
     this._modalOpen = true;
     this._isPanning = false;
+    sfx.bonk(); // flag the unusual situation this modal is asking about
 
     const cx = this._layout.w / 2;
     const cy = this._layout.h / 2;
