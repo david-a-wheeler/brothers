@@ -1980,7 +1980,7 @@ export class GameScene extends Phaser.Scene {
         }
 
         // Neither is a brother: a hazard entering a trigger (teleporter) warps
-        // itself. Hazard/wall and hazard/hazard are pure physics bounces.
+        // itself. Hazard/wall bounces are handled by captureHazardBounce below.
         const hazard = entA instanceof Hazard ? entA : entB instanceof Hazard ? entB : null;
         if (!hazard) continue;
         const otherEnt = hazard === entA ? entB : entA;
@@ -1988,6 +1988,29 @@ export class GameScene extends Phaser.Scene {
         if (otherEnt && otherBody.isSensor) otherEnt.onActorContact(hazard);
       }
     });
+
+    // Reflect hazards off solid walls / the arena edge ourselves. Matter's
+    // restitution is unreliable for a slow body: below its resting-contact
+    // threshold it damps the normal velocity to zero, so the bomb slides along
+    // (and sticks to) the wall instead of bouncing. We capture the collision
+    // normal — on start AND while the contact persists (a slow bomb lingers) —
+    // and the hazard bounces itself after the step (see Hazard.noteBounce/update).
+    const captureHazardBounce = (event) => {
+      for (const pair of event.pairs) {
+        const ea = pair.bodyA.entity;
+        const eb = pair.bodyB.entity;
+        const hazard = ea instanceof Hazard ? ea : eb instanceof Hazard ? eb : null;
+        if (!hazard) continue;
+        const otherBody = ea === hazard ? pair.bodyB : pair.bodyA;
+        if (otherBody.isSensor) continue; // triggers (teleporter/goal): pass through
+        const oe = otherBody.entity;
+        if (oe instanceof Brother || oe instanceof Hazard) continue; // handled elsewhere / left to physics
+        if (!pair.collision) continue; // no normal to reflect off (defensive)
+        hazard.noteBounce(pair.collision.normal, otherBody); // wall or arena edge
+      }
+    };
+    this.matter.world.on('collisionstart', captureHazardBounce);
+    this.matter.world.on('collisionactive', captureHazardBounce);
   }
 
   // --- Per-frame loop -----------------------------------------------------

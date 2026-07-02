@@ -60,6 +60,13 @@ export class Hazard extends Entity {
 
     /** @type {Phaser.GameObjects.GameObject|null} Display object, set by the subclass. */
     this.view = null;
+
+    /**
+     * Outward wall normal captured this frame by {@link noteBounce}, consumed in
+     * {@link update} to force a clean bounce. Null when not touching a wall.
+     * @type {{x:number, y:number}|null}
+     */
+    this._bounceNormal = null;
   }
 
   /**
@@ -106,21 +113,71 @@ export class Hazard extends Entity {
   }
 
   /**
-   * Per-frame: glue the visual to the body, then re-assert the constant speed
-   * (keeping the current direction). Skipped while dormant (static). No view
-   * culling — a hazard off-screen must keep moving — so {@link bounds} stays
-   * `null` (inherited).
+   * Record a wall contact for this frame so {@link update} can bounce off it.
+   * Matter's own restitution is unreliable here: when a slow body's velocity
+   * into a wall is below Matter's resting-contact threshold, the solver damps
+   * the normal velocity to zero instead of bouncing, and the body slides along
+   * (and eventually sticks to) the wall. We capture the collision normal and
+   * reflect ourselves, after the step, so every hazard bounces at any speed.
+   *
+   * @param {{x:number, y:number}} normal  The pair's collision normal.
+   * @param {MatterJS.BodyType} otherBody  The struck body (wall or arena edge).
+   * @returns {void}
+   */
+  noteBounce(normal, otherBody) {
+    // Orient the normal to point from the struck body toward this hazard
+    // (outward), so update() can tell "into the wall" from "leaving it".
+    let nx = normal.x;
+    let ny = normal.y;
+    const dx = this.body.position.x - otherBody.position.x;
+    const dy = this.body.position.y - otherBody.position.y;
+    if (nx * dx + ny * dy < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    this._bounceNormal = { x: nx, y: ny };
+  }
+
+  /**
+   * Per-frame: glue the visual to the body, bounce off any wall touched this
+   * frame (see {@link noteBounce}), then re-assert the constant speed (keeping
+   * the resulting direction). Skipped while dormant (static). No view culling —
+   * a hazard off-screen must keep moving — so {@link bounds} stays `null`
+   * (inherited).
    *
    * @returns {void}
    */
   update() {
-    const p = this.body.position;
+    const body = this.body;
+    const p = body.position;
     this.view?.setPosition(p.x, p.y);
-    if (this.body.isStatic) return;
-    const v = this.body.velocity;
-    const sp = Math.hypot(v.x, v.y);
+    if (body.isStatic) return;
+
+    let vx = body.velocity.x;
+    let vy = body.velocity.y;
+
+    const n = this._bounceNormal;
+    if (n) {
+      let dot = vx * n.x + vy * n.y; // velocity component along the outward normal
+      if (dot < 0) {
+        // Heading into the wall: reflect (angle in == angle out).
+        vx -= 2 * dot * n.x;
+        vy -= 2 * dot * n.y;
+        dot = -dot;
+      }
+      // Grazing/tangential contact (Matter damped the normal velocity): ensure a
+      // real outward component so a slow hazard can't get pinned sliding along.
+      const minOut = this.speed * 0.2;
+      if (dot < minOut) {
+        vx += n.x * (minOut - dot);
+        vy += n.y * (minOut - dot);
+      }
+      this._bounceNormal = null;
+    }
+
+    const sp = Math.hypot(vx, vy);
     if (sp > 1e-6) {
-      Body.setVelocity(this.body, { x: (v.x / sp) * this.speed, y: (v.y / sp) * this.speed });
+      Body.setVelocity(body, { x: (vx / sp) * this.speed, y: (vy / sp) * this.speed });
     }
   }
 
