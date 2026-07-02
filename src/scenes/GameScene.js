@@ -21,7 +21,7 @@ import { World } from '../world/World.js';
 
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
 const HELP_TEXT = [
-  'Help David and Ken reach the goal in as few moves as possible.',
+  'Help brothers David and Ken reach the goal in as few moves as possible.',
   'Move: The glowing brother is the one you move. Drag it back and release to slingshot it toward its partner. The two are joined by an elastic band, so they travel together.',
   'Aim: A red X means that spot is blocked (a wall, the edge, or the other brother). Move and try again.',
   'Turns: Each launch uses one move, then the other brother takes over. Moves left show as "#Left".',
@@ -784,7 +784,7 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0.8)
       .setInteractive({ useHandCursor: true });
     this.menuTooltip = this.add
-      .text(Config.view.width / 2 - 2 * gap, h + 12, 'Open the menu', {
+      .text(Config.view.width / 2 - 2 * gap, h + 12, 'Open main menu', {
         fontSize: '15px',
         color: '#ffffff',
         backgroundColor: '#000000',
@@ -1625,28 +1625,7 @@ export class GameScene extends Phaser.Scene {
     const U = Config.ui;
     let y = 0;
 
-    if (Config.devTools) {
-      y += this._menuRow(y, 'Lab', this._devOpen ? 'On' : 'Off', {
-        valueColor: this._devOpen ? U.color.accentText : U.color.textMuted,
-        // Defer the re-render to the next tick: rebuilding the content inside this
-        // pointerup (which destroys the row being clicked) can eat the scene's
-        // pointerup, leaving the drag-scroll flag stuck on. See _rerenderMenu.
-        onTap: () => {
-          this._toggleDevPanel();
-          this._rerenderMenu();
-        },
-        tip: 'Developer tool: show a panel to live-tune slingshot and physics values.',
-      });
-      y += this._menuRow(y, 'Test', this._testMode ? 'On' : 'Off', {
-        valueColor: this._testMode ? U.color.accentText : U.color.textMuted,
-        onTap: () => {
-          this._testMode = !this._testMode;
-          this.registry.set('testMode', this._testMode);
-          this._rerenderMenu();
-        },
-        tip: "Test mode: unlock every level and jump freely, ignoring the normal 'win to advance' rule.",
-      });
-    }
+    // Help & About first, so a new player sees them before anything else.
     y += this._menuRow(y, 'Help', '›', {
       onTap: () => this._showMessage('How to play', HELP_TEXT),
       tip: 'How to play, and how scoring works.',
@@ -1655,6 +1634,8 @@ export class GameScene extends Phaser.Scene {
       onTap: () => this._showMessage('About', ABOUT_TEXT),
       tip: 'Credits and the tools behind the game.',
     });
+    // Dev toggles share one row (see _menuToggleRow).
+    if (Config.devTools) y += this._menuToggleRow(y);
 
     y += this._menuDivider(y);
     y += this._menuSectionHeader(y, 'Current pack');
@@ -1665,7 +1646,6 @@ export class GameScene extends Phaser.Scene {
       tip: 'See every level in this pack and your best on each.',
     });
 
-    y += this._menuDivider(y);
     y += this._menuSectionHeader(y, 'All packs');
     const packs = await listPacks();
     if (!this._menuOpen || this._menuView !== 'main') return; // closed/changed mid-fetch
@@ -1695,17 +1675,22 @@ export class GameScene extends Phaser.Scene {
   _packInfoRows(y0, packName, count, isCurrent) {
     const U = Config.ui;
     const { total, completed } = scores.packTotal(packName);
+    // Compact info rows (no touch target needed) to keep the section tight.
+    const compact = { rowH: 28, fontSize: '15px' };
     let y = y0;
     y += this._menuRow(y, 'Pack name', packName, {
+      ...compact,
       current: isCurrent,
       valueColor: U.color.text,
       tip: isCurrent ? "The name of the pack you're currently playing" : 'The name of this pack',
     });
-    y += this._menuRow(y, 'Levels', String(count), { tip: 'Number of levels in this pack.' });
+    y += this._menuRow(y, 'Levels', String(count), { ...compact, tip: 'Number of levels in this pack.' });
     y += this._menuRow(y, 'Completed', String(completed), {
+      ...compact,
       tip: "Levels in this pack you've cleared at least once.",
     });
     y += this._menuRow(y, 'Pack total', completed > 0 ? String(total) : '-', {
+      ...compact,
       valueColor: U.color.accentText,
       tip: "Sum of your best results across this pack (higher is better). '-' means none cleared yet.",
     });
@@ -1907,7 +1892,7 @@ export class GameScene extends Phaser.Scene {
    * @param {string} label
    * @param {string} value  Right-aligned value ('' to omit).
    * @param {{onTap?:(()=>void)|null, enabled?:boolean, valueColor?:string,
-   *   current?:boolean, tip?:string|null}} [opts]
+   *   current?:boolean, tip?:string|null, rowH?:number, fontSize?:string}} [opts]
    * @returns {number} The row height (so callers can advance `y`).
    */
   _menuRow(localY, label, value, opts = {}) {
@@ -1918,10 +1903,10 @@ export class GameScene extends Phaser.Scene {
       valueColor = U.color.textMuted,
       current = false,
       tip = null,
+      rowH = 44, // compact info rows pass a smaller height
+      fontSize = '17px',
     } = opts;
-    const rowH = 44;
     const w = this._menuListW;
-    const top = this._menuListTop;
     const midY = localY + (rowH - 6) / 2;
     const bg = this.add
       .rectangle(0, localY, w, rowH - 6, U.color.row, U.color.rowAlpha)
@@ -1931,7 +1916,7 @@ export class GameScene extends Phaser.Scene {
     if (current) parts.push(this.add.rectangle(0, localY, 3, rowH - 6, U.color.accent, 1).setOrigin(0, 0));
     parts.push(
       this.add
-        .text(14, midY, label, { fontSize: '17px', color: enabled ? U.color.text : U.color.textDisabled })
+        .text(14, midY, label, { fontSize, color: enabled ? U.color.text : U.color.textDisabled })
         .setOrigin(0, 0.5)
     );
     if (value) {
@@ -1939,7 +1924,7 @@ export class GameScene extends Phaser.Scene {
         // Top/bottom padding gives the text canvas room: Phaser under-measures
         // emoji height (✓/★/🔒), so without it the glyph's top is clipped.
         this.add
-          .text(w - 12, midY, value, { fontSize: '17px', color: valueColor, padding: { top: 6, bottom: 6 } })
+          .text(w - 12, midY, value, { fontSize, color: valueColor, padding: { top: 6, bottom: 6 } })
           .setOrigin(1, 0.5)
       );
     }
@@ -1949,14 +1934,65 @@ export class GameScene extends Phaser.Scene {
     if (onTap) {
       bg.on('pointerover', () => bg.setFillStyle(U.color.row, U.color.rowHoverAlpha));
       bg.on('pointerout', () => bg.setFillStyle(U.color.row, U.color.rowAlpha));
-      bg.on('pointerup', (p) => {
-        if (this._scrollbarDragging) return; // grabbing the scrollbar, not tapping the row
-        if (p.y < top || p.y > top + this._menuListH) return; // row scrolled out of view
-        if (Math.abs(p.y - this._menuDownY) > 6) return; // this was a drag-scroll, not a tap
-        sfx.tick();
-        onTap();
-      });
+      this._wireTap(bg, onTap);
     }
+    return rowH;
+  }
+
+  /**
+   * Wire a tap handler onto a menu content object, with the shared guards: ignore
+   * a scrollbar grab, an off-clip (scrolled-out) press, or a drag-scroll; play the
+   * click sound. Used by every tappable menu element.
+   *
+   * @param {Phaser.GameObjects.GameObject} obj @param {() => void} onTap
+   * @returns {void}
+   */
+  _wireTap(obj, onTap) {
+    obj.on('pointerup', (p) => {
+      if (this._scrollbarDragging) return; // grabbing the scrollbar, not tapping
+      if (p.y < this._menuListTop || p.y > this._menuListTop + this._menuListH) return; // scrolled out
+      if (Math.abs(p.y - this._menuDownY) > 6) return; // a drag-scroll, not a tap
+      sfx.tick();
+      onTap();
+    });
+  }
+
+  /**
+   * A single row holding the Lab and Test dev toggles side by side (each a
+   * tappable half with its On/Off state), so they don't cost two full rows.
+   *
+   * @param {number} localY @returns {number} Row height.
+   */
+  _menuToggleRow(localY) {
+    const U = Config.ui;
+    const rowH = 44;
+    const half = this._menuListW / 2;
+    const midY = localY + (rowH - 6) / 2;
+    const cell = (x0, label, on, tip, onTap) => {
+      const bg = this.add.rectangle(x0, localY, half - 3, rowH - 6, U.color.row, U.color.rowAlpha).setOrigin(0, 0);
+      const lbl = this.add.text(x0 + 12, midY, label, { fontSize: '16px', color: U.color.text }).setOrigin(0, 0.5);
+      const val = this.add
+        .text(x0 + half - 3 - 12, midY, on ? 'On' : 'Off', {
+          fontSize: '16px',
+          color: on ? U.color.accentText : U.color.textMuted,
+        })
+        .setOrigin(1, 0.5);
+      this._menuContent.add([bg, lbl, val]);
+      bg.setInteractive({ useHandCursor: true });
+      this._attachTooltip(bg, tip);
+      bg.on('pointerover', () => bg.setFillStyle(U.color.row, U.color.rowHoverAlpha));
+      bg.on('pointerout', () => bg.setFillStyle(U.color.row, U.color.rowAlpha));
+      this._wireTap(bg, onTap);
+    };
+    cell(0, 'Lab', this._devOpen, 'Developer tool: show a panel to live-tune slingshot and physics values.', () => {
+      this._toggleDevPanel();
+      this._rerenderMenu();
+    });
+    cell(half, 'Test', this._testMode, "Test mode: unlock every level and jump freely, ignoring the normal 'win to advance' rule.", () => {
+      this._testMode = !this._testMode;
+      this.registry.set('testMode', this._testMode);
+      this._rerenderMenu();
+    });
     return rowH;
   }
 
@@ -1975,7 +2011,6 @@ export class GameScene extends Phaser.Scene {
     const U = Config.ui;
     const { onTap = null, enabled = true, tip = null, danger = false } = opts;
     const h = 32;
-    const top = this._menuListTop;
     const cx = this._menuListW / 2;
     const midY = localY + h / 2;
     const base = danger ? (enabled ? U.color.danger : U.color.dangerOff) : 0x3a3a44;
@@ -1993,13 +2028,7 @@ export class GameScene extends Phaser.Scene {
     if (tappable) {
       rect.on('pointerover', () => rect.setFillStyle(hover, 1));
       rect.on('pointerout', () => rect.setFillStyle(base, 1));
-      rect.on('pointerup', (p) => {
-        if (this._scrollbarDragging) return; // grabbing the scrollbar, not tapping
-        if (p.y < top || p.y > top + this._menuListH) return; // scrolled out of view
-        if (Math.abs(p.y - this._menuDownY) > 6) return; // a drag-scroll, not a tap
-        sfx.tick();
-        onTap();
-      });
+      this._wireTap(rect, onTap);
     }
     return h;
   }
