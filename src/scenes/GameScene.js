@@ -1272,17 +1272,22 @@ export class GameScene extends Phaser.Scene {
     const pw = Math.min(380, this._layout.w - 2 * this._layout.pad);
     const ph = 190;
 
+    // A strong dim: this modal can appear over the already-dimmed menu, so a
+    // light backdrop would let the busy menu leak through and hurt readability.
+    // Depths sit ABOVE the menu's 30-33 band so the panel/text/buttons are never
+    // overdrawn by menu content (whose container is at depth 32).
+    const dim = 0.82;
     const backdrop = this.add
-      .rectangle(cx, cy, this._layout.w, this._layout.h, 0x000000, 0.6)
-      .setDepth(30)
+      .rectangle(cx, cy, this._layout.w, this._layout.h, 0x000000, dim)
+      .setDepth(40)
       .setInteractive(); // swallow clicks on the dimmed area
-    const panel = this.add.graphics().setDepth(31);
+    const panel = this.add.graphics().setDepth(41);
     panel.fillStyle(0x23232c, 1).fillRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 14);
     panel.lineStyle(2, 0x4d4d55, 1).strokeRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, 14);
     const title = this.add
       .text(cx, cy - 48, message, { fontSize: '28px', color: '#ffffff' })
       .setOrigin(0.5)
-      .setDepth(32);
+      .setDepth(42);
     const yes = this._modalButton(cx - 80, cy + 35, 'Yes', '#2e7d46', onYes);
     const no = this._modalButton(cx + 80, cy + 35, 'No', '#555560', () => this._hideConfirm());
 
@@ -1291,7 +1296,7 @@ export class GameScene extends Phaser.Scene {
 
     // Gentle fade-in so it doesn't pop in harshly.
     for (const part of this._modalParts) {
-      const to = part === backdrop ? 0.6 : 1;
+      const to = part === backdrop ? dim : 1;
       part.setAlpha(0);
       this.tweens.add({ targets: part, alpha: to, duration: 130, ease: 'Sine.Out' });
     }
@@ -1317,7 +1322,7 @@ export class GameScene extends Phaser.Scene {
         padding: { x: 26, y: 8 },
       })
       .setOrigin(0.5)
-      .setDepth(32)
+      .setDepth(42) // above the modal panel (41), matching the modal title
       .setInteractive({ useHandCursor: true });
     btn.on('pointerover', () => btn.setAlpha(0.85));
     btn.on('pointerout', () => btn.setAlpha(1));
