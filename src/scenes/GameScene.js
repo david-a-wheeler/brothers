@@ -1880,8 +1880,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.on('pointermove', (p) => {
-      // Keep an open entity-info label floating with the pointer.
-      if (this._infoEntity) this.entityInfoText.setPosition(p.x + 14, p.y - 8);
+      // Keep an open entity-info label floating with the pointer, on-screen.
+      if (this._infoEntity) this._placeEntityInfo(p.x, p.y);
       if (this._modalOpen) return;
       if (this._menuOpen) {
         if (this._menuDragging) {
@@ -2019,10 +2019,39 @@ export class GameScene extends Phaser.Scene {
     if (this._modalOpen || this._menuOpen || this._infoSuppressed) return; // suppressed / overlay owns the screen
     const p = this.input.activePointer;
     this._infoEntity = entity;
-    this.entityInfoText
-      .setText(entity.infoText())
-      .setPosition(p.x + 14, p.y - 8)
-      .setVisible(true);
+    // Cap the width and word-wrap so a long name (e.g. "Teleport Target from
+    // Region 1 to 2 (Teleporter)") can't be wider than the screen — it uses more
+    // lines instead. _placeEntityInfo then keeps the whole box on-screen.
+    const maxW = Math.min(360, this.scale.width - 40);
+    this.entityInfoText.setWordWrapWidth(maxW, true).setText(entity.infoText()).setVisible(true);
+    this._placeEntityInfo(p.x, p.y);
+  }
+
+  /**
+   * Position the entity info label near the pointer but fully on-screen: prefer
+   * above-right of the pointer, flip to the other side of an edge (left / below),
+   * then clamp so the whole box stays within the viewport. Its size is known here
+   * because the text (and wrap) were already set.
+   *
+   * @param {number} px @param {number} py  Pointer position (screen px).
+   * @returns {void}
+   */
+  _placeEntityInfo(px, py) {
+    const t = this.entityInfoText;
+    const pad = 6;
+    const W = this.scale.width;
+    const H = this.scale.height;
+    const w = t.width; // includes the label's own padding
+    const h = t.height;
+    // Preferred above-right; flip to the roomier side near an edge.
+    let x = px + 14;
+    if (x + w > W - pad) x = px - 14 - w; // flip left
+    let top = py - 8 - h;
+    if (top < pad) top = py + 14; // flip below
+    // Final clamp guarantees it fits whatever the flips decided.
+    x = Phaser.Math.Clamp(x, pad, Math.max(pad, W - pad - w));
+    top = Phaser.Math.Clamp(top, pad, Math.max(pad, H - pad - h));
+    t.setPosition(x, top + h); // origin (0,1): position is the box's bottom-left
   }
 
   /**
