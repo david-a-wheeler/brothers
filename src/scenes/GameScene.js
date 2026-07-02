@@ -370,6 +370,7 @@ export class GameScene extends Phaser.Scene {
       this.hudBar,
       this.hudBorder,
       this.turnText,
+      this.turnTooltip,
       this.packText,
       this.packTooltip,
       this.bestText,
@@ -602,7 +603,36 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDepth(9);
 
-    this.turnText = this.add.text(20, 18, '', { fontSize: '22px' }).setDepth(10);
+    this.turnText = this.add.text(20, 18, '', { fontSize: '22px' }).setDepth(10).setInteractive();
+    // A general explanation of the left-hand entry, revealed on hover/press. Kept
+    // deliberately state-agnostic ("play state" covers non-turn conditions like
+    // game over). Positioned from turnText's live bounds on reveal (its width and
+    // placement change with the state string and layout).
+    this.turnTooltip = this.add
+      .text(0, 0, 'Active brother and current play state', {
+        fontSize: '15px',
+        color: '#ffffff',
+        backgroundColor: '#000000',
+        padding: { x: 8, y: 4 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(11)
+      .setVisible(false);
+    const revealTurnTip = () => {
+      const cx = this.turnText.getCenter().x;
+      const half = this.turnTooltip.width / 2;
+      const L = this._layout;
+      const x = Phaser.Math.Clamp(cx, half + L.pad, L.w - L.pad - half);
+      this.turnTooltip.setPosition(x, L.hudHeight + 6).setVisible(true);
+    };
+    const hideTurnTip = () => this.turnTooltip.setVisible(false);
+    this.turnText.on('pointerover', revealTurnTip);
+    this.turnText.on('pointerout', hideTurnTip);
+    this.turnText.on('pointerdown', (_p, _x, _y, e) => {
+      e?.stopPropagation(); // don't let the press reach the aim/pan router
+      revealTurnTip();
+    });
+    this.turnText.on('pointerup', hideTurnTip);
     // Right-hand stats — Pack / Best / #Left — each its own interactive text with
     // a hover/press tooltip (see _buildHudStat), laid out as a right-aligned group
     // by _layoutRightGroup and filled with values in _refreshHud. The pack name is
