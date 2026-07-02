@@ -148,9 +148,10 @@ export class GameScene extends Phaser.Scene {
   /**
    * Decide the HUD metrics for the current window size, choosing 1, 2, or 3
    * rows so nothing collides:
-   *  - wide   (> compactMaxWidth): 1 row — turn text and Best/#Left at the edges,
-   *           icons centred between them.
-   *  - compact(<= compactMaxWidth): 2 rows — the info text on one line (turn
+   *  - wide   (wide enough that the edge text clears the centred icons; the
+   *           threshold is computed from the text width, see _maxHudTextWidth):
+   *           1 row — turn text and Best/#Left at the edges, icons centred.
+   *  - compact(narrower than that): 2 rows — the info text on one line (turn
    *           left, Best/#Left right), icons below; larger touch icons.
    *  - narrow (<= narrowMaxWidth): 3 rows — state text, then Best/#Left, then
    *           icons — so the two texts can't overlap on a phone in portrait.
@@ -163,7 +164,13 @@ export class GameScene extends Phaser.Scene {
     const H = Config.hud;
     const w = this.scale.width;
     const h = this.scale.height;
-    const mode = w > H.compactMaxWidth ? 'wide' : w <= H.narrowMaxWidth ? 'narrow' : 'compact';
+    // Use the single-row (wide) layout only when the edge text can't collide with
+    // the centred icon cluster: each side needs pad + the widest text + a gap,
+    // clear of the cluster's half-width. Measured from the real font so it adapts
+    // (rather than a fixed breakpoint that overlaps for long text / wide fonts).
+    const clusterHalf = ((5 - 1) / 2) * H.normalGap + H.normalIcon / 2; // 5 icons, wide spacing
+    const wideMin = 2 * (H.pad + this._maxHudTextWidth() + 16 + clusterHalf);
+    const mode = w >= wideMin ? 'wide' : w <= H.narrowMaxWidth ? 'narrow' : 'compact';
     const rows = mode === 'wide' ? 1 : mode === 'narrow' ? 3 : 2;
     const touch = mode !== 'wide'; // bigger icons/gaps on small screens
     // Small screens stack text line(s) above the icon row: compact has one
@@ -187,6 +194,26 @@ export class GameScene extends Phaser.Scene {
       pad: H.pad,
     };
     this._hudHeight = this._layout.hudHeight;
+  }
+
+  /**
+   * Widest possible wide-mode edge text (the longest turn prompt or Best/#Left
+   * line), measured once from the real font and cached. Drives the wide/compact
+   * breakpoint (see {@link _computeLayout}) so the text can't overlap the icons
+   * whatever the font renders to.
+   *
+   * @returns {number}
+   */
+  _maxHudTextWidth() {
+    if (this._maxTextW === undefined) {
+      const probe = this.add.text(0, 0, '', { fontSize: '22px' }).setVisible(false);
+      probe.setText("David's turn, can't do that");
+      const a = probe.width;
+      probe.setText('Best: 00    #Left: 00');
+      this._maxTextW = Math.max(a, probe.width);
+      probe.destroy();
+    }
+    return this._maxTextW;
   }
 
   /**

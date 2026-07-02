@@ -31,12 +31,13 @@ export const Config = {
    * touch-friendly icons. The single source for these knobs.
    */
   hud: {
-    // Width breakpoints (px). Wide (> compactMaxWidth): one row — turn text and
-    // Best/#Left at the edges with the icons centred between. Compact (between
-    // the two): two rows — the info text on one line, icons below. Narrow
-    // (<= narrowMaxWidth): three rows — state text, then Best/#Left, then icons —
-    // so the two texts can't collide on a phone in portrait.
-    compactMaxWidth: 760,
+    // Layout tiers. Wide: one row — turn text and Best/#Left at the edges with
+    // the icons centred between. The wide→compact breakpoint isn't a fixed width:
+    // it's computed from the measured text width so the edge text never collides
+    // with the icon cluster (see GameScene._computeLayout). Compact: two rows —
+    // the info text on one line, icons below. Narrow (<= narrowMaxWidth): three
+    // rows — state text, then Best/#Left, then icons — so the two texts can't
+    // collide on a phone in portrait.
     narrowMaxWidth: 520,
     rowHeight: 52, // height of one HUD row (sized for the icon touch targets)
     narrowTextRow: 30, // height of a text-only row in narrow mode (tighter than icons)
