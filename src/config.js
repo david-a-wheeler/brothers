@@ -198,6 +198,14 @@ export const Config = {
       sparkAlphaLow: 0.35, // dimmest the spark fades to
       sparkScaleHigh: 1.4, // largest the spark swells to
       explosionColor: 0xff7a1a, // one-shot burst ring on contact
+      // The near-black ball loses its silhouette on the dark arena floor, so a
+      // thin, muted rim just barely defines the edge (subtle by design — it should
+      // add contrast, not draw the eye) and a top-left highlight reads as a glossy
+      // sphere. Nudge outlineAlpha/outlineColor up for a stronger edge, or swap
+      // outlineColor to a warm red (e.g. 0xff5a3c) for a danger cue.
+      outlineColor: 0x8a8a94,
+      outlineWidth: 1,
+      outlineAlpha: 0.5,
     },
   },
 };

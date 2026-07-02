@@ -21,8 +21,12 @@ export class Bomb extends Hazard {
     const r = this.radius;
     const F = Config.anim.bomb;
 
-    // 8-ball body: a black disc with a small white spot carrying a bold "8".
-    const ball = scene.add.circle(0, 0, r, 0x111114);
+    // 8-ball body: a black disc with a small white spot carrying a bold "8". A
+    // light rim keeps its silhouette on the dark arena floor, and a top-left
+    // highlight reads as a glossy sphere (see Config.anim.bomb).
+    const ball = scene.add
+      .circle(0, 0, r, 0x111114)
+      .setStrokeStyle(F.outlineWidth, F.outlineColor, F.outlineAlpha);
     const spot = scene.add.circle(0, r * 0.05, r * 0.42, 0xffffff);
     const eight = scene.add
       .text(0, r * 0.05, '8', {
@@ -31,14 +35,19 @@ export class Bomb extends Hazard {
         fontStyle: 'bold',
       })
       .setOrigin(0.5);
-    // Fuse: a short stub rising from the top, tipped by a flickering spark.
+    const gloss = scene.add.circle(-r * 0.34, -r * 0.34, r * 0.16, 0xffffff, 0.45);
+    // Fuse: a short stub rising from the top, tipped by a flickering spark. Its
+    // base dips slightly into the ball (and it's drawn after the ball) so the
+    // connection reads cleanly over the rim outline.
     const fuse = scene.add
-      .rectangle(0, -r, Math.max(2, r * 0.12), r * 0.5, 0x6b4a2b)
+      .rectangle(0, -r * 0.9, Math.max(2, r * 0.12), r * 0.6, 0x6b4a2b)
       .setOrigin(0.5, 1);
     /** The spark at the fuse tip; flickered by a looping tween (no per-frame code). */
     this.spark = scene.add.circle(0, -r * 1.5, Math.max(2, r * 0.18), 0xffd479);
 
-    this.view = scene.add.container(def.x, def.y, [ball, spot, eight, fuse, this.spark]).setDepth(4);
+    this.view = scene.add
+      .container(def.x, def.y, [ball, spot, eight, gloss, fuse, this.spark])
+      .setDepth(4);
     scene.tweens.add({
       targets: this.spark,
       alpha: { from: 1, to: F.sparkAlphaLow },
