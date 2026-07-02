@@ -1521,9 +1521,22 @@ export class GameScene extends Phaser.Scene {
     this._scrollbarDragging = false;
     this.time.delayedCall(0, () => {
       if (!this._menuOpen) return;
-      if (this._menuView === 'detail') this._showPackDetail(this._menuDetail);
+      if (this._menuView === 'detail') this._showPackDetail(this._menuDetail, this._detailFrom);
+      else if (this._menuView === 'packs') this._showPacksAvailable();
       else this._showMainMenu();
     });
+  }
+
+  /**
+   * The Back button's destination, which depends on the current view: Packs
+   * Available goes to the main menu; Pack details goes back to whichever view
+   * opened it (main menu or Packs Available).
+   *
+   * @returns {void}
+   */
+  _menuBack() {
+    if (this._menuView === 'detail' && this._detailFrom === 'packs') this._showPacksAvailable();
+    else this._showMainMenu();
   }
 
   /**
@@ -1581,12 +1594,12 @@ export class GameScene extends Phaser.Scene {
     // it there, but higher in the main menu where there's no Back (see
     // _setMenuListArea), so the main menu doesn't waste that space.
     this._menuBackBtn = this._devButton(cx0 + 16, this._menuHeaderBottom + 16, '‹ Back', () =>
-      this._showMainMenu()
+      this._menuBack()
     )
       .setOrigin(0, 0.5)
       .setDepth(32)
       .setVisible(false);
-    this._attachTooltip(this._menuBackBtn, 'Back to the main menu.');
+    this._attachTooltip(this._menuBackBtn, 'Go back.');
     this._menuParts.push(this._menuBackBtn);
 
     // Scroll viewport: a geometry mask (off-display-list make.graphics) clips a
@@ -1647,7 +1660,7 @@ export class GameScene extends Phaser.Scene {
    *
    * @returns {Promise<void>}
    */
-  async _showMainMenu() {
+  _showMainMenu() {
     if (!this._menuOpen) return; // may be deferred (see the Lab/Test toggles)
     this._menuView = 'main';
     this._menuTitle.setText('Main Menu');
@@ -1655,43 +1668,74 @@ export class GameScene extends Phaser.Scene {
     this._menuScroll = 0;
     this._setMenuListArea(false); // no Back here: start the list higher
     this._clearMenuContent();
-    const U = Config.ui;
     let y = 0;
 
-    // Help & About first, so a new player sees them before anything else.
+    // Standard menu items first, with About last (as is conventional). Packs
+    // Available sits high, right after Help.
     y += this._menuRow(y, 'Help', '›', {
       onTap: () => this._showMessage('How to play', HELP_TEXT),
       tip: 'How to play, and how scoring works.',
+    });
+    y += this._menuRow(y, 'Packs Available', '›', {
+      onTap: () => this._showPacksAvailable(),
+      tip: 'Browse all packs and their scores; open one to jump between levels.',
     });
     y += this._menuRow(y, 'About', '›', {
       onTap: () => this._showMessage('About', ABOUT_TEXT),
       tip: 'Credits and the tools behind the game.',
     });
-    // Dev toggles share one row (see _menuToggleRow).
-    if (Config.devTools) y += this._menuToggleRow(y);
 
+    // Everything below About is the "different" stuff: the current-pack section,
+    // then the developer-only Lab/Test toggles tucked at the very bottom.
     y += this._menuDivider(y);
     y += this._menuSectionHeader(y, 'Current pack');
     y += this._packInfoRows(y, activePackName(), levelCount(), true);
     y += this._menuContentButton(y, 'Details', {
       danger: false,
-      onTap: () => this._showPackDetail(activePackManifest()),
+      onTap: () => this._showPackDetail(activePackManifest(), 'main'),
       tip: 'See every level in this pack and your best on each.',
     });
 
-    y += this._menuSectionHeader(y, 'All packs');
+    if (Config.devTools) {
+      y += this._menuDivider(y);
+      y += this._menuToggleRow(y);
+    }
+
+    this._finishMenuContent(y);
+  }
+
+  /**
+   * The "Packs Available" view: every known pack with its total best score, from
+   * local storage only (no probing). A ★ marks the pack you're currently playing.
+   * Tapping a pack opens its details. Scrolls if the list is long. Back returns
+   * to the main menu.
+   *
+   * @returns {Promise<void>}
+   */
+  async _showPacksAvailable() {
+    if (!this._menuOpen) return;
+    this._menuView = 'packs';
+    this._menuTitle.setText('Packs Available');
+    this._menuBackBtn.setVisible(true);
+    this._menuScroll = 0;
+    this._setMenuListArea(true); // has Back
+    this._clearMenuContent();
+    const U = Config.ui;
+    let y = 0;
     const packs = await listPacks();
-    if (!this._menuOpen || this._menuView !== 'main') return; // closed/changed mid-fetch
+    if (!this._menuOpen || this._menuView !== 'packs') return; // closed/changed mid-fetch
     for (const { id, name } of packs) {
       const { total, completed } = scores.packTotal(id);
-      y += this._menuRow(y, name, completed > 0 ? `${total} ★` : '-', {
-        current: id === activePackId(),
+      const isCurrent = id === activePackId();
+      y += this._menuRow(y, isCurrent ? `${name}  ★` : name, completed > 0 ? String(total) : '-', {
         valueColor: U.color.accentText,
         onTap: async () => {
           const m = await loadPackManifest(id);
-          if (this._menuOpen) this._showPackDetail(m);
+          if (this._menuOpen) this._showPackDetail(m, 'packs');
         },
-        tip: "Open this pack's details. The number is your total best score across it ('-' if you haven't cleared any).",
+        tip:
+          (isCurrent ? "★ marks the pack you're currently playing. " : '') +
+          "Open to see this pack's details. The number is your total best score across it ('-' if you haven't cleared any).",
       });
     }
     this._finishMenuContent(y);
@@ -1733,14 +1777,18 @@ export class GameScene extends Phaser.Scene {
   /**
    * Pack details: the pack's info section, then per-level rows (best score, or a
    * lock/dash) with tap-to-jump (gated by {@link _canJump}), then "Forget pack
-   * scores". Reached from the main menu's Details button or an All-packs row.
+   * scores". Reached from the main menu's Details button (`from: 'main'`) or a
+   * row in Packs Available (`from: 'packs'`); Back returns to wherever it came
+   * from (see {@link _menuBack}).
    *
    * @param {{id:string, name:string, levelIds:string[]}} manifest
+   * @param {'main'|'packs'} [from]  Which view opened this (for Back).
    * @returns {void}
    */
-  _showPackDetail(manifest) {
+  _showPackDetail(manifest, from = 'main') {
     this._menuView = 'detail';
     this._menuDetail = manifest;
+    this._detailFrom = from;
     this._menuTitle.setText('Pack details');
     this._menuBackBtn.setVisible(true);
     this._menuScroll = 0;
@@ -1863,7 +1911,7 @@ export class GameScene extends Phaser.Scene {
         this._refreshHud(); // -> "Best: -"
       }
       this._hideConfirm();
-      this._showPackDetail(manifest); // re-render: scores cleared, button shaded
+      this._showPackDetail(manifest, this._detailFrom); // re-render: scores cleared, button shaded
     });
   }
 
