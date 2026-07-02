@@ -516,6 +516,36 @@ export class Brothers {
       (b) => Phaser.Math.Distance.Between(b.go.x, b.go.y, zone.x, zone.y) <= zone.radius
     );
   }
+
+  // --- Camera follow target -----------------------------------------------
+  // Phaser's camera.startFollow reads `.x`/`.y` off its target each frame, so
+  // the pair can be followed directly: these report the midpoint. `spanWidth`/
+  // `spanHeight` give the box enclosing both balls (radii included) for a
+  // fit-to-view zoom, which follow can't do on its own.
+
+  /** @returns {number} Midpoint x of the two balls (camera follow target). */
+  get x() {
+    return (this.david.go.x + this.ken.go.x) / 2;
+  }
+
+  /** @returns {number} Midpoint y of the two balls (camera follow target). */
+  get y() {
+    return (this.david.go.y + this.ken.go.y) / 2;
+  }
+
+  /** @returns {number} Width of the box enclosing both balls, radii included. */
+  get spanWidth() {
+    const a = this.david.go;
+    const b = this.ken.go;
+    return Math.max(a.x + a.radius, b.x + b.radius) - Math.min(a.x - a.radius, b.x - b.radius);
+  }
+
+  /** @returns {number} Height of the box enclosing both balls, radii included. */
+  get spanHeight() {
+    const a = this.david.go;
+    const b = this.ken.go;
+    return Math.max(a.y + a.radius, b.y + b.radius) - Math.min(a.y - a.radius, b.y - b.radius);
+  }
 }
 
 export { FACES };

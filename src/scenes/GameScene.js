@@ -327,12 +327,15 @@ export class GameScene extends Phaser.Scene {
     const main = this.cameras.main;
     main.setViewport(0, hudHeight, w, h - hudHeight);
     this.uiCamera.setViewport(0, 0, w, h);
+    // Constrain panning to the arena expanded by the edge margin; Phaser clamps
+    // the camera (and any follow) to this in preRender and centres it when the
+    // view is larger than the bounds (fully zoomed out).
+    main.setBounds(-M, -M, this.arena.width + 2 * M, this.arena.height + 2 * M);
     this._minZoom = Math.min(
       main.width / (this.arena.width + 2 * M),
       main.height / (this.arena.height + 2 * M)
     );
     if (resetZoom || main.zoom < this._minZoom) main.setZoom(this._minZoom);
-    this._clampCamera();
   }
 
   /**
@@ -347,83 +350,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Constrain the world camera in world space (Phaser's setBounds clamp is
-   * unreliable at fractional zoom — see _setupCameras). The arena may be
-   * panned/zoomed freely, but only `edgeMargin` of gray can show past any edge.
-   * Per axis: if the view is wider than the arena + both margins (zoomed out),
-   * centre the arena; otherwise clamp scroll so the view stays within the arena
-   * expanded by the margin (allowing that much overscroll into the gray). Works
-   * at any zoom and for any arena size. Call after every zoom or pan change.
+   * Ease the zoom out while a shot is in flight so both balls stay in frame —
+   * the one thing Phaser's follow can't do (it only pans to a point). Uses the
+   * pair's combined span (see Brothers.spanWidth/Height); only ever zooms *out*,
+   * never past the fit-everything minimum, and gently so it never jostles.
    *
    * @returns {void}
    */
-  _clampCamera() {
-    const main = this.cameras.main;
-    const M = Config.zoom.edgeMargin;
-    const aw = this.arena.width;
-    const ah = this.arena.height;
-    // Phaser centres the view on midPoint = scroll + halfViewport (in pixels),
-    // spanning width/zoom of world. So we clamp the *midpoint*, then convert
-    // back to scroll. Per axis: if the visible span exceeds the arena+margins,
-    // centre on the arena; else keep the view edges within the arena expanded
-    // by the margin (so up to `M` of gray can show past any edge).
-    const halfVW = main.width / 2;
-    const halfVH = main.height / 2;
-    const halfSpanX = main.width / main.zoom / 2; // half the world width in view
-    const halfSpanY = main.height / main.zoom / 2;
-
-    let midX = main.scrollX + halfVW;
-    let midY = main.scrollY + halfVH;
-    midX =
-      halfSpanX * 2 >= aw + 2 * M
-        ? aw / 2
-        : Phaser.Math.Clamp(midX, -M + halfSpanX, aw + M - halfSpanX);
-    midY =
-      halfSpanY * 2 >= ah + 2 * M
-        ? ah / 2
-        : Phaser.Math.Clamp(midY, -M + halfSpanY, ah + M - halfSpanY);
-
-    main.setScroll(midX - halfVW, midY - halfVH);
-  }
-
-  /**
-   * Gently keep the flying pair in frame (the classic follow-with-deadzone trick,
-   * done by hand so it cooperates with the manual pan + {@link _clampCamera}).
-   * While a shot is in motion: if the balls' midpoint drifts out of a central
-   * deadzone, ease the camera toward it; and if a ball leaves the view entirely
-   * (they've spread apart), ease the zoom out a touch — down to the fit-all
-   * minimum. Lerps are small so it never jostles, and it yields to an active
-   * pan/pinch. It's fine for the pair to be briefly out of frame; they drift back.
-   *
-   * @returns {void}
-   */
-  _keepBallsInView() {
-    if (this._isPanning || this._pinchDist) return; // a gesture owns the camera
+  _fitZoom() {
     const cam = this.cameras.main;
-    const a = this.brothers.david.go;
-    const b = this.brothers.ken.go;
-    const midX = (a.x + b.x) / 2;
-    const midY = (a.y + b.y) / 2;
-    const view = cam.worldView;
-
-    // Pan: only correct once the midpoint leaves the central 50% deadzone.
-    const dzX = view.width * 0.25;
-    const dzY = view.height * 0.25;
-    let dx = 0;
-    if (midX < view.x + dzX) dx = midX - (view.x + dzX);
-    else if (midX > view.right - dzX) dx = midX - (view.right - dzX);
-    let dy = 0;
-    if (midY < view.y + dzY) dy = midY - (view.y + dzY);
-    else if (midY > view.bottom - dzY) dy = midY - (view.bottom - dzY);
-    if (dx || dy) {
-      cam.setScroll(cam.scrollX + dx * 0.06, cam.scrollY + dy * 0.06); // gentle catch-up
-      this._clampCamera();
-    }
-
-    // Zoom out a little if either ball is off-screen (spread too far to both fit).
-    if (cam.zoom > this._minZoom && (!view.contains(a.x, a.y) || !view.contains(b.x, b.y))) {
-      cam.setZoom(Phaser.Math.Linear(cam.zoom, this._minZoom, 0.03));
-      this._clampCamera();
+    const M = Config.zoom.edgeMargin;
+    const fit = Math.min(
+      cam.width / (this.brothers.spanWidth + 2 * M),
+      cam.height / (this.brothers.spanHeight + 2 * M)
+    );
+    if (fit < cam.zoom) {
+      cam.setZoom(Phaser.Math.Linear(cam.zoom, Math.max(fit, this._minZoom), 0.05));
     }
   }
 
@@ -1654,13 +1596,12 @@ export class GameScene extends Phaser.Scene {
       if (this.isAiming) return; // Phaser's drag moves the launcher; don't pan
       if (this._isPanning) {
         // Drag the world under the finger: scroll opposite to the move, scaled
-        // by zoom, then clamp/centre to the arena.
+        // by zoom. Phaser clamps to the camera bounds in preRender.
         const cam = this.cameras.main;
         cam.setScroll(
           cam.scrollX - (p.x - this._panLast.x) / cam.zoom,
           cam.scrollY - (p.y - this._panLast.y) / cam.zoom
         );
-        this._clampCamera();
         this._panLast.x = p.x;
         this._panLast.y = p.y;
       }
@@ -1686,6 +1627,11 @@ export class GameScene extends Phaser.Scene {
       this.movesLeft -= 1;
       this.status = 'PLAYING'; // first launch leaves READY; later launches keep PLAYING
       this.phase = 'MOVING';
+      // Let Phaser follow the pair (their midpoint) with a soft lerp + central
+      // deadzone while the shot is in flight; released at settle (_resolveTurn).
+      const cam = this.cameras.main;
+      cam.startFollow(this.brothers, false, 0.08, 0.08);
+      cam.setDeadzone(cam.width * 0.5, cam.height * 0.5);
       this._refreshHud();
     });
 
@@ -1807,7 +1753,6 @@ export class GameScene extends Phaser.Scene {
     cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, this._minZoom, Config.zoom.max));
     const after = cam.getWorldPoint(screenX, screenY);
     cam.setScroll(cam.scrollX + (before.x - after.x), cam.scrollY + (before.y - after.y));
-    this._clampCamera();
   }
 
   /**
@@ -1910,7 +1855,7 @@ export class GameScene extends Phaser.Scene {
     this._updatePinch();
 
     if (this.status === 'PLAYING' && this.phase === 'MOVING') {
-      this._keepBallsInView(); // gently pan/zoom so the flying pair stays framed
+      this._fitZoom(); // Phaser follows the pair (pan); this zooms out to fit both
       this.brothers.brakeSlowMotion();
       if (this.brothers.isSettled()) this._resolveTurn();
     }
@@ -1922,6 +1867,7 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _resolveTurn() {
+    this.cameras.main.stopFollow(); // the shot has settled; hand the camera back to the player
     const reached = this.world.firstReached(this.brothers);
     if (reached) {
       // Record best score (most moves left) if we beat it.
