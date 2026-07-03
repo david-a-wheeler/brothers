@@ -58,15 +58,33 @@ export class TitleScene extends Phaser.Scene {
 
     this._wireAudio();
 
+    // When the game loses focus the music pauses (Phaser's pauseOnBlur), so
+    // silence the elastic-band sound too and keep it muted until focus returns —
+    // otherwise the stretch sound plays on without the music. The demo's band
+    // calls check `_audioPaused` (see _demoSteps). A hidden tab is already handled
+    // by main.js (sfx.suspend() + sleeping the game loop).
+    const onBlur = () => {
+      this._audioPaused = true;
+      sfx.stopBand();
+    };
+    const onFocus = () => {
+      this._audioPaused = false;
+    };
+    this.game.events.on(Phaser.Core.Events.BLUR, onBlur);
+    this.game.events.on(Phaser.Core.Events.FOCUS, onFocus);
+
     // Reflow on window resize / device rotation. Static UI repositions at once;
     // the demo loop restarts (debounced) so a drag-resize doesn't thrash it.
     this.scale.on('resize', this._onResize, this);
     // On shutdown, only tear down what Phaser DOESN'T own: the scale listener, the
-    // procedural band sound, and the raw-audio music. Phaser destroys the scene's
-    // tweens and timers itself — calling `.remove()` on them here (as _stopDemo
-    // does) throws mid-teardown and kills the game loop, stalling the next scene.
+    // focus/blur hooks, the procedural band sound, and the raw-audio music. Phaser
+    // destroys the scene's tweens and timers itself — calling `.remove()` on them
+    // here (as _stopDemo does) throws mid-teardown and kills the game loop,
+    // stalling the next scene.
     this.events.once('shutdown', () => {
       this.scale.off('resize', this._onResize, this);
+      this.game.events.off(Phaser.Core.Events.BLUR, onBlur);
+      this.game.events.off(Phaser.Core.Events.FOCUS, onFocus);
       sfx.stopBand();
       this._stopMusic();
     });
@@ -456,14 +474,14 @@ export class TitleScene extends Phaser.Scene {
         onStart: () => {
           this.david.setFace(FACES.drag.launcher);
           this.ken.setFace(FACES.drag.anchor);
-          sfx.startBand();
+          if (!this._audioPaused) sfx.startBand();
         },
         onUpdate: (t) => {
           this.david.go.setPosition(
             qbez(geo.davidX, ctrlX, geo.pullX, t),
             qbez(geo.demoY, geo.arcY, geo.demoY, t)
           );
-          sfx.updateBand(t);
+          if (!this._audioPaused) sfx.updateBand(t);
         },
       },
       // Beat at full stretch.
