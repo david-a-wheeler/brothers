@@ -5,6 +5,10 @@ Supports multiple simultaneous requests, necessary for local development
 (e.g., where there are many ES modules loading in parallel).
 It also provides adequate security for local testing.
 
+By default it serves to IP address 0.0.0.0 on port 8000
+so you can access it on local network. You can provide on the command line
+[IP_ADDRESS [PORT]] e.g., `127.0.01 8080`.
+
 Many times you need a local web server for testing. E.g., if you use
 JavaScript with ES modules, they *cannot* be loaded from file:
 so you *must* run a webserver.
@@ -25,17 +29,19 @@ so we require a password for any access other than the password page.
 We also want to ensure that (1) if an attacker can gain access to the
 server's pages they can't discover the password (so .password must be
 stored with an iterated salted hash), and (2) if they *can* get in,
-they can only see the current directory and below.
+they can only see the current directory and below. As extra protection,
+we prevent downloading certain basename filename, especially `.password`.
 
 We're NOT worried about storing passwords in the clear in the clients.
 We aren't worried about transmitting passwords in the clear
 (it's supposed to be the same system or a trusted/likely virtual LAN).
 We're not worried about having passwords as cleartext
-on the server while the server is running; if the attacker has that
+in server memory while the server is running; if the attacker has that
 access we're doomed anyway since the attacker can watch what the client sends.
 
 The encrypted password is stored in ".password"; delete that at any time to
-force its regeneration. Passwords expire after a year, to limit damage.
+force its regeneration. Passwords expire after a year, to limit damage,
+and are auto-regenerated.
 """
 
 import hashlib
@@ -249,8 +255,31 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         super().end_headers()
 
+    def is_sensitive_file(self, filename):
+        """Determines if a file basename looks like a sensitive credential or config file."""
+        filename_lower = filename.lower()
+
+        # 1. Exact matches for common local development or system files
+        blocked_names = {
+            ".password", ".netrc", ".env",
+            ".bash_history", ".zsh_history", ".ds_store"
+        }
+        if filename_lower in blocked_names:
+            return True
+
+        # 2. Block SSH private keys (typically start with 'id_' and don't end in '.pub')
+        if filename_lower.startswith("id_") and not filename_lower.endswith(".pub"):
+            return True
+
+        # 3. Block common crypto private key/certificate extensions
+        blocked_extensions = (".pem", ".key", ".pfx", ".p12", ".pkcs12")
+        if filename_lower.endswith(blocked_extensions):
+            return True
+
+        return False
+
     def send_head(self):
-        """Validates network boundary mechanics and cryptographic state."""
+        """Validates network boundary mechanics and cryptographic state, sends if okay."""
         if not self.is_authenticated():
             self.serve_login_form()
             return None
@@ -267,8 +296,17 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(403, "Forbidden")
             return None
 
-        return super().send_head()
+        # SENSITIVE FILE FILTER ---
+        # Extract just the final filename
+        # (e.g., "/src/.password" becomes ".password")
+        # and refuse to serve it if it appears sensitive.
+        basename = os.path.basename(abs_target)
+        if self.is_sensitive_file(basename):
+            self.send_error(403, "Forbidden: Access to sensitive configuration or credential files is denied.")
+            return None
+        # ----------------------------------
 
+        return super().send_head()
 
 class SecureThreadingHTTPServer(ThreadingHTTPServer):
     request_queue_size = 64
