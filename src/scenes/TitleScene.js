@@ -128,7 +128,7 @@ export class TitleScene extends Phaser.Scene {
   /** @returns {void} */
   _buildPremise() {
     this._premise = this.add
-      .text(0, 0, 'Help the brothers, David and Ken, reach the goal in as few moves as possible.', {
+      .text(0, 0, 'Help the brothers, David and Ken, reach the goal\nin as few moves as possible.', {
         fontFamily: 'system-ui, sans-serif',
         fontSize: '20px',
         color: '#e6e6ea',
