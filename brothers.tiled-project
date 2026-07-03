@@ -185,6 +185,81 @@
                 "property",
                 "map"
             ]
+        },
+        {
+            "color": "#ffe74c3c",
+            "drawFill": true,
+            "id": 8,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "Base type for a self-propelled hazard - you don't place this directly; place a concrete kind such as Bomb. It is a dynamic circle that stays dormant until the first launch connects, then travels at a CONSTANT speed, bouncing off walls and the arena edge (and warping through teleporters, keeping its heading) until a brother touches it. speed is the constant travel speed in launch-speed units (a full launch is ~220; ~15 crosses the arena in about a second). angle is the initial heading in degrees (0 = right, 90 = down). radius (or size) is the circle radius in pixels. mode is the outcome when a brother touches it: 'gameover' (default) ends the level, 'turnend' just ends the current turn. All default from the game's bomb config when omitted."
+                },
+                {
+                    "name": "speed",
+                    "type": "float",
+                    "value": 15
+                },
+                {
+                    "name": "angle",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "radius",
+                    "type": "float",
+                    "value": 22
+                },
+                {
+                    "name": "mode",
+                    "type": "string",
+                    "value": "gameover"
+                }
+            ],
+            "name": "Hazard",
+            "type": "class",
+            "useAs": [
+                "property"
+            ]
+        },
+        {
+            "color": "#ff111114",
+            "drawFill": true,
+            "id": 9,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "A bomb hazard (a point): the default self-propelled menace, drawn as a black pool-ball '8' with a lit fuse. It stays dormant (showing a preview arrow of its heading and speed) until the first launch connects, then bounces around the arena at a constant speed. If a brother touches it, it explodes and - per mode - either ends the level ('gameover', the default) or just ends the current turn ('turnend'). speed is the constant travel speed in launch-speed units (a full launch is ~220). angle is the initial heading in degrees (0 = right, 90 = down). radius (or size) is the circle radius in pixels. Place any number."
+                },
+                {
+                    "name": "speed",
+                    "type": "float",
+                    "value": 15
+                },
+                {
+                    "name": "angle",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "radius",
+                    "type": "float",
+                    "value": 22
+                },
+                {
+                    "name": "mode",
+                    "type": "string",
+                    "value": "gameover"
+                }
+            ],
+            "name": "Bomb",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object"
+            ]
         }
     ]
 }
