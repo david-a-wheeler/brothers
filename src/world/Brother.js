@@ -35,18 +35,23 @@ export class Brother extends Entity {
     this.color = this._cssColor;
 
     const base = Config.ball;
-    /** The circle game object + its Matter body. */
+    /** The circle game object + (unless `def.physics === false`) its Matter body. */
     this.go = scene.add.circle(def.x, def.y, base.radius, this._fillColor).setDepth(3);
-    scene.matter.add.gameObject(this.go, {
-      shape: { type: 'circle', radius: base.radius },
-      restitution: base.restitution,
-      frictionAir: base.frictionAir,
-    });
-    this.go.body.entity = this; // collision routing (replaces the old label 'brother')
+    // A level entity gets a physics body; a visual-only brother (the title-screen
+    // demo passes `physics: false`) skips it, so it can be tweened directly and
+    // parented freely. Every body-touching path below guards on `this.go.body`.
+    if (def.physics !== false) {
+      scene.matter.add.gameObject(this.go, {
+        shape: { type: 'circle', radius: base.radius },
+        restitution: base.restitution,
+        frictionAir: base.frictionAir,
+      });
+      this.go.body.entity = this; // collision routing (replaces the old label 'brother')
+    }
 
     /** Base radius/mass the multipliers scale from (captured before any scaling). */
     this._baseRadius = base.radius;
-    this._baseMass = this.go.body.mass;
+    this._baseMass = this.go.body?.mass ?? 1;
     this._radiusMult = 1;
     this._massMult = 1;
 
@@ -81,8 +86,10 @@ export class Brother extends Entity {
   set radiusMult(m) {
     if (m === this._radiusMult) return;
     const target = this._baseRadius * m;
-    const factor = target / this.go.radius;
-    Phaser.Physics.Matter.Matter.Body.scale(this.go.body, factor, factor);
+    if (this.go.body) {
+      const factor = target / this.go.radius;
+      Phaser.Physics.Matter.Matter.Body.scale(this.go.body, factor, factor);
+    }
     this.go.radius = target; // resize the visual circle to match
     this._radiusMult = m;
     this._applyMass();
@@ -101,7 +108,7 @@ export class Brother extends Entity {
 
   /** @returns {void} */
   _applyMass() {
-    this.go.setMass(this._baseMass * this._massMult);
+    if (this.go.body) this.go.setMass(this._baseMass * this._massMult);
   }
 
   /**
@@ -128,7 +135,7 @@ export class Brother extends Entity {
    */
   _contain() {
     const body = this.go.body;
-    if (body.isStatic) return; // a frozen ball isn't moving anywhere
+    if (!body || body.isStatic) return; // no body / a frozen ball isn't moving anywhere
     const e = Config.ball.restitution;
     const { width, height } = this._arena;
     const r = this.go.radius;

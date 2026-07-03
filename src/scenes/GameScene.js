@@ -18,23 +18,24 @@ import {
 } from '../levels.js';
 import * as scores from '../scores.js';
 import { World } from '../world/World.js';
+import { setSkipTitle } from '../prefs.js';
 
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
 const HELP_TEXT = [
-  'Help the brothers, David and Ken, reach the goal in as few moves as possible.',
+  'Help the brothers, David and Ken, reach the goal in as few turns as possible.',
   'Move: The glowing brother is the one you move. Drag it back and release to slingshot it toward its partner. The two brothers are joined by an elastic band, so they travel together.',
   'Aim: A red X means that spot is blocked (a wall, the edge, or the other brother). Move and try again.',
   'Turns: Each launch uses one turn, then the other brother takes over. Turns left show as "#Left".',
   'Goal: Land a brother at rest inside the goal ring to win.',
   'Teleporters warp the pair to a matching target. Bombs are hazards: a spinning arrow shows where each will go; touching one usually ends the game. Walls block and bounce.',
   'Camera: mouse wheel or pinch/spread to zoom in and out; drag empty space to pan.',
-  'Scoring: "Best" is the moves you had left on a win (higher is better). "Pack" adds up your Bests. "-" means not won yet; "0" is a real score.',
+  'Scoring: "Best" is the turns you had left on a win (higher is better). "Pack" adds up your Bests. "-" means not won yet; "0" is a real score.',
 ].join('\n\n');
 
 /** Body text for the About modal (plain text; the modal word-wraps it). */
 const ABOUT_TEXT =
   'This game was developed by David A. Wheeler based on an idea by Kenneth A. Wheeler. ' +
-  'It was built using the Phaser 2D game framework and Tiled level editor with help from Claude Code.';
+  'It was built using the Phaser 2D game framework from Phaser Studio Incorporated (MIT license).  Levels were created by the Tiled level editor from Thorbjørn Lindeijer and community (GPL license though that license does not apply to produced levels levels). AI assistance was provided by Claude Code and Google Gemini. Title screen music is "Don’t Resist the Groove (Ska) Loopable" by Johannes Söllner, 2024, license CC0.';
 
 /**
  * Level state is tracked along two axes.
@@ -115,7 +116,7 @@ export class GameScene extends Phaser.Scene {
     this.movesLeft = this.level.moves;
     /** True once the first launch has connected (first snap); gates {@link _kickoff}. */
     this._kickedOff = false;
-    // Best winning result = the most moves ever left over on a win. Mirrored in
+    // Best winning result = the most turns ever left over on a win. Mirrored in
     // the registry (keyed per level) for fast access during play; seeded from
     // persistent storage below so it survives a full page reload, not just a
     // scene restart.
@@ -646,7 +647,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * On-screen text: moves remaining, whose turn, the restart button, and the
+   * On-screen text: turns remaining, whose turn, the restart button, and the
    * centre banner.
    *
    * @returns {void}
@@ -705,9 +706,9 @@ export class GameScene extends Phaser.Scene {
       `Total best results of current pack (${activePackName()})`
     );
     [this.bestText, this.bestTooltip] = this._buildHudStat(
-      'Best result on this level: the most moves ever left when you won'
+      'Best result on this level: the most turns ever left when you won'
     );
-    [this.leftText, this.leftTooltip] = this._buildHudStat('Moves left in the current game');
+    [this.leftText, this.leftTooltip] = this._buildHudStat('Turns left in the current game');
 
     // Restart button: the clockwise-arrow icon, vertically centred in the
     // ribbon. Clicking opens a confirmation modal (see _showConfirm).
@@ -1201,7 +1202,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Dev helper ("More turns"): grant 6 extra moves so tuning can continue. If
+   * Dev helper ("More turns"): grant 6 extra turns so tuning can continue. If
    * the level has already ended, resume play — drop the end banner and attract
    * glow, then hand off to a fresh aiming turn — so we can keep experimenting
    * in the same layout instead of restarting.
@@ -1769,6 +1770,15 @@ export class GameScene extends Phaser.Scene {
       onTap: () => this._showPacksAvailable(),
       tip: 'Browse all packs and their scores; open one to jump between levels.',
     });
+    y += this._menuRow(y, 'Show title screen', '›', {
+      // Clear the skip flag so this (and the next boot) lands on the title, then
+      // switch scenes. Both scenes are always registered (see main.js).
+      onTap: () => {
+        setSkipTitle(false);
+        this.scene.start('title');
+      },
+      tip: 'Replay the intro title screen.',
+    });
     y += this._menuRow(y, 'About', '›', {
       onTap: () => this._showMessage('About', ABOUT_TEXT),
       tip: 'Credits and the tools behind the game.',
@@ -1912,7 +1922,7 @@ export class GameScene extends Phaser.Scene {
             : '🔒';
       let tip;
       if (best != null) {
-        tip = `Cleared! Your best here is ${best} (moves left when you won; higher is better). Tap to play it again.`;
+        tip = `Cleared! Your best here is ${best} (turns left when you won; higher is better). Tap to play it again.`;
         if (localDate && entry.timezone) {
           tip += ` Your best score was on ${localDate} in timezone ${entry.timezone}.`;
         }
@@ -2007,7 +2017,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Recompute the cached pack total shown in the HUD: the sum of best scores
    * across every level in the current pack, or `null` when no level in the pack
-   * has a best yet (shown as "-"). Because a level won with 0 moves left counts,
+   * has a best yet (shown as "-"). Because a level won with 0 turns left counts,
    * the value can be `0` (a real total) as distinct from `null` (nothing won).
    * Call only when a best can have changed (a win, or forgetting scores) — never
    * per frame.
@@ -2855,7 +2865,7 @@ export class GameScene extends Phaser.Scene {
     this._frameBrothers(); // gently zoom/pan so both balls are fully framed at rest
     const reached = this.world.firstReached(this.brothers);
     if (reached) {
-      // Record best score (most moves left) if we beat it.
+      // Record best score (most turns left) if we beat it.
       // Note that "0" is a real best score result, distinct from
       // "never won" (null).
       const best = this.registry.get(this._bestKey);
