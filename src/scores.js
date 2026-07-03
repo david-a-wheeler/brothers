@@ -2,7 +2,7 @@
  * Persistent best-score store, backed by localStorage so totals survive page
  * reloads (the in-memory Phaser registry is cleared on reload).
  *
- * A "best" is the number of moves left when a level was won (higher is better);
+ * A "best" is the number of turns left when a level was won (higher is better);
  * `null` means the level has never been completed. Scores are keyed by the same
  * stable level key the game uses elsewhere: `${packId}/${levelFilename}` (see
  * `currentLevelKey` in levels.js).
@@ -37,7 +37,7 @@ function load() {
 }
 
 /**
- * The best move count out of a stored value, accepting both the object format
+ * The best turn count out of a stored value, accepting both the object format
  * and the legacy bare number. `null` if the value isn't a completed score.
  *
  * @param {number|object|undefined} v
