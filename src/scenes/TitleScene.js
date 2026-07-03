@@ -296,14 +296,18 @@ export class TitleScene extends Phaser.Scene {
     this._premise.setFontSize(Phaser.Math.Clamp(Math.round(W / 34), 15, 21));
     this._premise.setPosition(cx, H * 0.31);
 
-    // Play pill, sized to its label.
-    this._playText.setFontSize(Phaser.Math.Clamp(Math.round(W / 26), 22, 32));
+    // Play pill, sized to its label. The font floor is modest so the button can
+    // shrink on small screens rather than staying chunky, but not below a readable
+    // size. The pill padding scales with the font so the whole button shrinks as a
+    // unit — with floors so it stays an easy tap target on the smallest screens.
+    const playFont = Phaser.Math.Clamp(Math.round(W / 26), 18, 32);
+    this._playText.setFontSize(playFont);
     this._playText.setPosition(cx, H * 0.88);
     this._playBox = {
       x: cx,
       y: H * 0.88,
-      w: this._playText.width + 72,
-      h: this._playText.height + 30,
+      w: this._playText.width + Math.max(44, Math.round(playFont * 2.2)),
+      h: this._playText.height + Math.max(22, Math.round(playFont * 0.9)),
     };
     this._drawPlayButton();
     this._playHit.setPosition(this._playBox.x, this._playBox.y).setSize(this._playBox.w, this._playBox.h);
