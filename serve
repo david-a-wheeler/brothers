@@ -52,21 +52,23 @@ def init_authentication():
                     # Break out to trigger a brand new password generation sequence
                 else:
                     print("[Security] Loaded encrypted password hash from disk. Session is active.")
-                    print("Delete file .password to regenerate a password.")
+                    print("Delete the file .password to regenerate a password.")
                     return
         except Exception as e:
             print(f"[Security Warning] Error reading password metadata ({e}). Resetting...")
 
-    # Generate a fresh 10-character password
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*()-_=+[]{}|:"
-    password = "".join(secrets.choice(alphabet) for _ in range(10))
+    # Generate a fresh 12-character password
+    # Only use alpha + digits so it's easy to copy/paste
+    alphabet = string.ascii_letters + string.digits # + "!@#$%^&*()-_=+[]{}|:"
+    password = "".join(secrets.choice(alphabet) for _ in range(12))
     
     # BIG NOTE: Print out prominently on local console because this is the ONLY time it's visible
     print("=" * 70)
     print(" 🔑 A NEW WEB SERVER PASSWORD HAS BEEN GENERATED 🔑")
     print(f" PASSWORD: {password}")
     print("=" * 70)
-    print(" NOTE: This password is now securely encrypted on disk.")
+    print(" NOTE: This password is now securely encrypted on disk")
+    print(" in the file '.password'.")
     print(" It will NEVER be printed on screen again upon server restarts.")
     print(" Erase the .password file to force re-generation of a password.")
     print("=" * 70)
