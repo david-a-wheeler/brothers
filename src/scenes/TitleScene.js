@@ -197,14 +197,15 @@ export class TitleScene extends Phaser.Scene {
   _buildHint() {
     // Browsers block audio until a user gesture, so the very first thing on boot
     // can't autoplay; this invites the tap that starts it, then fades once sound
-    // is going (see _wireAudio).
+    // is going (see _wireAudio). Sits in the bottom-left corner (bottom-left
+    // origin), away from the Play CTA, so it can be legible without competing with
+    // it. Size/position set in _layoutStatic.
     this._hint = this.add
-      .text(0, 0, '🔊 tap for sound', {
+      .text(0, 0, '🔊 Tap anywhere for sound', {
         fontFamily: 'system-ui, sans-serif',
-        fontSize: '16px',
-        color: '#9aa0a6',
+        color: '#c3c8cf',
       })
-      .setOrigin(0.5)
+      .setOrigin(0, 1)
       .setDepth(6);
   }
 
@@ -277,7 +278,10 @@ export class TitleScene extends Phaser.Scene {
     this._drawPlayButton();
     this._playHit.setPosition(this._playBox.x, this._playBox.y).setSize(this._playBox.w, this._playBox.h);
 
-    this._hint.setPosition(cx, H * 0.955);
+    // Hint: bottom-left corner, larger than before so it's actually noticed.
+    const margin = Math.round(Math.min(W, H) * 0.04);
+    this._hint.setFontSize(Phaser.Math.Clamp(Math.round(W / 36), 16, 24));
+    this._hint.setPosition(margin, H - margin);
   }
 
   // --- The scripted demo --------------------------------------------------
