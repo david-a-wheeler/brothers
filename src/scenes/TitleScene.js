@@ -87,8 +87,9 @@ export class TitleScene extends Phaser.Scene {
   /** @returns {void} */
   _buildTitle() {
     // "Brothers" as separate letters so they can sit on an arc. Each gets the gold
-    // fill plus a shimmer (Phaser 3.60 postFX Shine) and a soft glow — light moves
-    // over the letters while the letters themselves stay put, so it stays legible.
+    // fill plus a shimmer (Phaser 3.60 postFX Shine) that sweeps over the letters
+    // while the letters themselves stay put, so it stays legible. (No glow: a
+    // per-letter low-quality glow read as a blobby halo artifact on narrow screens.)
     this._titleLetters = [...'Brothers'].map((ch) => {
       const t = this.add
         .text(0, 0, ch, {
@@ -99,12 +100,9 @@ export class TitleScene extends Phaser.Scene {
         })
         .setOrigin(0.5)
         .setDepth(6);
-      // postFX is WebGL-only; on a Canvas fallback these are simply absent and the
+      // postFX is WebGL-only; on a Canvas fallback it's simply absent and the
       // letters still render in gold.
-      if (t.postFX) {
-        t.postFX.addGlow(0xffb03a, 4, 0, false, 0.1, 12);
-        t.postFX.addShine(0.6, 0.2, 5);
-      }
+      if (t.postFX) t.postFX.addShine(0.6, 0.2, 5);
       return t;
     });
   }
@@ -209,18 +207,35 @@ export class TitleScene extends Phaser.Scene {
     this._bg.fillGradientStyle(0x1d2233, 0x1d2233, 0x0d0d13, 0x0d0d13, 1);
     this._bg.fillRect(0, 0, W, H);
 
-    // Title arc. Font scales with width so it never runs off the edge; letters sit
-    // on a shallow parabola (middle raised) with a slight tilt along the arc.
-    const fontPx = Phaser.Math.Clamp(Math.round(W / 11), 40, 92);
+    // Title: fill ~90% of the width. Rather than guess a font from the width and
+    // hope the word fits, we size the font so the word's ACTUAL rendered width
+    // spans the target — measuring at a reference size and scaling (text width is
+    // ~linear in font size) — then cap it by height so it can't get too tall on a
+    // short screen. Letters are then laid out by their real widths, so nothing
+    // overlaps and the word stays centred and full at any size.
     const n = this._titleLetters.length;
-    const spread = Math.min(W * 0.84, fontPx * n * 0.82);
-    const arcH = fontPx * 0.45;
     const titleY = H * 0.15;
+    const targetW = W * 0.9;
+    const gapFrac = 0.06; // inter-letter gap as a fraction of the font size
+    const REF = 100;
+    this._titleLetters.forEach((t) => t.setFontSize(REF));
+    const refW = this._titleLetters.reduce((s, t) => s + t.width, 0) * (1 + gapFrac);
+    const fontPx = Math.round(
+      Phaser.Math.Clamp((targetW / refW) * REF, 28, Math.min(H * 0.17, 130))
+    );
+    this._titleLetters.forEach((t) => t.setFontSize(fontPx));
+
+    const widths = this._titleLetters.map((t) => t.width);
+    const gapPx = fontPx * gapFrac;
+    const totalW = widths.reduce((a, b) => a + b, 0) + gapPx * (n - 1);
+    const arcH = fontPx * 0.35;
+    let x = cx - totalW / 2; // left edge of the whole word, so it's centred
     this._titleLetters.forEach((t, i) => {
-      const frac = n === 1 ? 0 : (i / (n - 1)) * 2 - 1; // -1 .. 1
-      t.setFontSize(fontPx);
-      t.setPosition(cx + frac * (spread / 2), titleY - (1 - frac * frac) * arcH);
-      t.setRotation(frac * 0.18); // gentle fan; letters stay upright enough to read
+      const lx = x + widths[i] / 2; // this letter's centre
+      const frac = totalW ? (lx - cx) / (totalW / 2) : 0; // -1 .. 1 across the word
+      t.setPosition(lx, titleY - (1 - frac * frac) * arcH);
+      t.setRotation(frac * 0.16); // gentle fan; letters stay upright enough to read
+      x += widths[i] + gapPx;
     });
 
     this._premise.setStyle({ wordWrap: { width: Math.min(W * 0.82, 660) } });
