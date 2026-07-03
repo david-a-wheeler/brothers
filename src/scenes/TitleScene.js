@@ -17,6 +17,16 @@ const DEMO_GLYPHS = [
 ];
 
 /**
+ * The demo's fixed layout, in its own local units. The whole animation is one
+ * container scaled to fit the screen (see {@link TitleScene._layoutDemo}), so the
+ * geometry never collapses — David always draws back the correct direction — it
+ * just shrinks uniformly on a narrow screen.
+ */
+const DEMO_PULL = 170; // how far left David draws back from his rest spot
+const DEMO_TRAVEL = 280; // Ken's rest spot to the goal
+const DEMO_ARC = 90; // how high David rises during the pull-back
+
+/**
  * The intro / title screen: an arced "Brothers" wordmark with a gold shimmer,
  * the premise, a looping scripted demo of a shot reaching the goal, and a Play
  * button — over looping music.
@@ -298,8 +308,15 @@ export class TitleScene extends Phaser.Scene {
     if (this._hint) {
       const margin = Math.round(Math.min(W, H) * 0.04);
       this._hint.setFontSize(Phaser.Math.Clamp(Math.round(W / 36), 16, 24));
+      // Wrap within the gap left of the (centred) Play pill so the hint reflows
+      // onto more lines instead of running under the button on a narrow screen.
+      const playLeft = this._playBox.x - this._playBox.w / 2;
+      this._hint.setAlign('left');
+      this._hint.setWordWrapWidth(Math.max(70, playLeft - margin - 16));
       this._hint.setPosition(margin, H - margin);
     }
+
+    this._layoutDemo(); // scale/position the demo container to fit
   }
 
   // --- The scripted demo --------------------------------------------------
@@ -350,6 +367,20 @@ export class TitleScene extends Phaser.Scene {
       this.goal.gfx, this.goal.reticle,
       ...this._labels.map((l) => l.txt),
     ];
+
+    // Parent the whole animation into one container so it can be scaled to fit as
+    // a unit (see _layoutDemo). Added back-to-front; the geometry the demo uses is
+    // now fixed local coordinates (_computeGeo), independent of screen size.
+    this.stage = this.add.container(0, 0).setDepth(1);
+    this.stage.add(
+      [
+        this.band, this.glow,
+        this.goal.gfx, this.goal.reticle,
+        this.ken.go, this.ken.feature, this.ken.face,
+        this.david.go, this.david.feature, this.david.face,
+        ...this._labels.map((l) => l.txt),
+      ].filter(Boolean)
+    );
   }
 
   /**
@@ -387,22 +418,93 @@ export class TitleScene extends Phaser.Scene {
   }
 
   /**
-   * The demo's key positions for the current window size. All in world space
-   * (the actors aren't parented to a scaled container, so the goal's win ring —
-   * spawned in world space — stays aligned).
+   * The demo's key positions, in the stage container's FIXED local coordinates
+   * (not screen-relative): David at the origin, Ken a rest-length to the right,
+   * the goal a fixed travel beyond, David's draw-back to the left. {@link
+   * _layoutDemo} scales/positions the container so this always fits — the layout
+   * itself never collapses, so David can't sling the wrong way.
    *
    * @returns {{demoY:number, davidX:number, kenX:number, goalX:number, pullX:number, arcY:number}}
    */
   _computeGeo() {
+    const gap = Config.tether.restLength; // the usual starting distance between them
+    const davidX = 0;
+    const kenX = davidX + gap; // David is furthest left
+    const goalX = kenX + DEMO_TRAVEL;
+    const pullX = davidX - DEMO_PULL;
+    const demoY = 0;
+    return { demoY, davidX, kenX, goalX, pullX, arcY: demoY - DEMO_ARC };
+  }
+
+  /**
+   * Scale + position the demo container so its whole animation fits the space
+   * between the premise and the Play button, centred. This is the ONLY place the
+   * demo depends on screen size — narrow/short screens just shrink it (capped at
+   * 1× so it never balloons on a big screen). Called from {@link _layoutStatic}.
+   *
+   * @returns {void}
+   */
+  _layoutDemo() {
     const W = this.scale.width;
     const H = this.scale.height;
-    const gap = Config.tether.restLength; // the usual starting distance between them
-    const kenX = W * 0.4;
-    const davidX = kenX - gap; // David is furthest left
-    const goalX = Math.min(W * 0.8, W - this.goal.radius - 24);
-    const pullX = Math.max(davidX - 170, this.david.go.radius + 24); // stay on-screen
-    const demoY = H * 0.6;
-    return { demoY, davidX, kenX, goalX, pullX, arcY: demoY - 90 };
+    const g = this._computeGeo();
+    const davidR = this.david.go.radius;
+    const goalR = this.goal.radius;
+
+    // Bounding box of everything the animation touches (local units): David's
+    // draw-back on the left, the goal on the right, David's arc peak on top, and
+    // room under the goal for its name label at the bottom.
+    const left = g.pullX - davidR;
+    const right = g.goalX + goalR;
+    const top = g.arcY - davidR;
+    const bottom = goalR + Config.ball.radius + 56; // goal + label drop + a line
+    const natW = right - left;
+    const natH = bottom - top;
+
+    // The band of screen between the premise (~0.31H) and the Play pill (~0.88H).
+    // Width is capped at 86% so the animation keeps a left/right margin even when
+    // it's the binding constraint (a narrow, tall screen).
+    const bandTop = H * 0.4;
+    const bandBottom = H * 0.82;
+    const s = Math.min(1, (W * 0.86) / natW, (bandBottom - bandTop) / natH);
+
+    this.stage.setScale(s);
+    this.stage.setPosition(
+      W / 2 - ((left + right) / 2) * s,
+      (bandTop + bandBottom) / 2 - ((top + bottom) / 2) * s
+    );
+  }
+
+  /**
+   * The goal's win burst, done in the demo container (Goal.celebrate spawns its
+   * ring in world space, which wouldn't line up under the scaled/offset stage).
+   * Pops the rings and expands a ring, both parented to the stage.
+   *
+   * @returns {void}
+   */
+  _celebrateGoal() {
+    const a = Config.anim.goal;
+    this.tweens.killTweensOf(this.goal.gfx);
+    this.goal.gfx.setScale(1);
+    this.tweens.add({
+      targets: this.goal.gfx,
+      scale: a.winBurstScale,
+      duration: a.winBurstDuration,
+      ease: 'Back.Out',
+      yoyo: true,
+    });
+    const ring = this.add
+      .circle(this.goal.gfx.x, this.goal.gfx.y, this.goal.radius)
+      .setStrokeStyle(3, 0x2ecc71, 0.9);
+    this.stage.add(ring);
+    this.tweens.add({
+      targets: ring,
+      scale: Config.anim.ring.growScale,
+      alpha: 0,
+      duration: Config.anim.ring.duration,
+      ease: 'Cubic.Out',
+      onComplete: () => ring.destroy(),
+    });
   }
 
   /**
@@ -567,7 +669,7 @@ export class TitleScene extends Phaser.Scene {
           this.david.go.setPosition(lerp(geo.kenX - contact, geo.goalX - gap, t), geo.demoY);
         },
         onComplete: () => {
-          this.goal.celebrate(); // win pop, but NO win sound (music owns the audio)
+          this._celebrateGoal(); // win pop, but NO win sound (music owns the audio)
           this.david.setFace(FACES.win);
           this.ken.setFace(FACES.win);
         },
@@ -584,22 +686,6 @@ export class TitleScene extends Phaser.Scene {
         },
       },
     ];
-  }
-
-  /**
-   * Halt the running demo (active phase tween + pending loop timer + any held
-   * band sound) so it can be restarted against fresh geometry (resize) or torn
-   * down (shutdown). Removing the active tween skips its onComplete, so the
-   * phase recursion stops here.
-   *
-   * @returns {void}
-   */
-  _stopDemo() {
-    this._active?.remove();
-    this._active = null;
-    this._blankTimer?.remove();
-    this._blankTimer = null;
-    sfx.stopBand();
   }
 
   // --- Audio --------------------------------------------------------------
@@ -747,15 +833,11 @@ export class TitleScene extends Phaser.Scene {
   /** @returns {void} */
   _onResize() {
     // Guarded: runs inside Phaser's resize step, so an unhandled throw here kills
-    // the render loop (the screen goes dark). Log it and carry on instead.
+    // the render loop (the screen goes dark). Log it and carry on instead. The
+    // demo runs in fixed local coordinates, so a resize just re-fits its container
+    // (_layoutDemo, via _layoutStatic) — no restart, no thrash.
     try {
       this._layoutStatic();
-      // Debounce: a drag-resize fires many events; restart the demo once settled.
-      this._resizeTimer?.remove();
-      this._resizeTimer = this.time.delayedCall(120, () => {
-        this._stopDemo();
-        this._startDemo();
-      });
     } catch (e) {
       diag.error('title resize', e);
     }
