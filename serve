@@ -1,10 +1,41 @@
 #!/usr/bin/env python3
 """Tiny threaded static file server for local development.
 
-Optimized for parallel ES module loading, strict directory safety, 
-and 1-year encrypted (hashed) cookie authentication. The encrypted
-password is stored in ".password"; delete that at any time to
-force its regeneration.
+Supports multiple simultaneous requests, necessary for local development
+(e.g., where there are many ES modules loading in parallel).
+It also provides adequate security for local testing.
+
+Many times you need a local web server for testing. E.g., if you use
+JavaScript with ES modules, they *cannot* be loaded from file:
+so you *must* run a webserver.
+
+You can run a server using `python3 -m http.server 8000`
+but this is a terrible idea. It can't handle multiple simultaneous
+requests, and environments like JavaScript with modules & assets *require*
+suport of many simultaneous requests. Also, if attackers get access
+to the server, they can retrieve anything on the filesystem that the
+webserver can see.
+
+Security goal: We are primarily worried about *external* systems
+that somehow can see and send commands to the server. We want our
+local systems (same system, or same LAN) to gain quick access.
+
+Threat model: We're primarily worried external systems making requests,
+so we require a password for any access other than the password page.
+We also want to ensure that (1) if an attacker can gain access to the
+server's pages they can't discover the password (so .password must be
+stored with an iterated salted hash), and (2) if they *can* get in,
+they can only see the current directory and below.
+
+We're NOT worried about storing passwords in the clear in the clients.
+We aren't worried about transmitting passwords in the clear
+(it's supposed to be the same system or a trusted/likely virtual LAN).
+We're not worried about having passwords as cleartext
+on the server while the server is running; if the attacker has that
+access we're doomed anyway since the attacker can watch what the client sends.
+
+The encrypted password is stored in ".password"; delete that at any time to
+force its regeneration. Passwords expire after a year, to limit damage.
 """
 
 import hashlib
@@ -12,6 +43,7 @@ import os
 import secrets
 import string
 import sys
+import threading
 import time
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -24,10 +56,20 @@ ONE_YEAR_SECONDS = 31536000  # 60 * 60 * 24 * 365
 STORED_HASH = None
 STORED_SALT = None
 
+# Unencrypted password sent by user, stored *in memory*.
+# Our goal is to prevent *storing* the unencrypted password in *our*
+# filesystem. If the attacker can see our memory we're doomed anyway.
+# Note that the requester also has the unencrypted password & sends it
+# unencrypted over the network.
+CACHED_PASSWORD = None
+
+# Prevents parallel thundering herd on server restart, by forcing
+# requests to the password cache to occur one-at-a-time
+CACHE_LOCK = threading.Lock()
 
 def init_authentication():
     """Manages the password lifecycle.
-    
+
     Loads existing hashes securely, checks for 1-year expiration,
     or generates a new password and prints it strictly ONCE.
     """
@@ -37,12 +79,12 @@ def init_authentication():
         try:
             with open(PASSWORD_FILE, "r", encoding="utf-8") as f:
                 parts = f.read().strip().split("|")
-            
+
             if len(parts) == 3:
                 timestamp = float(parts[0])
                 STORED_SALT = bytes.fromhex(parts[1])
                 STORED_HASH = bytes.fromhex(parts[2])
-                
+
                 # Check if the 1-year mark has passed since creation
                 if time.time() - timestamp > ONE_YEAR_SECONDS:
                     print("\n" + "!" * 70)
@@ -52,47 +94,74 @@ def init_authentication():
                     # Break out to trigger a brand new password generation sequence
                 else:
                     print("[Security] Loaded encrypted password hash from disk. Session is active.")
-                    print("Delete the file .password to regenerate a password.")
+                    print("Delete file .password to regenerate a password.")
                     return
         except Exception as e:
             print(f"[Security Warning] Error reading password metadata ({e}). Resetting...")
 
     # Generate a fresh 12-character password
-    # Only use alpha + digits so it's easy to copy/paste
     alphabet = string.ascii_letters + string.digits # + "!@#$%^&*()-_=+[]{}|:"
     password = "".join(secrets.choice(alphabet) for _ in range(12))
-    
+
     # BIG NOTE: Print out prominently on local console because this is the ONLY time it's visible
     print("=" * 70)
     print(" 🔑 A NEW WEB SERVER PASSWORD HAS BEEN GENERATED 🔑")
     print(f" PASSWORD: {password}")
     print("=" * 70)
-    print(" NOTE: This password is now securely encrypted on disk")
-    print(" in the file '.password'.")
+    print(" NOTE: This password is now securely encrypted on disk.")
     print(" It will NEVER be printed on screen again upon server restarts.")
+    print(" It will automatically expire and regenerate in one year.")
     print(" Erase the .password file to force re-generation of a password.")
     print("=" * 70)
-    
+
     # Hash the password securely with PBKDF2, SHA-256, with iterations.
     STORED_SALT = secrets.token_bytes(16)
-    STORED_HASH = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), STORED_SALT, 100000)
-    
+    STORED_HASH = compute_password_hash(password)
+
     # Save the creation timestamp, the salt, and the final hash to disk
     with open(PASSWORD_FILE, "w", encoding="utf-8") as f:
         f.write(f"{time.time()}|{STORED_SALT.hex()}|{STORED_HASH.hex()}")
 
+def compute_password_hash(password):
+    return hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), STORED_SALT, 100000)
 
 def verify_password(plain_password):
     """Hashes the incoming client password text and checks it against the disk hash."""
     if not STORED_HASH or not STORED_SALT:
         return False
-    
+
     # Hash the input using the exact same salt and iteration parameters
-    test_hash = hashlib.pbkdf2_hmac('sha256', plain_password.encode('utf-8'), STORED_SALT, 100000)
-    
-    # Constant-time comparison to prevent timing-attack side channels
+    test_hash = compute_password_hash(plain_password)
+
+    # Constant-time comparison to prevent timing-attack side channels.
     return secrets.compare_digest(STORED_HASH, test_hash)
 
+def verify_password_cached(plain_password):
+    """Checks memory cache first; falls back to using PBKDF2 if cache is empty.
+
+    Uses a thread lock to prevent a 'thundering herd' CPU bottleneck when multiple
+    parallel ES module requests hit a newly restarted server simultaneously.
+    """
+    global CACHED_PASSWORD
+
+    if not plain_password:
+        return False
+
+    # 1. Fast Path: Plaintext comparison against memorized runtime password
+    if CACHED_PASSWORD and secrets.compare_digest(plain_password, CACHED_PASSWORD):
+        return True
+
+    # 2. Slow Path: Lock threads so only one thread runs the heavy PBKDF2 calculation
+    with CACHE_LOCK:
+        # Double-check inside the lock in case a parallel thread just filled the cache
+        if CACHED_PASSWORD and secrets.compare_digest(plain_password, CACHED_PASSWORD):
+            return True
+
+        if verify_password(plain_password):
+            CACHED_PASSWORD = plain_password  # Memorize for all future requests
+            return True
+
+    return False
 
 class Handler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -107,12 +176,13 @@ class Handler(SimpleHTTPRequestHandler):
     }
 
     def is_authenticated(self):
-        """Checks if the browser's cookie payload hashes out correctly."""
+        """Checks if the browser's cookie password matches the possibly-locally-cached password."""
+
         cookie_header = self.headers.get("Cookie")
         if cookie_header:
             cookie = SimpleCookie(cookie_header)
             if "password" in cookie:
-                return verify_password(cookie["password"].value)
+                return verify_password_cached(cookie["password"].value)
         return False
 
     def serve_login_form(self, error=False):
@@ -156,13 +226,16 @@ class Handler(SimpleHTTPRequestHandler):
             post_data = self.rfile.read(content_length).decode('utf-8')
             params = parse_qs(post_data)
             submitted_password = params.get('password', [''])[0]
-            
-            if verify_password(submitted_password):
+
+            if verify_password_cached(submitted_password):
                 self.send_response(303)
                 self.send_header("Location", "/")
+                # Explicitly zero-out body as required by spec,
+                # to prevent Firefox hang
+                self.send_header("Content-Length", "0")
                 # Force Max-Age attribute to equal exactly 1 year in seconds
                 self.send_header(
-                    "Set-Cookie", 
+                    "Set-Cookie",
                     f"password={submitted_password}; Path=/; HttpOnly; SameSite=Strict; Max-Age={ONE_YEAR_SECONDS}"
                 )
                 self.end_headers()
@@ -185,7 +258,7 @@ class Handler(SimpleHTTPRequestHandler):
         target_path = self.translate_path(self.path)
         base_dir = os.path.realpath(os.getcwd())
         abs_target = os.path.realpath(target_path)
-        
+
         try:
             if os.path.commonpath([base_dir, abs_target]) != base_dir:
                 self.send_error(403, "Forbidden: Access outside root directory is denied.")
@@ -193,7 +266,7 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:
             self.send_error(403, "Forbidden")
             return None
-            
+
         return super().send_head()
 
 
@@ -218,7 +291,7 @@ def main():
 
     httpd = SecureThreadingHTTPServer((bind_address, port), Handler)
     print(f"Serving http://{bind_address}:{port}/  (Ctrl+C to stop)")
-    
+
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
