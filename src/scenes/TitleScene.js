@@ -281,10 +281,21 @@ export class TitleScene extends Phaser.Scene {
 
     // Always-on name labels (the premise says "tooltips permanently enabled"). The
     // wording reuses each entity's own infoText(), so it reads exactly as in-game.
+    // `drop` nudges each label further below its entity (by Ken's radius) to clear
+    // things that extend past the body — David's pulsing "look at me" glow and the
+    // goal's rings/reticle — and applies to all three so they sit uniformly.
+    const drop = Config.ball.radius;
+    const davidLbl = this._nameLabel(this.david.infoText());
+    const kenLbl = this._nameLabel(this.ken.infoText());
+    const goalLbl = this._nameLabel(this.goal.infoText());
+    // When Ken settles into the goal, the Ken and Goal labels line up horizontally.
+    // The goal's label already sits (goalR - kenR) lower; drop it enough further
+    // that its top clears the bottom of Ken's label, plus a small gap.
+    const goalExtra = Math.max(0, kenLbl.height + 6 - (this.goal.radius - Config.ball.radius));
     this._labels = [
-      { txt: this._nameLabel(this.david.infoText()), of: this.david },
-      { txt: this._nameLabel(this.ken.infoText()), of: this.ken },
-      { txt: this._nameLabel(this.goal.infoText()), of: this.goal },
+      { txt: davidLbl, of: this.david, drop },
+      { txt: kenLbl, of: this.ken, drop },
+      { txt: goalLbl, of: this.goal, drop: drop + goalExtra },
     ];
 
     // Everything that fades out during the blank between loops.
@@ -648,11 +659,12 @@ export class TitleScene extends Phaser.Scene {
     drawBand(this.band, this.david.go.x, this.david.go.y, this.ken.go.x, this.ken.go.y);
     if (this.glow.visible) this.glow.setPosition(this.david.go.x, this.david.go.y);
 
-    // Keep the name labels sitting just under their (possibly moving) entities.
-    for (const { txt, of } of this._labels) {
+    // Keep the name labels sitting just under their (possibly moving) entities,
+    // plus each label's `drop` (see _buildDemo) to clear the glow / goal rings.
+    for (const { txt, of, drop } of this._labels) {
       const c = of.go ?? of.def; // brother has a `go`; the goal is placed via `def`
       const r = of.go ? of.go.radius : this.goal.radius;
-      txt.setPosition(c.x, c.y + r + 8);
+      txt.setPosition(c.x, c.y + r + 8 + drop);
     }
   }
 
