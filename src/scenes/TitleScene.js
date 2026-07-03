@@ -279,9 +279,14 @@ export class TitleScene extends Phaser.Scene {
     this._playHit.setPosition(this._playBox.x, this._playBox.y).setSize(this._playBox.w, this._playBox.h);
 
     // Hint: bottom-left corner, larger than before so it's actually noticed.
-    const margin = Math.round(Math.min(W, H) * 0.04);
-    this._hint.setFontSize(Phaser.Math.Clamp(Math.round(W / 36), 16, 24));
-    this._hint.setPosition(margin, H - margin);
+    // It's destroyed (and nulled) once audio starts on the first tap, so guard —
+    // touching a destroyed Text here throws inside the resize step and kills the
+    // render loop (screen goes dark). See _wireAudio.
+    if (this._hint) {
+      const margin = Math.round(Math.min(W, H) * 0.04);
+      this._hint.setFontSize(Phaser.Math.Clamp(Math.round(W / 36), 16, 24));
+      this._hint.setPosition(margin, H - margin);
+    }
   }
 
   // --- The scripted demo --------------------------------------------------
@@ -584,7 +589,10 @@ export class TitleScene extends Phaser.Scene {
           targets: this._hint,
           alpha: 0,
           duration: 400,
-          onComplete: () => this._hint?.destroy(),
+          onComplete: () => {
+            this._hint?.destroy();
+            this._hint = null; // so _layoutStatic skips it on later resizes
+          },
         });
       }
       canvas.removeEventListener('pointerdown', start);
