@@ -191,7 +191,8 @@ export class GameScene extends Phaser.Scene {
    *           1 row — turn text and Best/#Left at the edges, icons centred.
    *  - compact(narrower than that, but the two edge texts still fit side by side):
    *           2 rows — the info text on one line (turn left, Best/#Left right),
-   *           icons below; larger touch icons.
+   *           icons below (kept at their normal size and packed tight — they must
+   *           not grow on small screens).
    *  - narrow (narrower still — the two texts would overlap on one row): 3 rows —
    *           state text, then Best/#Left, then icons. This breakpoint, like the
    *           wide one, is computed from the measured text so nothing overlaps.
@@ -216,25 +217,28 @@ export class GameScene extends Phaser.Scene {
     const compactMin = 2 * H.pad + T.small.turn + T.small.moves + 24; // 24 = min gap between them
     const mode = w >= wideMin ? 'wide' : w >= compactMin ? 'compact' : 'narrow';
     const rows = mode === 'wide' ? 1 : mode === 'narrow' ? 3 : 2;
-    const touch = mode !== 'wide'; // bigger icons/gaps on small screens
     // Small screens stack text line(s) above the icon row: compact has one
     // (info on a single line), narrow has two (state, then Best/#Left). These
     // text rows use a tighter height than the icon row (text doesn't need the
     // icon's touch-target height), so they don't waste scarce vertical space.
     const textRows = mode === 'narrow' ? 2 : mode === 'compact' ? 1 : 0;
     const textRow = H.narrowTextRow;
-    const hudHeight = textRows * textRow + H.rowHeight;
+    // The icon row keeps the normal (desktop) icon size on small screens — it must
+    // not grow — and uses a tighter row height there so the icons sit close under
+    // the text row instead of floating in a tall, touch-sized band.
+    const iconRowHeight = mode === 'wide' ? H.rowHeight : H.compactRowHeight;
+    const hudHeight = textRows * textRow + iconRowHeight;
     this._layout = {
       w,
       h,
       mode,
       rows,
-      rowHeight: H.rowHeight,
+      rowHeight: iconRowHeight,
       textRow,
       textRows,
       hudHeight,
-      iconSize: touch ? H.compactIcon : H.normalIcon,
-      gap: touch ? H.compactGap : H.normalGap,
+      iconSize: H.normalIcon,
+      gap: H.normalGap,
       pad: H.pad,
     };
     this._hudHeight = this._layout.hudHeight;

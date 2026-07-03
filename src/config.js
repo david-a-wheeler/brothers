@@ -27,8 +27,9 @@ export const Config = {
   /**
    * HUD layout. The ribbon is laid out to the live window size each frame it
    * changes (see GameScene._computeLayout/_layoutHud). On a small/narrow screen
-   * it goes "compact": two rows (info text above, icon row below) with larger,
-   * touch-friendly icons. The single source for these knobs.
+   * it goes "compact": two rows (info text above, icon row below). The icons keep
+   * their normal size there (they must NOT grow on small screens) and the icon row
+   * is kept tight to save vertical space. The single source for these knobs.
    */
   hud: {
     // Layout tiers. Wide: one row — turn text and Best/#Left at the edges with
@@ -38,12 +39,11 @@ export const Config = {
     // portrait. BOTH the wide→compact and compact→narrow breakpoints are computed
     // from the measured text widths (see GameScene._computeLayout), not fixed
     // pixel thresholds, so text never overlaps whatever the font renders to.
-    rowHeight: 52, // height of one HUD row (sized for the icon touch targets)
-    narrowTextRow: 30, // height of a text-only row in narrow mode (tighter than icons)
-    normalIcon: 30, // icon display size (px) on wide screens
-    compactIcon: 44, // icon display size (px) on small screens (touch target)
-    normalGap: 44, // spacing between icon centres, wide
-    compactGap: 56, // spacing between icon centres, compact
+    rowHeight: 52, // height of the icon row in wide mode (icons + edge text share it)
+    compactRowHeight: 38, // height of the icon row on small screens (icons don't grow, so keep it tight)
+    narrowTextRow: 26, // height of a text-only row in compact/narrow mode (tight — pixels are scarce)
+    normalIcon: 30, // icon display size (px) — the same on every screen size
+    normalGap: 44, // spacing between icon centres
     statGap: 30, // spacing between the right-hand Pack/Best/#Left stats
     pad: 14, // edge padding for text
   },
