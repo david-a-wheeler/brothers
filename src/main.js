@@ -4,6 +4,12 @@ import { TitleScene } from './scenes/TitleScene.js';
 import { sfx } from './Sfx.js';
 import { listPacks, loadPack } from './levels.js';
 import { skipTitle } from './prefs.js';
+import * as diag from './diag.js';
+
+// Capture errors as early as possible so anything below (incl. pack loading and
+// the whole game session) is logged and reportable. See diag.js.
+diag.install();
+diag.breadcrumb('boot');
 
 // Load the first pack before the game boots, so the scene has level data ready.
 // The starting pack is just the first entry in packs/index.json (no hardcoded

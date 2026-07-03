@@ -47,3 +47,106 @@ body {
   font-size: 1rem;
   cursor: pointer;
 }
+
+/* Diagnostics / problem reporting (src/diag.js). Kept in CSS (no inline styles)
+   so it works under a strict CSP. */
+.diag-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #7a2f2f;
+  color: #fff;
+  font-size: 0.95rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.diag-banner .diag-msg {
+  flex: 1;
+}
+
+.diag-banner button {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: 0;
+  border-radius: 6px;
+  background: #ffd479;
+  color: #1b1b22;
+}
+
+.diag-banner .diag-close {
+  background: transparent;
+  color: #fff;
+  font-size: 1rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.diag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.diag-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: min(680px, 100%);
+  max-height: 90%;
+  padding: 1rem;
+  border-radius: 12px;
+  background: #23232c;
+  color: #fff;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+.diag-title {
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.diag-help {
+  font-size: 0.9rem;
+  color: #c3c8cf;
+}
+
+.diag-text {
+  flex: 1;
+  min-height: 40vh;
+  resize: none;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: #e6e6ea;
+  background: #14141b;
+  border: 1px solid #4d4d55;
+  border-radius: 8px;
+  padding: 0.5rem;
+  white-space: pre;
+}
+
+.diag-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.diag-bar button {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border: 0;
+  border-radius: 6px;
+  background: #ffd479;
+  color: #1b1b22;
+}

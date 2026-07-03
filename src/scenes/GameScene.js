@@ -19,6 +19,7 @@ import {
 import * as scores from '../scores.js';
 import { World } from '../world/World.js';
 import { setSkipTitle } from '../prefs.js';
+import * as diag from '../diag.js';
 
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
 const HELP_TEXT = [
@@ -179,6 +180,7 @@ export class GameScene extends Phaser.Scene {
     // after create() (common on mobile when the scale manager reports late).
     this.time.delayedCall(0, () => this._onResize());
     this._refreshHud();
+    diag.breadcrumb('game: create', currentLevelKey());
   }
 
   /**
@@ -463,22 +465,28 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _onResize() {
-    this._computeLayout();
-    this._layoutHud();
-    this._layoutCameras(false);
-    // An open menu / modal was sized for the old screen; reflow to the new one.
-    // A resize or rotation fires a BURST of events, so we respond to the
-    // first event (leading throttle),
-    // then coalesence later events for a short period of time.
-    // This is better for responsiveness than traditional debouncing and/or
-    // waitng for things to settle, because
-    // that can introduce a perceptable lack of responsiveness.
-    // Menu rebuild takes some time, so we handle it specially.
-    // The modal is cheap, so reflow it at once for responsiveness.
-    if (this._menuOpen) this._scheduleMenuRebuild();
-    if (this._modalOpen) {
-      for (const part of this._modalParts) part.destroy();
-      this._buildModal(false);
+    // Guarded: this runs inside Phaser's resize step, so an unhandled throw here
+    // kills the render loop (blank/frozen screen). Log it and carry on instead.
+    try {
+      this._computeLayout();
+      this._layoutHud();
+      this._layoutCameras(false);
+      // An open menu / modal was sized for the old screen; reflow to the new one.
+      // A resize or rotation fires a BURST of events, so we respond to the
+      // first event (leading throttle),
+      // then coalesence later events for a short period of time.
+      // This is better for responsiveness than traditional debouncing and/or
+      // waitng for things to settle, because
+      // that can introduce a perceptable lack of responsiveness.
+      // Menu rebuild takes some time, so we handle it specially.
+      // The modal is cheap, so reflow it at once for responsiveness.
+      if (this._menuOpen) this._scheduleMenuRebuild();
+      if (this._modalOpen) {
+        for (const part of this._modalParts) part.destroy();
+        this._buildModal(false);
+      }
+    } catch (e) {
+      diag.error('game resize', e);
     }
   }
 
@@ -1782,6 +1790,10 @@ export class GameScene extends Phaser.Scene {
     y += this._menuRow(y, 'About', '›', {
       onTap: () => this._showMessage('About', ABOUT_TEXT),
       tip: 'Credits and the tools behind the game.',
+    });
+    y += this._menuRow(y, 'Report a problem', '›', {
+      onTap: () => diag.showReport(),
+      tip: 'Copy a problem report to send to David.',
     });
 
     // Everything below About is the "different" stuff: the current-pack section,

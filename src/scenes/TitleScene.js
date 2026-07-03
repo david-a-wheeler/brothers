@@ -6,6 +6,7 @@ import { David } from '../world/David.js';
 import { Ken } from '../world/Ken.js';
 import { Goal } from '../world/Goal.js';
 import { drawBand, pulsingGlow } from '../world/effects.js';
+import * as diag from '../diag.js';
 
 /**
  * The intro / title screen: an arced "Brothers" wordmark with a gold shimmer,
@@ -92,6 +93,7 @@ export class TitleScene extends Phaser.Scene {
     // Mobile scale managers often report the final size a tick after create().
     this.time.delayedCall(0, () => this._onResize());
     this._ready = true;
+    diag.breadcrumb('title: create');
   }
 
   // --- Static UI ----------------------------------------------------------
@@ -171,6 +173,7 @@ export class TitleScene extends Phaser.Scene {
       sfx.tick();
       setSkipTitle(true);
       this._stopMusic();
+      diag.breadcrumb('title: Play → game');
       this.scene.start('game');
     });
   }
@@ -710,12 +713,18 @@ export class TitleScene extends Phaser.Scene {
 
   /** @returns {void} */
   _onResize() {
-    this._layoutStatic();
-    // Debounce: a drag-resize fires many events; restart the demo once it settles.
-    this._resizeTimer?.remove();
-    this._resizeTimer = this.time.delayedCall(120, () => {
-      this._stopDemo();
-      this._startDemo();
-    });
+    // Guarded: runs inside Phaser's resize step, so an unhandled throw here kills
+    // the render loop (the screen goes dark). Log it and carry on instead.
+    try {
+      this._layoutStatic();
+      // Debounce: a drag-resize fires many events; restart the demo once settled.
+      this._resizeTimer?.remove();
+      this._resizeTimer = this.time.delayedCall(120, () => {
+        this._stopDemo();
+        this._startDemo();
+      });
+    } catch (e) {
+      diag.error('title resize', e);
+    }
   }
 }
