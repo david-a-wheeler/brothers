@@ -8,12 +8,6 @@ import { Goal } from '../world/Goal.js';
 import { drawBand, pulsingGlow } from '../world/effects.js';
 import * as diag from '../diag.js';
 
-/** The title music: one CC0 mp3 (every game SFX is procedural — see Sfx.js). */
-const MUSIC_KEY = 'titleMusic';
-const MUSIC_URL = 'assets/music/don-t-resist-the-groove-ska-loopable-esmFfRGNHc7DKfGHzk6mRE.mp3';
-/** The source file's sample rate; we play through a context at this rate (below). */
-const MUSIC_RATE = 44100;
-
 /**
  * The intro / title screen: an arced "Brothers" wordmark with a gold shimmer,
  * the premise, a looping scripted demo of a shot reaching the goal, and a Play
@@ -41,10 +35,11 @@ export class TitleScene extends Phaser.Scene {
   preload() {
     // The one audio *file* in the project (every game SFX is procedural; see
     // Sfx.js). Loaded only here, so a straight-to-game boot never fetches it.
-    // Used by the fallback path; the primary path fetches the same URL itself
-    // (a browser-cache hit) to decode it at the source rate — see _startMusic.
-    if (!this.cache.audio.exists(MUSIC_KEY)) {
-      this.load.audio(MUSIC_KEY, MUSIC_URL);
+    if (!this.cache.audio.exists('titleMusic')) {
+      this.load.audio(
+        'titleMusic',
+        'assets/music/don-t-resist-the-groove-ska-loopable-esmFfRGNHc7DKfGHzk6mRE.mp3'
+      );
     }
   }
 
@@ -64,19 +59,17 @@ export class TitleScene extends Phaser.Scene {
 
     this._wireAudio();
 
-    // On focus loss, pause the music and silence the elastic-band sound, and keep
-    // the band muted until focus returns (the demo's band calls check
-    // `_audioPaused`, see _demoSteps). The music is on our own AudioContext now
-    // (see _startMusic), so Phaser's pauseOnBlur doesn't cover it — we suspend it
-    // here. A hidden tab is also handled by main.js (sfx.suspend + loop sleep).
+    // When the game loses focus the music pauses (Phaser's pauseOnBlur), so
+    // silence the elastic-band sound too and keep it muted until focus returns —
+    // otherwise the stretch sound plays on without the music. The demo's band
+    // calls check `_audioPaused` (see _demoSteps). A hidden tab is already handled
+    // by main.js (sfx.suspend() + sleeping the game loop).
     const onBlur = () => {
       this._audioPaused = true;
       sfx.stopBand();
-      this._musicCtx?.suspend?.();
     };
     const onFocus = () => {
       this._audioPaused = false;
-      this._musicCtx?.resume?.();
     };
     this.game.events.on(Phaser.Core.Events.BLUR, onBlur);
     this.game.events.on(Phaser.Core.Events.FOCUS, onFocus);
@@ -612,47 +605,23 @@ export class TitleScene extends Phaser.Scene {
   }
 
   /**
-   * Start the looping title music, played through our OWN AudioContext created at
-   * the source file's rate (44.1 kHz). This matters: Phaser's shared context runs
-   * at 48 kHz, so decoding this 44.1 kHz mp3 there makes the browser resample it,
-   * and that (linear-phase) resample adds audible pre-echo before sharp transients
-   * — a tick that isn't in the original file or a normal media player. A native-
-   * rate context skips the resample. We fetch + decode the file ourselves (a
-   * browser-cache hit after preload) since Phaser's cached buffer is the 48 kHz
-   * one. A single AudioBufferSourceNode with `loop = true` and `loopStart`/
-   * `loopEnd` trimmed to the actual sound gives a gapless repeat. Idempotent;
-   * falls back to Phaser's sound if a custom-rate context can't be made.
+   * Start the looping title music. Driven directly off the decoded Web Audio
+   * buffer (not a Phaser Sound) so the loop can skip the file's silent padding:
+   * a single AudioBufferSourceNode with `loop = true` repeats seamlessly in the
+   * audio thread, and trimming `loopStart`/`loopEnd` to the actual sound removes
+   * the ~0.4s gap this "loopable" mp3 carries at its tail. Idempotent.
    *
    * @returns {void}
    */
   _startMusic() {
     if (this._musicWanted) return;
     this._musicWanted = true;
-
-    const AC = window.AudioContext || window.webkitAudioContext;
-    let ctx = null;
-    if (AC) {
-      try {
-        ctx = new AC({ sampleRate: MUSIC_RATE });
-      } catch {
-        ctx = null; // browser refused the requested rate
-      }
-    }
-    if (!ctx) {
-      this._startFallbackMusic();
-      return;
-    }
-    this._musicCtx = ctx;
-    ctx.resume?.(); // unlock now, while we're still in the tap gesture
-
-    fetch(MUSIC_URL)
-      .then((r) => r.arrayBuffer())
-      .then((bytes) => ctx.decodeAudioData(bytes))
-      .then((buffer) => {
-        // Bail if we were stopped, already started, or the context was replaced
-        // while the fetch/decode was in flight.
-        if (!this._musicWanted || this._musicSrc || this._musicCtx !== ctx) return;
-        const { start, end } = this._musicLoopBounds(buffer);
+    const ctx = this.sound?.context;
+    const buffer = this.cache.audio.get('titleMusic');
+    if (ctx && buffer?.duration) {
+      const { start, end } = this._musicLoopBounds(buffer);
+      const begin = () => {
+        if (!this._musicWanted || this._musicSrc) return; // stopped/started meanwhile
         const src = ctx.createBufferSource();
         src.buffer = buffer;
         src.loop = true;
@@ -664,16 +633,15 @@ export class TitleScene extends Phaser.Scene {
         src.start(0, start);
         this._musicSrc = src;
         this._musicGain = gain;
-      })
-      .catch(() => {
-        if (this._musicWanted) this._startFallbackMusic();
-      });
-  }
-
-  /** Fallback: let Phaser play the (48 kHz-decoded) sound. @returns {void} */
-  _startFallbackMusic() {
-    this._fallbackMusic = this.sound.add(MUSIC_KEY, { loop: true, volume: 0.5 });
-    this._fallbackMusic.play();
+      };
+      // In a gesture, but the context may still be resuming from locked.
+      if (ctx.state === 'suspended') ctx.resume().then(begin);
+      else begin();
+    } else {
+      // No decoded Web Audio buffer (rare): fall back to Phaser's looping sound.
+      this._fallbackMusic = this.sound.add('titleMusic', { loop: true, volume: 0.5 });
+      this._fallbackMusic.play();
+    }
   }
 
   /** Stop and release the title music (either playback path). @returns {void} */
@@ -690,10 +658,6 @@ export class TitleScene extends Phaser.Scene {
     }
     this._musicGain?.disconnect();
     this._musicGain = null;
-    if (this._musicCtx) {
-      this._musicCtx.close?.(); // release the dedicated audio context
-      this._musicCtx = null;
-    }
     this._fallbackMusic?.stop();
     this._fallbackMusic?.destroy();
     this._fallbackMusic = null;
