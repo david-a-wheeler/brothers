@@ -50,12 +50,11 @@ export class Sfx {
   }
 
   /**
-   * Force the audio graph + hardware output stream to initialize NOW, on the
-   * unlocking gesture, by briefly running a fully SILENT copy of the kinds of
-   * nodes the effects use: a buffer source (spins up the output stream) plus the
-   * band's oscillator-FM + lowpass chain at zero gain. Otherwise the first real
-   * sound — notably the title band as David's arc begins — lazily spins these up
-   * mid-playback and hiccups whatever is already playing (the music). Runs once.
+   * On the unlocking gesture, bring the hardware output stream up (a brief silent
+   * buffer) and build the persistent band graph now, while nothing else is
+   * playing. Building it later — as the title band first sounds over the music —
+   * would modify the audio graph mid-playback, which glitches the music on the
+   * audio thread (the whole point of {@link _ensureBand}). Runs once.
    *
    * @returns {void}
    */
@@ -73,26 +72,43 @@ export class Sfx {
     bs.start(t);
     bs.stop(t + dur);
 
-    // The band's node types (triangle carrier + sawtooth FM through a lowpass),
-    // run at zero gain so it's inaudible but the implementations initialize.
-    const carrier = ctx.createOscillator();
+    this._ensureBand();
+  }
+
+  /**
+   * Build the stretching-band voice ONCE and leave it connected and running,
+   * silent, forever. {@link startBand}/{@link stopBand} then only gate its gain —
+   * they never add or remove nodes. This is what stops the first band from
+   * glitching concurrent audio (e.g. the title music): connecting nodes to a
+   * live graph forces a re-plan that hiccups whatever is already playing, and
+   * that first structural change was the click at David's opening arc.
+   *
+   * @returns {void}
+   */
+  _ensureBand() {
+    if (!this._ctx || this._band) return;
+    const ctx = this._ctx;
+    const master = /** @type {GainNode} */ (this._master);
+
+    const carrier = ctx.createOscillator(); // hollow, elastic body
     carrier.type = 'triangle';
-    const modulator = ctx.createOscillator();
+    const modulator = ctx.createOscillator(); // FM grit
     modulator.type = 'sawtooth';
-    const modGain = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
+    const modGain = ctx.createGain(); // FM depth
+    const filter = ctx.createBiquadFilter(); // resonant lowpass "balloon squelch"
     filter.type = 'lowpass';
-    const g = ctx.createGain();
-    g.gain.value = 0; // fully silent
+    const g = ctx.createGain(); // motion gate; silent until active
+    g.gain.value = 0.0001;
+
     modulator.connect(modGain);
     modGain.connect(carrier.frequency);
     carrier.connect(filter);
     filter.connect(g);
-    g.connect(ctx.destination);
-    carrier.start(t);
-    modulator.start(t);
-    carrier.stop(t + dur);
-    modulator.stop(t + dur);
+    g.connect(master);
+    carrier.start();
+    modulator.start();
+
+    this._band = { carrier, modulator, modGain, filter, g, lastK: 0, lastT: ctx.currentTime, active: false };
   }
 
   /**
@@ -317,46 +333,21 @@ export class Sfx {
    * cartoon-rubber FM voice (see rubber-band-simulator.html): a triangle
    * *carrier* (hollow, elastic body) is frequency-modulated by a detuned
    * sawtooth *modulator* for rubbery grit, then shaped by a resonant lowpass —
-   * the hollow "balloon squelch". Both oscillators run continuously but the
-   * output starts silent; {@link updateBand} drives pitch from tension and
-   * volume from how fast the draw length is changing, so a held stretch falls
-   * silent and can never hum. No-op if audio isn't unlocked yet or a band is
-   * already playing.
+   * the hollow "balloon squelch". The voice is built once and left running
+   * silently (see {@link _ensureBand}); this just activates the gate, so no nodes
+   * are added to a live graph. {@link updateBand} then drives pitch from tension
+   * and volume from how fast the draw length is changing, so a held stretch falls
+   * silent and can never hum. No-op if audio isn't unlocked yet.
    *
    * @returns {void}
    */
   startBand() {
-    if (!this._ctx || this._band) return;
-    const ctx = this._ctx;
-    const master = /** @type {GainNode} */ (this._master);
-
-    // Carrier: the primary tone. Triangle reads as a hollow, elastic texture.
-    const carrier = ctx.createOscillator();
-    carrier.type = 'triangle';
-    // Modulator: a sawtooth driving the carrier's frequency (FM) to inject the
-    // chaotic, "rubbery" friction artefacts. Detuned by modRatio in updateBand.
-    const modulator = ctx.createOscillator();
-    modulator.type = 'sawtooth';
-    const modGain = ctx.createGain(); // FM depth (squeak intensity)
-    // Resonant lowpass: the hollow cavity of a balloon shell.
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    // Motion gate: gain follows how fast the length is changing (set per frame
-    // in updateBand). Starts at silence.
-    const g = ctx.createGain();
-    g.gain.value = 0.0001;
-
-    // Modulator -> modGain -> carrier.frequency; carrier -> filter -> gate -> out.
-    modulator.connect(modGain);
-    modGain.connect(carrier.frequency);
-    carrier.connect(filter);
-    filter.connect(g);
-    g.connect(master);
-
-    carrier.start();
-    modulator.start();
-
-    this._band = { carrier, modulator, modGain, filter, g, lastK: 0, lastT: ctx.currentTime };
+    this._ensureBand(); // usually already built in _warmup; build on demand if not
+    if (!this._band) return;
+    const b = this._band;
+    b.active = true;
+    b.lastK = 0; // fresh stretch: reset the rate-of-change tracking
+    b.lastT = /** @type {AudioContext} */ (this._ctx).currentTime;
   }
 
   /**
@@ -370,7 +361,7 @@ export class Sfx {
    * @returns {void}
    */
   updateBand(tension) {
-    if (!this._band || !this._ctx) return;
+    if (!this._band || !this._band.active || !this._ctx) return;
     const k = Math.max(0, Math.min(1, tension));
     const now = this._ctx.currentTime;
     const b = this._band;
@@ -408,11 +399,11 @@ export class Sfx {
     if (!this._band || !this._ctx) return;
     const b = this._band;
     const now = this._ctx.currentTime;
+    // Fade the gate to silence; leave the graph running (see _ensureBand). The
+    // oscillators keep going at zero output, so nothing is removed from the graph.
     b.g.gain.cancelScheduledValues(now);
     b.g.gain.setTargetAtTime(0.0001, now, 0.03);
-    b.carrier.stop(now + 0.15);
-    b.modulator.stop(now + 0.15);
-    this._band = null;
+    b.active = false;
   }
 
   /**

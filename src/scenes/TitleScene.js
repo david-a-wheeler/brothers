@@ -8,6 +8,14 @@ import { Goal } from '../world/Goal.js';
 import { drawBand, pulsingGlow } from '../world/effects.js';
 import * as diag from '../diag.js';
 
+/** Every face emoji the demo shows, pre-warmed at create (see _warmFaces). */
+const DEMO_GLYPHS = [
+  FACES.idle.launcher, FACES.idle.anchor,
+  FACES.drag.launcher, FACES.drag.anchor,
+  FACES.flight.launcher, FACES.flight.anchor,
+  FACES.collision, FACES.win,
+];
+
 /**
  * The intro / title screen: an arced "Brothers" wordmark with a gold shimmer,
  * the premise, a looping scripted demo of a shot reaching the goal, and a Play
@@ -356,14 +364,8 @@ export class TitleScene extends Phaser.Scene {
    * @returns {void}
    */
   _warmFaces() {
-    const glyphs = [
-      FACES.idle.launcher, FACES.idle.anchor,
-      FACES.drag.launcher, FACES.drag.anchor,
-      FACES.flight.launcher, FACES.flight.anchor,
-      FACES.collision, FACES.win,
-    ];
     for (const b of [this.david, this.ken]) {
-      for (const g of glyphs) b.setFace(g); // each setText rasterizes that glyph
+      for (const g of DEMO_GLYPHS) b.setFace(g); // each setText rasterizes that glyph
     }
   }
 
