@@ -357,15 +357,20 @@ export class TitleScene extends Phaser.Scene {
     const davidLbl = this._nameLabel(this.david.infoText());
     const kenLbl = this._nameLabel(this.ken.infoText());
     const goalLbl = this._nameLabel(this.goal.infoText());
-    // When Ken settles into the goal, the Ken and Goal labels line up horizontally.
-    // The goal's label already sits (goalR - kenR) lower; drop it enough further
-    // that its top clears the bottom of Ken's label, plus a small gap.
-    const goalExtra = Math.max(0, kenLbl.height + 6 - (this.goal.radius - Config.ball.radius));
     this._labels = [
       { txt: davidLbl, of: this.david, drop },
       { txt: kenLbl, of: this.ken, drop },
-      { txt: goalLbl, of: this.goal, drop: drop + goalExtra },
+      { txt: goalLbl, of: this.goal, drop },
     ];
+    // When Ken settles into the goal, the Ken and Goal labels line up horizontally.
+    // The goal's label already sits (goalR - kenR) lower; it needs to drop enough
+    // further that its top clears the bottom of Ken's label. That extra depends on
+    // Ken's label height, which changes with the legibility counter-scale, so it's
+    // (re)computed in _layoutDemo — remember what it's measured against here.
+    this._kenLabel = kenLbl;
+    this._goalLabel = goalLbl;
+    this._goalClearance = this.goal.radius - Config.ball.radius;
+    this._goalExtraDrop = 0;
 
     // Everything that fades out during the blank between loops.
     this._faders = [
@@ -480,6 +485,22 @@ export class TitleScene extends Phaser.Scene {
       W / 2 - ((left + right) / 2) * s,
       (bandTop + bandBottom) / 2 - ((top + bottom) / 2) * s
     );
+
+    // The name labels ride the container, so they'd shrink with it to unreadable
+    // sizes on small phones. Counter-scale them (uniformly, so they stay a set)
+    // toward a legibility floor — but conservatively: hold their on-screen size at
+    // ~LABEL_FLOOR_PX and never enlarge past LABEL_MAX_COMP, past which enlarged
+    // labels start crowding each other horizontally. Both bounds are gentle: on a
+    // roomy screen (s near 1) the clamp lands on 1 and nothing changes.
+    const LABEL_NATIVE_PX = 15; // matches _nameLabel's fontSize
+    const LABEL_FLOOR_PX = 13; // don't let on-screen text drop below this
+    const LABEL_MAX_COMP = 1.6; // cap the counter-scale so labels don't collide
+    const c = Phaser.Math.Clamp(LABEL_FLOOR_PX / (LABEL_NATIVE_PX * s), 1, LABEL_MAX_COMP);
+    for (const l of this._labels) l.txt.setScale(c);
+
+    // The enlarged Ken label is taller in the container's local units (height * c),
+    // so widen the goal label's extra drop to keep it clear when the two line up.
+    this._goalExtraDrop = Math.max(0, this._kenLabel.height * c + 6 - this._goalClearance);
   }
 
   /**
@@ -861,7 +882,8 @@ export class TitleScene extends Phaser.Scene {
     for (const { txt, of, drop } of this._labels) {
       const c = of.go ?? of.def; // brother has a `go`; the goal is placed via `def`
       const r = of.go ? of.go.radius : this.goal.radius;
-      txt.setPosition(c.x, c.y + r + 8 + drop);
+      const extra = of === this.goal ? this._goalExtraDrop : 0;
+      txt.setPosition(c.x, c.y + r + 8 + drop + extra);
     }
   }
 
