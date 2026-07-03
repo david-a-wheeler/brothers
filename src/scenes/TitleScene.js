@@ -104,12 +104,14 @@ export class TitleScene extends Phaser.Scene {
 
   /** @returns {void} */
   _buildTitle() {
-    // "Brothers" as separate letters so they can sit on an arc. Each gets the gold
-    // fill plus a shimmer (Phaser 3.60 postFX Shine) that sweeps over the letters
-    // while the letters themselves stay put, so it stays legible. (No glow: a
-    // per-letter low-quality glow read as a blobby halo artifact on narrow screens.)
-    this._titleLetters = [...'Brothers'].map((ch) => {
-      const t = this.add
+    // "Brothers" as separate letters so they can sit on an arc, each in gold. A
+    // shimmer (Phaser 3.60 postFX Shine) sweeps over them while the letters stay
+    // put, so it's dynamic but legible. The Shine is (re)applied in _layoutStatic
+    // rather than here — a postFX left over from the previous font size ghosts the
+    // old letters on resize, so it must be rebuilt whenever the layout changes.
+    // (No glow: a per-letter low-quality glow read as a blobby halo artifact.)
+    this._titleLetters = [...'Brothers'].map((ch) =>
+      this.add
         .text(0, 0, ch, {
           fontFamily: 'Georgia, "Times New Roman", serif',
           fontStyle: 'bold',
@@ -117,12 +119,8 @@ export class TitleScene extends Phaser.Scene {
           color: '#ffd479',
         })
         .setOrigin(0.5)
-        .setDepth(6);
-      // postFX is WebGL-only; on a Canvas fallback it's simply absent and the
-      // letters still render in gold.
-      if (t.postFX) t.postFX.addShine(0.6, 0.2, 5);
-      return t;
-    });
+        .setDepth(6)
+    );
   }
 
   /** @returns {void} */
@@ -254,6 +252,13 @@ export class TitleScene extends Phaser.Scene {
       t.setPosition(lx, titleY - (1 - frac * frac) * arcH);
       t.setRotation(frac * 0.16); // gentle fan; letters stay upright enough to read
       x += widths[i] + gapPx;
+      // Rebuild the shimmer so its render target matches the new font/position;
+      // a postFX from the previous size otherwise ghosts the old letters. (postFX
+      // is WebGL-only — on a Canvas fallback it's absent and the gold text stands.)
+      if (t.postFX) {
+        t.postFX.clear();
+        t.postFX.addShine(0.6, 0.2, 5);
+      }
     });
 
     this._premise.setStyle({ wordWrap: { width: Math.min(W * 0.82, 660) } });
