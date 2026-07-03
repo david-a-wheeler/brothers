@@ -68,9 +68,12 @@ On David's Linux machine use **Firefox**, not Chrome. Chrome on Linux has flaky 
 - **Capture errors yourself** *before* the action — install a `window`
   `error` listener and read it back after:
   `window.addEventListener('error', e => (window.__errs ??= []).push(e.error?.stack || e.message))`.
-  Separately, when an `execute` script itself throws, geckodriver replies **HTTP
-  500 with a JSON body** carrying the real `message` + `stacktrace` — read
-  `HTTPError.read()` instead of letting `urlopen` raise, or you lose it.
+  (When you're driving the *full* app you don't need this — it already captures
+  everything into `window.__diag`; see "Reading the in-app diagnostics log". You
+  still need your own listener in a single-scene harness, which doesn't load
+  `main.js`.) Separately, when an `execute` script itself throws, geckodriver
+  replies **HTTP 500 with a JSON body** carrying the real `message` +
+  `stacktrace` — read `HTTPError.read()` instead of letting `urlopen` raise.
 
 - **Detecting a frozen loop / stalled transition:** read
   `game.loop.frame` before and after — if it stops advancing, an exception
@@ -160,3 +163,47 @@ Then drive it like the skeleton above (it navigates to this harness instead of
 `index.html`). To test a **resize** bug, `POST .../window/rect` to a new size, wait
 ~1s for it to settle, and `shot(...)` or read geometry. Comparing that against a
 fresh load at the same size isolates layout (geometry) bugs from render-layer ones.
+
+## Reading the in-app diagnostics log (src/diag.js)
+
+The app installs a global error + breadcrumb logger at boot (`src/diag.js`). When
+you drive the **full** app (`index.html` / `main.js`), log retrieval is free — no
+need to hook your own error listener:
+
+- `window.__diag.report()` — the full plain-text report (environment +
+  breadcrumbs + captured errors, most recent last). Same text the "Copy problem
+  report" banner and the "Report a problem" menu item produce.
+- `localStorage.getItem('brothers:diag')` — the raw JSON log. It's persisted, so
+  it **survives a reload or a frozen frame**: read it even after a crash that
+  killed the render loop.
+- `window.__diag.clear()` — reset the log between runs.
+- Loading `…/index.html#diag` pops the report overlay on boot.
+
+```python
+print(ex("return window.__diag.report()"))
+```
+
+Notes:
+- **Breadcrumbs land a beat after the canvas appears.** Scene `create()` (which
+  records e.g. `title: create`) runs a step *after* `new Phaser.Game(...)` builds
+  the `#game canvas`, and on the real app the CDN Phaser + pack fetches add ~1s.
+  Poll `report()` / localStorage over a few seconds rather than reading once the
+  canvas first exists (this bit me — an early read showed only `boot`).
+- The report already includes the error **message** even on Firefox (whose
+  `Error.stack` omits it) — diag prepends it — so you don't need your own listener
+  just to see what the error said, when the full app is loaded.
+- A **single-scene harness has no `window.__diag`** (it imports one scene, not
+  `main.js`, so `diag.install()` never runs). Use your own error listener there,
+  or add `import * as diag from './src/diag.js'; diag.install();` to the harness.
+
+### Forcing a test error
+- Uncomment the marked `setTimeout(() => { throw … })` block after
+  `new Phaser.Game(...)` in `main.js` (uncaught error ~2.5s after boot → banner +
+  log entry).
+- Or from a driver:
+  `ex("window.dispatchEvent(new ErrorEvent('error',{message:'boom',error:new Error('boom')}))")`,
+  then read `window.__diag.report()`.
+- `diag.guard('label', fn)` wraps a callback so a throw is logged (and the banner
+  shown) instead of bubbling into Phaser's step and killing the loop — the scenes'
+  `_onResize` are wrapped this way. To confirm graceful degradation, trigger an
+  error and check `game.loop.frame` still advances (see "Detecting a frozen loop").
