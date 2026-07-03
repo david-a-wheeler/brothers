@@ -51,6 +51,7 @@ export class TitleScene extends Phaser.Scene {
     this._buildTitle();
     this._buildPremise();
     this._buildDemo();
+    this._warmFaces(); // rasterize every face emoji now, before music (see below)
     this._buildPlayButton();
     this._buildHint();
 
@@ -59,17 +60,18 @@ export class TitleScene extends Phaser.Scene {
 
     this._wireAudio();
 
-    // When the game loses focus the music pauses (Phaser's pauseOnBlur), so
-    // silence the elastic-band sound too and keep it muted until focus returns —
-    // otherwise the stretch sound plays on without the music. The demo's band
-    // calls check `_audioPaused` (see _demoSteps). A hidden tab is already handled
-    // by main.js (sfx.suspend() + sleeping the game loop).
+    // On focus loss, suspend the shared SFX context — this pauses BOTH the band
+    // sound and the music (music now plays through that context, see _startMusic),
+    // and keep the band muted until focus returns (the demo's band calls check
+    // `_audioPaused`, see _demoSteps). A hidden tab is also handled by main.js
+    // (sfx.suspend + loop sleep).
     const onBlur = () => {
       this._audioPaused = true;
-      sfx.stopBand();
+      sfx.suspend();
     };
     const onFocus = () => {
       this._audioPaused = false;
+      sfx.resume();
     };
     this.game.events.on(Phaser.Core.Events.BLUR, onBlur);
     this.game.events.on(Phaser.Core.Events.FOCUS, onFocus);
@@ -343,6 +345,29 @@ export class TitleScene extends Phaser.Scene {
   }
 
   /**
+   * Pre-render every face emoji the demo will use, once, at create time. The
+   * FIRST time a colour-emoji glyph is drawn the browser rasterizes it — a
+   * main-thread stall long enough to underrun the audio (heard as a click the
+   * first time a demo phase changes a face WITH music playing; e.g. David's arc.
+   * Cached after, so it never recurs). Cycling each brother's real face Text
+   * through all the glyphs here warms the cache before the tap starts the music,
+   * so no phase pays that cost mid-playback. _resetDemo restores the idle faces.
+   *
+   * @returns {void}
+   */
+  _warmFaces() {
+    const glyphs = [
+      FACES.idle.launcher, FACES.idle.anchor,
+      FACES.drag.launcher, FACES.drag.anchor,
+      FACES.flight.launcher, FACES.flight.anchor,
+      FACES.collision, FACES.win,
+    ];
+    for (const b of [this.david, this.ken]) {
+      for (const g of glyphs) b.setFace(g); // each setText rasterizes that glyph
+    }
+  }
+
+  /**
    * @param {string} text
    * @returns {Phaser.GameObjects.Text}
    */
@@ -611,12 +636,18 @@ export class TitleScene extends Phaser.Scene {
    * audio thread, and trimming `loopStart`/`loopEnd` to the actual sound removes
    * the ~0.4s gap this "loopable" mp3 carries at its tail. Idempotent.
    *
+   * Plays through the SFX context (sfx.context), not Phaser's, so the music and
+   * the procedural band sound share ONE output stream. With two contexts, the
+   * first time the band produced sound the OS spun up a second stream and
+   * hiccuped the music (once, right as David's arc began). Falls back to Phaser's
+   * context if the SFX one isn't up yet (it is — unlocked on the same tap).
+   *
    * @returns {void}
    */
   _startMusic() {
     if (this._musicWanted) return;
     this._musicWanted = true;
-    const ctx = this.sound?.context;
+    const ctx = sfx.context || this.sound?.context;
     const buffer = this.cache.audio.get('titleMusic');
     if (ctx && buffer?.duration) {
       const { start, end } = this._musicLoopBounds(buffer);

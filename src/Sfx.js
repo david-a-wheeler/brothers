@@ -20,6 +20,8 @@ export class Sfx {
     this._boomNoise = null;
     /** @type {Object|null} Live nodes of the stretching-band sound, or null. */
     this._band = null;
+    /** True once {@link _warmup} has run, so it only does so once. */
+    this._warmed = false;
     /** Flip to false to silence the game. */
     this.enabled = true;
   }
@@ -44,6 +46,53 @@ export class Sfx {
       this._master.connect(this._ctx.destination);
     }
     if (this._ctx.state === 'suspended') this._ctx.resume();
+    this._warmup();
+  }
+
+  /**
+   * Force the audio graph + hardware output stream to initialize NOW, on the
+   * unlocking gesture, by briefly running a fully SILENT copy of the kinds of
+   * nodes the effects use: a buffer source (spins up the output stream) plus the
+   * band's oscillator-FM + lowpass chain at zero gain. Otherwise the first real
+   * sound — notably the title band as David's arc begins — lazily spins these up
+   * mid-playback and hiccups whatever is already playing (the music). Runs once.
+   *
+   * @returns {void}
+   */
+  _warmup() {
+    if (!this._ctx || this._warmed) return;
+    this._warmed = true;
+    const ctx = this._ctx;
+    const t = ctx.currentTime;
+    const dur = 0.06;
+
+    // Silent buffer: brings the hardware output stream up.
+    const bs = ctx.createBufferSource();
+    bs.buffer = ctx.createBuffer(1, Math.max(1, Math.round(dur * ctx.sampleRate)), ctx.sampleRate);
+    bs.connect(ctx.destination);
+    bs.start(t);
+    bs.stop(t + dur);
+
+    // The band's node types (triangle carrier + sawtooth FM through a lowpass),
+    // run at zero gain so it's inaudible but the implementations initialize.
+    const carrier = ctx.createOscillator();
+    carrier.type = 'triangle';
+    const modulator = ctx.createOscillator();
+    modulator.type = 'sawtooth';
+    const modGain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    const g = ctx.createGain();
+    g.gain.value = 0; // fully silent
+    modulator.connect(modGain);
+    modGain.connect(carrier.frequency);
+    carrier.connect(filter);
+    filter.connect(g);
+    g.connect(ctx.destination);
+    carrier.start(t);
+    modulator.start(t);
+    carrier.stop(t + dur);
+    modulator.stop(t + dur);
   }
 
   /**
@@ -67,6 +116,19 @@ export class Sfx {
    */
   resume() {
     if (this._ctx && this._ctx.state === 'suspended') this._ctx.resume();
+  }
+
+  /**
+   * The shared AudioContext, once {@link unlock} has created it (else `null`).
+   * Exposed so other audio (the title music) can play through the SAME context
+   * and output stream: with a second context, the first time the SFX produces
+   * sound the OS spins up another output stream and hiccups whatever is already
+   * playing (once). Sharing one context avoids that.
+   *
+   * @returns {AudioContext|null}
+   */
+  get context() {
+    return this._ctx;
   }
 
   /**
