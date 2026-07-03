@@ -1574,9 +1574,36 @@ export class GameScene extends Phaser.Scene {
     this._isPanning = false;
     this._menuDragging = false;
     this._scrollbarDragging = false;
-    this._buildMenuPanel();
-    this.menuButton.setDepth(33); // above the depth-30 backdrop so it stays clickable
+    this._buildMenuPanel(); // raises the hamburger above the backdrop when it's clear of the card
     this._showMainMenu();
+  }
+
+  /**
+   * Decide how the hamburger stacks against the open menu card. When the card
+   * doesn't reach the button (roomy screens), raise it above the backdrop so a
+   * second tap closes the menu (see _toggleMenu). When the card overlaps it (a
+   * short screen, where the card nearly fills the height), leave it at its normal
+   * HUD depth so the card covers it cleanly instead of the lit icon bleeding on
+   * top — closing is via the card's × there. Called from {@link _buildMenuPanel}
+   * so it's recomputed on every resize/rotation too. Restored by _closeMenu.
+   *
+   * @returns {void}
+   */
+  _raiseMenuButton() {
+    const c = this._menuCard;
+    const b = this.menuButton.getBounds();
+    const covered = Phaser.Geom.Intersects.RectangleToRectangle(
+      b,
+      new Phaser.Geom.Rectangle(c.x, c.y, c.w, c.h)
+    );
+    if (covered) {
+      // Under the card now: normal depth, and clear any hover state so it can't
+      // light up or flash its tooltip through the menu.
+      this.menuButton.setDepth(10).setAlpha(0.8);
+      this.menuTooltip.setVisible(false);
+    } else {
+      this.menuButton.setDepth(33); // above the depth-30 backdrop so it stays clickable
+    }
   }
 
   /**
@@ -1626,6 +1653,7 @@ export class GameScene extends Phaser.Scene {
     const cx0 = (L.w - cw) / 2;
     const cy0 = (L.h - ch) / 2;
     this._menuCard = { x: cx0, y: cy0, w: cw, h: ch };
+    this._raiseMenuButton(); // keep the hamburger clickable-to-close, unless the card covers it
 
     const backdrop = this.add
       .rectangle(L.w / 2, L.h / 2, L.w, L.h, 0x000000, 0.6)
