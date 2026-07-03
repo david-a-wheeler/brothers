@@ -116,7 +116,7 @@ export class GameScene extends Phaser.Scene {
     this.movesLeft = this.level.moves;
     /** True once the first launch has connected (first snap); gates {@link _kickoff}. */
     this._kickedOff = false;
-    // Best winning result = the most moves ever left over on a win. Mirrored in
+    // Best winning result = the most turns ever left over on a win. Mirrored in
     // the registry (keyed per level) for fast access during play; seeded from
     // persistent storage below so it survives a full page reload, not just a
     // scene restart.
@@ -647,7 +647,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * On-screen text: moves remaining, whose turn, the restart button, and the
+   * On-screen text: turns remaining, whose turn, the restart button, and the
    * centre banner.
    *
    * @returns {void}
@@ -706,9 +706,9 @@ export class GameScene extends Phaser.Scene {
       `Total best results of current pack (${activePackName()})`
     );
     [this.bestText, this.bestTooltip] = this._buildHudStat(
-      'Best result on this level: the most moves ever left when you won'
+      'Best result on this level: the most turns ever left when you won'
     );
-    [this.leftText, this.leftTooltip] = this._buildHudStat('Moves left in the current game');
+    [this.leftText, this.leftTooltip] = this._buildHudStat('Turns left in the current game');
 
     // Restart button: the clockwise-arrow icon, vertically centred in the
     // ribbon. Clicking opens a confirmation modal (see _showConfirm).
@@ -1202,7 +1202,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Dev helper ("More turns"): grant 6 extra moves so tuning can continue. If
+   * Dev helper ("More turns"): grant 6 extra turns so tuning can continue. If
    * the level has already ended, resume play — drop the end banner and attract
    * glow, then hand off to a fresh aiming turn — so we can keep experimenting
    * in the same layout instead of restarting.
@@ -1922,7 +1922,7 @@ export class GameScene extends Phaser.Scene {
             : '🔒';
       let tip;
       if (best != null) {
-        tip = `Cleared! Your best here is ${best} (moves left when you won; higher is better). Tap to play it again.`;
+        tip = `Cleared! Your best here is ${best} (turns left when you won; higher is better). Tap to play it again.`;
         if (localDate && entry.timezone) {
           tip += ` Your best score was on ${localDate} in timezone ${entry.timezone}.`;
         }
@@ -2017,7 +2017,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Recompute the cached pack total shown in the HUD: the sum of best scores
    * across every level in the current pack, or `null` when no level in the pack
-   * has a best yet (shown as "-"). Because a level won with 0 moves left counts,
+   * has a best yet (shown as "-"). Because a level won with 0 turns left counts,
    * the value can be `0` (a real total) as distinct from `null` (nothing won).
    * Call only when a best can have changed (a win, or forgetting scores) — never
    * per frame.
@@ -2865,7 +2865,7 @@ export class GameScene extends Phaser.Scene {
     this._frameBrothers(); // gently zoom/pan so both balls are fully framed at rest
     const reached = this.world.firstReached(this.brothers);
     if (reached) {
-      // Record best score (most moves left) if we beat it.
+      // Record best score (most turns left) if we beat it.
       // Note that "0" is a real best score result, distinct from
       // "never won" (null).
       const best = this.registry.get(this._bestKey);
