@@ -493,8 +493,8 @@ export class TitleScene extends Phaser.Scene {
     // labels start crowding each other horizontally. Both bounds are gentle: on a
     // roomy screen (s near 1) the clamp lands on 1 and nothing changes.
     const LABEL_NATIVE_PX = 15; // matches _nameLabel's fontSize
-    const LABEL_FLOOR_PX = 13; // don't let on-screen text drop below this
-    const LABEL_MAX_COMP = 1.6; // cap the counter-scale so labels don't collide
+    const LABEL_FLOOR_PX = 15; // don't let on-screen text drop below this
+    const LABEL_MAX_COMP = 1.8; // cap the counter-scale so labels don't collide
     const c = Phaser.Math.Clamp(LABEL_FLOOR_PX / (LABEL_NATIVE_PX * s), 1, LABEL_MAX_COMP);
     for (const l of this._labels) l.txt.setScale(c);
 
