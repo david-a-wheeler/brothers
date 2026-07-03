@@ -73,6 +73,20 @@ export class Sfx {
     bs.stop(t + dur);
 
     this._ensureBand();
+
+    // Warm the band's *audible* DSP path once, now, at a low level and before any
+    // music: the first time this FM+lowpass subgraph actually produces output the
+    // engine initializes it — a one-time hitch that underruns concurrent audio
+    // (the first-arc click). Drive it briefly here so the first real stretch reuses
+    // the warmed path. No music is playing yet, so this can't disturb anything.
+    const b = this._band;
+    if (b) {
+      b.carrier.frequency.setValueAtTime(300, t);
+      b.modGain.gain.setValueAtTime(50, t); // exercise the FM depth
+      b.filter.frequency.setValueAtTime(700, t);
+      b.g.gain.setValueAtTime(0.02, t); // quiet, ~-40 dB after master
+      b.g.gain.setTargetAtTime(0.0001, t + 0.05, 0.01); // fade back to silence fast
+    }
   }
 
   /**
