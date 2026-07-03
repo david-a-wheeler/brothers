@@ -212,7 +212,7 @@ function showBanner() {
   copy.textContent = 'Copy problem report';
   copy.addEventListener('click', async () => {
     const ok = await copyReport();
-    if (ok) copy.textContent = 'Copied — paste it in a message to David';
+    if (ok) copy.textContent = 'Copied! Paste problem report and send.';
     else showReport(); // clipboard blocked: show it for manual copy
   });
 

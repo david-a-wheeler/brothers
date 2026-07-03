@@ -56,6 +56,13 @@ const gameConfig = {
 
 const game = new Phaser.Game(gameConfig);
 
+// UNCOMMENT THIS BLOCK TO TEST THE ERROR DIAGNOSTICS.
+// This throws an uncaught error ~2.5s after boot so the error
+// banner / problem report can be exercised.
+// setTimeout(() => {
+//   throw new Error('TEST: diagnostics smoke-test error (in main.js)');
+// }, 2500);
+
 // Don't burn CPU while the page isn't being shown (hidden tab / minimized
 // window). Browsers already throttle requestAnimationFrame for hidden
 // tabs, but the Web Audio thread keeps running, so we suspend it; we
