@@ -35,7 +35,7 @@ const HELP_TEXT = [
 
 /** Body text for the About modal (plain text; the modal word-wraps it). */
 const ABOUT_TEXT =
-  'This game was developed by David A. Wheeler based on an idea by Kenneth A. Wheeler. ' +
+  'This game was developed by David A. Wheeler based on an idea by his brother Kenneth A. Wheeler. ' +
   'It was built using the Phaser 2D game framework from Phaser Studio Incorporated (MIT license).  Levels were created by the Tiled level editor from Thorbjørn Lindeijer and community (GPL license though that license does not apply to produced levels levels). AI assistance was provided by Claude Code and Google Gemini. Title screen music is "Don’t Resist the Groove (Ska) Loopable" by Johannes Söllner, 2024, license CC0.';
 
 /**
