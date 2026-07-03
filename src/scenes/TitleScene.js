@@ -649,10 +649,18 @@ export class TitleScene extends Phaser.Scene {
   }
 
   /**
-   * The [start, end] seconds of actual sound in `buffer`, so the loop can skip
-   * silent padding (this file has ~0.4s at the tail). Generic — it scans in from
-   * each end for the first sample above a low threshold — so it stays correct if
-   * the track is swapped. A few ms of margin avoids clicking the loop seam.
+   * The [start, end] seconds of actual sound in `buffer`, so the loop skips the
+   * MP3's silent padding — the browser's decodeAudioData ignores gapless tags, so
+   * the decoded buffer carries ~11ms of leading encoder ramp and ~0.38s of
+   * trailing silence that would otherwise be a gap at every loop. Scans in from
+   * each end for the first sample above a low threshold, so it stays correct if
+   * the track is swapped.
+   *
+   * The bounds are the EXACT content edges — no safety margin. A margin here does
+   * the opposite of helping: pushing `end` past the last sound (or `start` before
+   * the first) re-includes silence and is exactly what made the loop audible. The
+   * content-edge seam is continuous anyway (measured amplitude jump ~0.007), so
+   * there's no click to guard against.
    *
    * @param {AudioBuffer} buffer
    * @returns {{start:number, end:number}}
@@ -665,10 +673,7 @@ export class TitleScene extends Phaser.Scene {
     while (end > 0 && Math.abs(data[end]) < thresh) end--;
     let head = 0;
     while (head < data.length && Math.abs(data[head]) < thresh) head++;
-    return {
-      start: Math.max(0, head / rate - 0.005),
-      end: Math.min(buffer.duration, (end + 1) / rate + 0.02),
-    };
+    return { start: head / rate, end: (end + 1) / rate };
   }
 
   // --- Per-frame + resize -------------------------------------------------
