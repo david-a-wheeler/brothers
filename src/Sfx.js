@@ -22,6 +22,8 @@ export class Sfx {
     this._band = null;
     /** True once {@link _warmup} has run, so it only does so once. */
     this._warmed = false;
+    /** True once {@link primeBand} has warmed the band's audible DSP path. */
+    this._bandPrimed = false;
     /** Flip to false to silence the game. */
     this.enabled = true;
   }
@@ -73,20 +75,49 @@ export class Sfx {
     bs.stop(t + dur);
 
     this._ensureBand();
+  }
 
-    // Warm the band's *audible* DSP path once, now, at a low level and before any
-    // music: the first time this FM+lowpass subgraph actually produces output the
-    // engine initializes it — a one-time hitch that underruns concurrent audio
-    // (the first-arc click). Drive it briefly here so the first real stretch reuses
-    // the warmed path. No music is playing yet, so this can't disturb anything.
+  /**
+   * Warm the band's *audible* DSP path once: the first time this FM+lowpass
+   * subgraph actually produces output the engine initializes it — a one-time
+   * hitch that underruns concurrent audio (the first-arc click). Drive it briefly
+   * here, at a low level, so the first real stretch reuses the warmed path.
+   *
+   * Calls `onDone` once the warm has finished PLAYING — signalled by a silent
+   * timer source's `onended`, i.e. on the audio clock, not a fragile fixed delay —
+   * so a caller can start other audio strictly after it (the music). Must run with
+   * the context RUNNING (else scheduled events don't process and nothing
+   * initializes), so callers invoke it as the music starts, not at the unlocking
+   * gesture, which on mobile may not have resumed the context yet.
+   *
+   * @param {() => void} onDone  Called (once) after the warm finishes.
+   * @returns {boolean} true if a warm was started (and `onDone` will fire);
+   *   false if it can't warm now or already has — the caller should proceed itself.
+   */
+  primeBand(onDone) {
+    if (!this._ctx || this._ctx.state !== 'running' || this._bandPrimed) return false;
+    this._ensureBand();
     const b = this._band;
-    if (b) {
-      b.carrier.frequency.setValueAtTime(300, t);
-      b.modGain.gain.setValueAtTime(50, t); // exercise the FM depth
-      b.filter.frequency.setValueAtTime(700, t);
-      b.g.gain.setValueAtTime(0.02, t); // quiet, ~-40 dB after master
-      b.g.gain.setTargetAtTime(0.0001, t + 0.05, 0.01); // fade back to silence fast
-    }
+    if (!b) return false;
+    this._bandPrimed = true;
+
+    const ctx = this._ctx;
+    const t = ctx.currentTime;
+    b.carrier.frequency.setValueAtTime(300, t);
+    b.modGain.gain.setValueAtTime(50, t); // exercise the FM depth
+    b.filter.frequency.setValueAtTime(700, t);
+    b.g.gain.setValueAtTime(0.02, t); // quiet, ~-40 dB after master
+    b.g.gain.setTargetAtTime(0.0001, t + 0.05, 0.01); // fade back to silence fast
+
+    // Silent timer: its onended fires once the warm has played through, so the
+    // caller starts the music strictly after it (no fixed-delay guess).
+    const timer = ctx.createBufferSource();
+    timer.buffer = ctx.createBuffer(1, Math.max(1, Math.round(0.14 * ctx.sampleRate)), ctx.sampleRate);
+    timer.connect(ctx.destination);
+    timer.onended = () => onDone();
+    timer.start(t);
+    timer.stop(t + 0.14);
+    return true;
   }
 
   /**

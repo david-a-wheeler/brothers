@@ -692,12 +692,18 @@ export class TitleScene extends Phaser.Scene {
 
   /** @returns {void} */
   _wireAudio() {
-    // The first pointer gesture unlocks both audio paths (procedural SFX + the
-    // music) and starts the loop, then retires the "tap for sound" hint. A
-    // DOM-level listener catches the press even over the Play button (which
-    // stops Phaser propagation).
+    // Unlock audio + start the music on the first interaction, then retire the
+    // "tap for sound" hint. We listen on SEVERAL event types and retry the unlock
+    // on each until the context is actually running: on mobile the first
+    // `pointerdown` often doesn't resume the AudioContext (a `pointerup`/
+    // `touchend` does). _startMusic then starts the loop the moment the context
+    // reaches 'running' (its statechange handler), whichever event resumes it. A
+    // DOM-level listener catches the press even over the Play button (which stops
+    // Phaser propagation).
     const canvas = this.game.canvas;
-    const start = () => {
+    const events = ['pointerdown', 'pointerup', 'touchend'];
+    const stop = () => events.forEach((ev) => canvas.removeEventListener(ev, kick));
+    const kick = () => {
       sfx.unlock();
       this._startMusic();
       if (this._hint?.active) {
@@ -711,10 +717,10 @@ export class TitleScene extends Phaser.Scene {
           },
         });
       }
-      canvas.removeEventListener('pointerdown', start);
+      if (sfx.context?.state === 'running') stop(); // unlocked; no need to keep retrying
     };
-    canvas.addEventListener('pointerdown', start);
-    this.events.once('shutdown', () => canvas.removeEventListener('pointerdown', start));
+    events.forEach((ev) => canvas.addEventListener(ev, kick));
+    this.events.once('shutdown', stop);
   }
 
   /**
@@ -737,35 +743,56 @@ export class TitleScene extends Phaser.Scene {
     this._musicWanted = true;
     const ctx = sfx.context || this.sound?.context;
     const buffer = this.cache.audio.get('titleMusic');
-    if (ctx && buffer?.duration) {
-      const { start, end } = this._musicLoopBounds(buffer);
-      const begin = () => {
-        if (!this._musicWanted || this._musicSrc) return; // stopped/started meanwhile
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        src.loop = true;
-        src.loopStart = start;
-        src.loopEnd = end; // trim trailing silence -> gapless repeat
-        const gain = ctx.createGain();
-        gain.gain.value = 0.5;
-        src.connect(gain).connect(ctx.destination);
-        src.start(0, start);
-        this._musicSrc = src;
-        this._musicGain = gain;
-      };
-      // In a gesture, but the context may still be resuming from locked.
-      if (ctx.state === 'suspended') ctx.resume().then(begin);
-      else begin();
-    } else {
+    if (!ctx || !buffer?.duration) {
       // No decoded Web Audio buffer (rare): fall back to Phaser's looping sound.
       this._fallbackMusic = this.sound.add('titleMusic', { loop: true, volume: 0.5 });
       this._fallbackMusic.play();
+      return;
     }
+    const { start, end } = this._musicLoopBounds(buffer);
+    // Start only once the context is actually 'running'. Don't hinge on a single
+    // resume() promise: on mobile the unlocking tap may not flip the context to
+    // running until a later event (a pointerup, or a focus). The statechange
+    // listener fires begin() whenever that finally happens — so the music starts
+    // as soon as the context is live, no matter which interaction unlocked it.
+    const play = () => {
+      if (!this._musicWanted || this._musicSrc) return;
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      src.loopStart = start;
+      src.loopEnd = end; // trim trailing silence -> gapless repeat
+      const gain = ctx.createGain();
+      gain.gain.value = 0.5;
+      src.connect(gain).connect(ctx.destination);
+      src.start(ctx.currentTime, start); // now, from the loop start
+      this._musicSrc = src;
+      this._musicGain = gain;
+    };
+    const begin = () => {
+      if (!this._musicWanted || this._musicSrc || ctx.state !== 'running') return;
+      ctx.removeEventListener('statechange', begin); // committing now
+      // Warm the band's DSP path first, BEFORE the music, so the first arc's
+      // stretch doesn't pay the one-time init cost (the click). Start the music
+      // only once that warm has finished playing (primeBand's callback) — not on a
+      // guessed delay. If it can't/needn't warm, start the music now.
+      if (!sfx.primeBand(play)) play();
+    };
+    this._musicCtx = ctx; // kept so _stopMusic can detach the listener
+    this._onMusicState = begin;
+    ctx.addEventListener('statechange', begin);
+    ctx.resume?.().catch(() => {});
+    begin(); // in case it's already running (desktop)
   }
 
   /** Stop and release the title music (either playback path). @returns {void} */
   _stopMusic() {
     this._musicWanted = false;
+    if (this._musicCtx && this._onMusicState) {
+      this._musicCtx.removeEventListener('statechange', this._onMusicState);
+    }
+    this._musicCtx = null;
+    this._onMusicState = null;
     if (this._musicSrc) {
       try {
         this._musicSrc.stop();
