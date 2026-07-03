@@ -103,20 +103,32 @@ export class Sfx {
 
     const ctx = this._ctx;
     const t = ctx.currentTime;
-    b.carrier.frequency.setValueAtTime(300, t);
-    b.modGain.gain.setValueAtTime(50, t); // exercise the FM depth
-    b.filter.frequency.setValueAtTime(700, t);
-    b.g.gain.setValueAtTime(0.02, t); // quiet, ~-40 dB after master
-    b.g.gain.setTargetAtTime(0.0001, t + 0.05, 0.01); // fade back to silence fast
+    // A brief but REAL stretch: sweep the FM depth and the moving lowpass across
+    // their operating range (as updateBand does over a real pull), at an audible
+    // level, so the exact DSP path the arc uses actually initializes. A static,
+    // low-level tone (what we had) doesn't init it — the click came back.
+    const tc = 0.015; // automation time-constant, ~like updateBand
+    b.carrier.frequency.setValueAtTime(85, t);
+    b.carrier.frequency.setTargetAtTime(785, t, tc); // 85 -> ~785 Hz
+    b.modulator.frequency.setValueAtTime(120, t);
+    b.modulator.frequency.setTargetAtTime(1100, t, tc);
+    b.modGain.gain.setValueAtTime(1, t);
+    b.modGain.gain.setTargetAtTime(2200, t, tc); // full FM depth
+    b.filter.frequency.setValueAtTime(212, t);
+    b.filter.frequency.setTargetAtTime(1960, t, tc); // full filter sweep
+    b.filter.Q.setValueAtTime(1, t);
+    b.g.gain.setValueAtTime(0.0001, t);
+    b.g.gain.setTargetAtTime(0.16, t, 0.01); // rise to near a real stretch's level
+    b.g.gain.setTargetAtTime(0.0001, t + 0.06, 0.015); // then fall back to silence
 
     // Silent timer: its onended fires once the warm has played through, so the
     // caller starts the music strictly after it (no fixed-delay guess).
     const timer = ctx.createBufferSource();
-    timer.buffer = ctx.createBuffer(1, Math.max(1, Math.round(0.14 * ctx.sampleRate)), ctx.sampleRate);
+    timer.buffer = ctx.createBuffer(1, Math.max(1, Math.round(0.2 * ctx.sampleRate)), ctx.sampleRate);
     timer.connect(ctx.destination);
     timer.onended = () => onDone();
     timer.start(t);
-    timer.stop(t + 0.14);
+    timer.stop(t + 0.2);
     return true;
   }
 

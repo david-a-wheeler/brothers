@@ -65,6 +65,13 @@ export class TitleScene extends Phaser.Scene {
   create() {
     this.cameras.main.setBackgroundColor('#14141b');
 
+    // Phaser reuses this scene instance across visits (title -> game -> title), so
+    // create() re-runs but instance fields persist. Reset per-visit audio state so
+    // this visit starts silent and needs its own "tap for sound" (the music flags
+    // are already cleared by _stopMusic on the way out).
+    this._soundOn = false;
+    this._audioPaused = false;
+
     this._buildBackground();
     this._buildTitle();
     this._buildPremise();
@@ -620,14 +627,14 @@ export class TitleScene extends Phaser.Scene {
         onStart: () => {
           this.david.setFace(FACES.drag.launcher);
           this.ken.setFace(FACES.drag.anchor);
-          if (!this._audioPaused) sfx.startBand();
+          if (this._soundOn && !this._audioPaused) sfx.startBand();
         },
         onUpdate: (t) => {
           this.david.go.setPosition(
             qbez(geo.davidX, ctrlX, geo.pullX, t),
             qbez(geo.demoY, geo.arcY, geo.demoY, t)
           );
-          if (!this._audioPaused) sfx.updateBand(t);
+          if (this._soundOn && !this._audioPaused) sfx.updateBand(t);
         },
       },
       // Beat at full stretch.
@@ -704,6 +711,7 @@ export class TitleScene extends Phaser.Scene {
     const events = ['pointerdown', 'pointerup', 'touchend'];
     const stop = () => events.forEach((ev) => canvas.removeEventListener(ev, kick));
     const kick = () => {
+      this._soundOn = true; // the "tap for sound" happened: the demo band may sound now
       sfx.unlock();
       this._startMusic();
       if (this._hint?.active) {
