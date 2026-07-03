@@ -41,6 +41,47 @@ export function spawnRing(scene, x, y, radius, color) {
 }
 
 /**
+ * Draw the elastic tether line between two points into an existing Graphics.
+ * The single source of the band's look (width/colour/alpha), shared by the live
+ * game ({@link import('../Brothers.js').Brothers}) and the title-screen demo so
+ * they always match. Clears the graphics first, so call it once per frame.
+ *
+ * @param {Phaser.GameObjects.Graphics} g
+ * @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2
+ * @returns {void}
+ */
+export function drawBand(g, x1, y1, x2, y2) {
+  g.clear();
+  g.lineStyle(4, 0xf3c969, 0.85);
+  g.lineBetween(x1, y1, x2, y2);
+}
+
+/**
+ * A pulsing halo ring that draws the eye to the movable ball — the "it's your
+ * move" cue on the launcher, reused by the title-screen demo. A stroked circle
+ * that repeatedly expands and fades; its looping tween is attached as data
+ * `'pulse'` so the caller can pause/resume it. Position it each frame.
+ *
+ * @param {Phaser.Scene} scene
+ * @param {number} x @param {number} y @param {number} radius
+ * @returns {Phaser.GameObjects.Arc}
+ */
+export function pulsingGlow(scene, x, y, radius) {
+  const ring = scene.add.circle(x, y, radius, 0xffffff, 0).setDepth(5);
+  ring.setStrokeStyle(3, 0xfff2a8, 0.9);
+  const pulse = scene.tweens.add({
+    targets: ring,
+    scale: { from: 1, to: 1.5 },
+    alpha: { from: 0.8, to: 0 },
+    duration: 900,
+    ease: 'Sine.easeOut',
+    repeat: -1,
+  });
+  ring.setData('pulse', pulse);
+  return ring;
+}
+
+/**
  * A translucent "this will move this way, this fast" arrow, general enough for
  * any entity with a heading and a speed (hazards use it as a pre-launch preview).
  * The shaft points along `angleDeg`, starting `offset` px from the entity centre

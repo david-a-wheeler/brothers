@@ -4,6 +4,7 @@ import { sfx } from './Sfx.js';
 import { David } from './world/David.js';
 import { Ken } from './world/Ken.js';
 import { Wall } from './world/Wall.js';
+import { drawBand, pulsingGlow } from './world/effects.js';
 
 /**
  * Coordinates the David/Ken pair. The two brothers are {@link Brother} entities
@@ -127,20 +128,14 @@ export class Brothers {
    * @returns {Phaser.GameObjects.Arc}
    */
   _createGlow() {
-    const ring = this.scene.add
-      .circle(this.launcher.go.x, this.launcher.go.y, Config.ball.radius + 8, 0xffffff, 0)
-      .setDepth(5);
-    ring.setStrokeStyle(3, 0xfff2a8, 0.9);
-
+    const ring = pulsingGlow(
+      this.scene,
+      this.launcher.go.x,
+      this.launcher.go.y,
+      Config.ball.radius + 8
+    );
     /** Looping expand-and-fade pulse. Paused while the ring is hidden. */
-    this._glowTween = this.scene.tweens.add({
-      targets: ring,
-      scale: { from: 1, to: 1.5 },
-      alpha: { from: 0.8, to: 0 },
-      duration: 900,
-      ease: 'Sine.easeOut',
-      repeat: -1,
-    });
+    this._glowTween = ring.getData('pulse');
     return ring;
   }
 
@@ -239,9 +234,7 @@ export class Brothers {
       sfx.updateBand((gap - rest) / (Config.slingshot.maxPull - rest));
     }
 
-    this.band.clear();
-    this.band.lineStyle(4, 0xf3c969, 0.85);
-    this.band.lineBetween(this.david.go.x, this.david.go.y, this.ken.go.x, this.ken.go.y);
+    drawBand(this.band, this.david.go.x, this.david.go.y, this.ken.go.x, this.ken.go.y);
   }
 
   /**

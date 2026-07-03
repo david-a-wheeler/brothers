@@ -18,6 +18,7 @@ import {
 } from '../levels.js';
 import * as scores from '../scores.js';
 import { World } from '../world/World.js';
+import { setSkipTitle } from '../prefs.js';
 
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
 const HELP_TEXT = [
@@ -1768,6 +1769,15 @@ export class GameScene extends Phaser.Scene {
     y += this._menuRow(y, 'Packs Available', '›', {
       onTap: () => this._showPacksAvailable(),
       tip: 'Browse all packs and their scores; open one to jump between levels.',
+    });
+    y += this._menuRow(y, 'Show title screen', '›', {
+      // Clear the skip flag so this (and the next boot) lands on the title, then
+      // switch scenes. Both scenes are always registered (see main.js).
+      onTap: () => {
+        setSkipTitle(false);
+        this.scene.start('title');
+      },
+      tip: 'Replay the intro title screen.',
     });
     y += this._menuRow(y, 'About', '›', {
       onTap: () => this._showMessage('About', ABOUT_TEXT),

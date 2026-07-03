@@ -1,7 +1,9 @@
 import { Config } from './config.js';
 import { GameScene } from './scenes/GameScene.js';
+import { TitleScene } from './scenes/TitleScene.js';
 import { sfx } from './Sfx.js';
 import { listPacks, loadPack } from './levels.js';
+import { skipTitle } from './prefs.js';
 
 // Load the first pack before the game boots, so the scene has level data ready.
 // The starting pack is just the first entry in packs/index.json (no hardcoded
@@ -39,7 +41,11 @@ const gameConfig = {
       debug: false, // flip to true to see physics bodies while tuning
     },
   },
-  scene: [GameScene],
+  // Phaser auto-starts the FIRST scene in this list. Both are always registered
+  // (so each can start the other); order alone picks the boot destination —
+  // title on a first visit, straight to the game once the player has pressed Play
+  // (persisted in localStorage; see prefs.js and the menu's "Show title screen").
+  scene: skipTitle() ? [GameScene, TitleScene] : [TitleScene, GameScene],
 };
 
 const game = new Phaser.Game(gameConfig);

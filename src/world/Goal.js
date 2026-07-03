@@ -43,8 +43,9 @@ export class Goal extends Entity {
     });
 
     // Sensor body (a goal never blocks movement); tagged for routing, though
-    // win is evaluated at settle, not on contact.
-    this._circleBody(def.x, def.y, R, true);
+    // win is evaluated at settle, not on contact. Skipped for a visual-only goal
+    // (the title-screen demo passes `physics: false`).
+    if (def.physics !== false) this._circleBody(def.x, def.y, R, true);
   }
 
   /**
