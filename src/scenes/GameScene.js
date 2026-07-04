@@ -21,6 +21,7 @@ import { World } from '../world/World.js';
 import { setSkipTitle } from '../prefs.js';
 import * as diag from '../diag.js';
 import { Modal } from '../ui/Modal.js';
+import { Panel } from '../ui/Panel.js';
 
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
 const HELP_TEXT = [
@@ -143,9 +144,9 @@ export class GameScene extends Phaser.Scene {
     this._modalStack = [];
     /** Open modeless overlays (the Lab panel): each owns input only over itself. */
     this._panels = [];
-    /** True while the dev parameter-tuning panel is open. Persisted in the
-     *  registry so "Restart level" leaves an open lab panel in place. */
-    this._devOpen = this.registry.get('devOpen') || false;
+    /** The modeless Lab tuning {@link Panel} (created in _buildDevPanel). Its open
+     *  state is persisted in the registry so "Restart level" leaves it in place. */
+    this._labPanel = null;
     /** True while the menu/scoreboard panel is open. */
     this._menuOpen = false;
     /** Test mode: relaxes menu click-to-jump to allow any level. Persisted in
@@ -170,6 +171,9 @@ export class GameScene extends Phaser.Scene {
     this._wireCollisions();
     this._setupCameras(); // creates cameras + ignore lists, then lays them out
     this._layoutHud(); // position/size every HUD element for the current screen
+    // The Lab panel builds its objects lazily (like the menu/modal) so they land
+    // after the UI camera's ignore snapshot. Restore a persisted-open panel here.
+    if (this.registry.get('devOpen')) this._labPanel.show();
     // Reflow on window resize / device rotation. The scale manager is
     // game-level, so remove the listener when the scene shuts down (restart).
     this.scale.on('resize', this._onResize, this);
@@ -431,7 +435,6 @@ export class GameScene extends Phaser.Scene {
       this.menuButton,
       this.menuTooltip,
       this.entityInfoText,
-      ...this.devPanelParts,
       this.bannerPanel,
       this.banner,
     ];
@@ -1064,72 +1067,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Build the (hidden) dev tuning panel: rows of -/+ steppers for the slingshot
-   * and tether parameters, edited live. Mutating these Config values takes
-   * effect immediately — the slingshot reads Config per shot, and the tether is
-   * re-synced from Config each frame (see Brothers._applyPullOnlyTether).
-   * Values persist across restarts (Config is a module object) but reset on a
-   * full page reload, which is the point: find good numbers, then bake them in.
-   *
-   * @returns {void}
-   */
-  /**
-   * Keep the dev panel anchored just below the (possibly resized) ribbon and
-   * re-fit its scroll viewport to the current screen height. x stays at the left
-   * edge. Runs on every resize (via {@link _layoutHud}).
+   * Keep the Lab panel fitted to the (possibly resized) screen by rebuilding it
+   * in place: re-anchors it below the ribbon and re-fits its scroll viewport to
+   * the new height. No-op when closed. Runs on every resize (via {@link _layoutHud}).
    *
    * @returns {void}
    */
   _layoutDevPanel() {
-    this._devY = this._layout.hudHeight + 10;
-    this._setDevPanelArea();
+    this._labPanel?.rebuild();
   }
 
   /**
-   * Size the panel's scroll viewport for the current screen: fit the content if
-   * it can, otherwise cap the viewport to the space between the panel top and the
-   * bottom edge and let the body scroll. Repositions the chrome (backdrop, title,
-   * close), the mask rect, the content container, and the scrollbar. Safe to call
-   * whether the panel is open or closed.
+   * Create the modeless Lab tuning {@link Panel}: rows of -/+ steppers for the
+   * slingshot and tether parameters, edited live. Mutating these Config values
+   * takes effect immediately — the slingshot reads Config per shot, and the tether
+   * is re-synced from Config each frame (see Brothers._applyPullOnlyTether). Values
+   * persist across restarts (Config is a module object) but reset on a full page
+   * reload, which is the point: find good numbers, then bake them in.
+   *
+   * Only the Panel object is made here (during _buildHud); its display objects are
+   * built lazily on show() so they land after the UI camera's ignore snapshot.
    *
    * @returns {void}
    */
-  _setDevPanelArea() {
-    const L = this._layout;
-    const x0 = this._devX;
-    const y0 = this._devY;
-    const w = this._devW;
-    const contentTop = y0 + this._devHeaderH;
-    // Fit the content when it can; otherwise cap to the available height and
-    // scroll. Floor the viewport so an extremely short screen still shows a
-    // usable strip (the scrollbar/drag then reach the rest).
-    const avail = L.h - 8 - contentTop;
-    const viewH = Math.max(60, Math.min(this._devContentH, avail));
-    this._devContentTop = contentTop;
-    this._devViewH = viewH;
-    this._devScrollMax = Math.max(0, this._devContentH - viewH);
-    this._devScroll = Phaser.Math.Clamp(this._devScroll, 0, this._devScrollMax);
-
-    const panelH = this._devHeaderH + viewH;
-    this._devBg.setPosition(x0, y0).setSize(w, panelH);
-    this._devTitle.setPosition(x0 + 10, y0 + 8);
-    this._devClose.setPosition(x0 + w - 20, y0 + 14);
-    this._devContent.setPosition(x0, contentTop - this._devScroll);
-    this._devMaskGfx.clear().fillStyle(0xffffff).fillRect(x0, contentTop, w, viewH);
-    this._devBounds = { x: x0, y: y0, w, h: panelH };
-    this._updateDevScrollbar();
-    this._updateDevControlInput();
-  }
-
   _buildDevPanel() {
-    const x0 = 12;
-    const y0 = this._hudHeight + 10;
-    const w = 250;
-    const rowH = 30;
-    this._devX = x0;
-    this._devY = y0; // current top of the panel, re-fitted by _layoutDevPanel on resize
-    this._devW = w;
-    this._devHeaderH = 30; // fixed title band above the scrollable body
     this._devParams = [
       { obj: Config.slingshot, key: 'maxSpeed', step: 10, dp: 0, min: 0, desc: 'Launch speed at a full-strength pull.' },
       { obj: Config.slingshot, key: 'minSpeed', step: 5, dp: 0, min: 0, desc: 'Launch-speed floor for the shortest valid pull.' },
@@ -1142,52 +1103,44 @@ export class GameScene extends Phaser.Scene {
       { obj: Config.ball, key: 'davidRadiusMult', step: 0.01, dp: 2, min: 1, max: 2, desc: "David's radius as a multiple of Ken's (1.00-2.00)." },
       { obj: Config.ball, key: 'davidMassMult', step: 0.01, dp: 2, min: 1, max: 3, desc: "David's mass as a multiple of Ken's (1.00-3.00)." },
     ];
+    this._labPanel = new Panel(this, {
+      position: () => ({ x: 12, y: this._hudHeight + 10 }),
+      width: 250,
+      title: 'Lab tuning',
+      build: (view) => this._buildLabBody(view),
+    });
+    // Closing (via the × or the menu toggle) clears the persisted-open flag.
+    this._labPanel.onHidden = () => this.registry.set('devOpen', false);
+  }
+
+  /**
+   * Fill the Lab panel's scroll body (local coords: 0,0 = viewport top-left) with
+   * the parameter rows, the shared help line, and the More turns / Reset buttons.
+   * Called by the {@link Panel} on each (re)build; returns the body's full height.
+   *
+   * @param {import('../ui/ScrollView.js').ScrollView} view
+   * @returns {number}
+   */
+  _buildLabBody(view) {
+    const w = 250;
+    const rowH = 30;
     const n = this._devParams.length;
-    // Scrollable body laid out in the content container's LOCAL space: y is
-    // measured from the top of the viewport, x from the panel's left edge. The
-    // container is shifted vertically to scroll (see _devScrollBy).
     const helpY = 8 + n * rowH;
     const moreTurnsY = helpY + 54;
     const resetY = moreTurnsY + 36;
-    this._devContentH = resetY + 26; // full height of the scrollable body
-
-    // Chrome (fixed): backdrop, title, close. Positioned/sized by _setDevPanelArea.
-    this._devBg = this.add.rectangle(x0, y0, w, 100, 0x000000, 0.72).setOrigin(0, 0).setDepth(20);
-    this._devTitle = this.add
-      .text(x0 + 10, y0 + 8, 'Lab tuning', { fontSize: '14px', color: '#ffd479' })
-      .setDepth(21);
-    // Close: red, to read differently from the gray "+" steppers. Raised above
-    // the menu band (30-34, below modals at 40) so it stays clickable when the
-    // menu — which was used to open the Lab — is still up over the panel.
-    this._devClose = this._devButton(x0 + w - 20, y0 + 14, '×', () => this._toggleDevPanel(), '#c0392b', '#e74c3c').setDepth(35);
-
-    // Scrollable body: a container we shift vertically, clipped to the viewport by
-    // an off-list geometry mask. The uiCamera is at scroll 0 / zoom 1, so screen
-    // px == mask px == container-local px (mirrors the menu/modal scroll).
-    this._devScroll = 0;
-    this._devScrollMax = 0;
-    this._devMaskGfx = this.make.graphics();
-    this._devContent = this.add.container(x0, y0).setDepth(21);
-    this._devContent.setMask(this._devMaskGfx.createGeometryMask());
-    // Off-list make.graphics isn't auto-destroyed on shutdown; do it by hand so a
-    // scene restart doesn't leak one mask per rebuild.
-    this.events.once('shutdown', () => this._devMaskGfx && this._devMaskGfx.destroy());
+    // A control ignores its tap when the press that ended on it was a scroll-drag.
+    const dragged = () => this._labPanel.dragged;
 
     // Shared explanation line, updated on hover/press of a parameter's controls.
     this._devHelp = this.add
       .text(10, helpY, '', { fontSize: '12px', color: '#cccccc', wordWrap: { width: w - 20 } })
       .setDepth(21);
-    this._devContent.add(this._devHelp);
-
-    // Every interactive body control, so we can disable input on any scrolled out
-    // of the viewport (a geometry mask hides them but doesn't stop hit-testing, so
-    // without this an off-view stepper could steal a click over the arena).
-    this._devControls = [];
+    view.add(this._devHelp);
 
     this._devRows = this._devParams.map((param, i) => {
       const rowY = 8 + i * rowH;
-      const minus = this._devButton(24, rowY, '-', () => this._adjustParam(param, -1));
-      const plus = this._devButton(w - 24, rowY, '+', () => this._adjustParam(param, 1));
+      const minus = this._devButton(24, rowY, '-', () => this._adjustParam(param, -1), undefined, undefined, dragged);
+      const plus = this._devButton(w - 24, rowY, '+', () => this._adjustParam(param, 1), undefined, undefined, dragged);
       // Click the value to type one directly (prompt works desktop + mobile).
       const value = this.add
         .text(44, rowY, '', { fontSize: '14px', color: '#ffffff' })
@@ -1196,7 +1149,7 @@ export class GameScene extends Phaser.Scene {
       const row = { param, value };
       this._setDevRowText(row); // set text before setInteractive so the hit area fits
       value.setInteractive({ useHandCursor: true }).on('pointerup', () => {
-        if (this._devDragMoved) return; // release ended a scroll-drag, not a tap
+        if (dragged()) return; // release ended a scroll-drag, not a tap
         this._promptParam(param);
       });
       // Show this parameter's explanation while hovering or pressing its controls.
@@ -1206,100 +1159,17 @@ export class GameScene extends Phaser.Scene {
         ctrl.on('pointerover', showHelp).on('pointerout', hideHelp);
         ctrl.on('pointerdown', showHelp).on('pointerup', hideHelp);
       }
-      this._devContent.add([minus, value, plus]);
-      this._devControls.push(minus, value, plus);
+      view.add([minus, value, plus]);
       return row;
     });
 
     // "More turns" lets us keep experimenting past a win/loss (see _moreTurns).
-    const moreTurns = this._devButton(w / 2, moreTurnsY, 'More turns', () => this._moreTurns());
-    const reset = this._devButton(w / 2, resetY, 'Reset parameters', () => this._resetParams());
-    this._devContent.add([moreTurns, reset]);
-    this._devControls.push(moreTurns, reset);
+    view.add([
+      this._devButton(w / 2, moreTurnsY, 'More turns', () => this._moreTurns(), undefined, undefined, dragged),
+      this._devButton(w / 2, resetY, 'Reset parameters', () => this._resetParams(), undefined, undefined, dragged),
+    ]);
 
-    // Scrollbar (right edge of the viewport), shown only on overflow — like the
-    // menu/modal. Kept out of the content container so it stays put while it scrolls.
-    this._devScrollbar = this.add
-      .rectangle(x0 + w - 3, y0, 4, 20, 0xffffff, 0.45)
-      .setOrigin(0.5, 0.5)
-      .setDepth(22)
-      .setVisible(false);
-
-    this.devPanelParts = [this._devBg, this._devTitle, this._devClose, this._devContent, this._devScrollbar];
-    this._setDevPanelArea(); // fit the viewport/mask/scrollbar to the current screen
-    // Honour a persisted open state (e.g. after a "Restart level").
-    for (const p of this.devPanelParts) p.setVisible(this._devOpen);
-    this._updateDevScrollbar(); // keep the bar hidden when closed / not overflowing
-  }
-
-  /**
-   * Scroll the panel body by `delta` screen pixels, clamped to its range, then
-   * reposition the container, scrollbar, and per-control input. No-op when the
-   * body fits. Mirrors {@link _menuScrollBy}.
-   *
-   * @param {number} delta @returns {void}
-   */
-  _devScrollBy(delta) {
-    if (this._devScrollMax <= 0) return;
-    this._devScroll = Phaser.Math.Clamp(this._devScroll + delta, 0, this._devScrollMax);
-    this._devContent.y = this._devContentTop - this._devScroll;
-    this._updateDevScrollbar();
-    this._updateDevControlInput();
-  }
-
-  /**
-   * Size/position the panel scrollbar thumb for the current scroll, or hide it
-   * when the body fits or the panel is closed. Mirrors {@link _updateScrollbar}.
-   *
-   * @returns {void}
-   */
-  _updateDevScrollbar() {
-    const bar = this._devScrollbar;
-    if (!bar) return;
-    if (this._devScrollMax <= 0 || !this._devOpen) {
-      bar.setVisible(false);
-      return;
-    }
-    const viewH = this._devViewH;
-    const thumbH = Math.max(24, viewH * (viewH / this._devContentH));
-    this._devThumbH = thumbH; // for scrollbar-grab mapping (see pointermove)
-    const t = this._devScroll / this._devScrollMax;
-    const y = this._devContentTop + t * (viewH - thumbH);
-    bar.setSize(4, thumbH).setPosition(this._devX + this._devW - 3, y + thumbH / 2).setVisible(true);
-  }
-
-  /**
-   * Enable input only on body controls currently inside the viewport. A geometry
-   * mask hides scrolled-out controls but does not stop Phaser hit-testing them, so
-   * without this an invisible stepper could intercept a press meant for the arena.
-   *
-   * @returns {void}
-   */
-  _updateDevControlInput() {
-    if (!this._devControls) return;
-    const top = this._devContentTop;
-    const bot = top + this._devViewH;
-    for (const c of this._devControls) {
-      if (!c.input) continue;
-      const screenY = this._devContent.y + c.y;
-      c.input.enabled = this._devOpen && screenY >= top - 2 && screenY <= bot + 2;
-    }
-  }
-
-  /**
-   * @param {Phaser.Input.Pointer} p
-   * @returns {boolean} true if the pointer is in the panel scrollbar grab zone
-   *   (the right edge of the viewport) while the body actually overflows.
-   */
-  _overDevScrollbar(p) {
-    if (this._devScrollMax <= 0) return false;
-    const right = this._devX + this._devW;
-    return (
-      p.x >= right - 16 &&
-      p.x <= right + 6 &&
-      p.y >= this._devContentTop &&
-      p.y <= this._devContentTop + this._devViewH
-    );
+    return resetY + 26; // full height of the scrollable body
   }
 
   /**
@@ -1325,9 +1195,11 @@ export class GameScene extends Phaser.Scene {
    *
    * @param {number} x @param {number} y @param {string} label @param {() => void} onClick
    * @param {string} [bg] Background colour. @param {string} [bgHover] Hover colour.
+   * @param {(() => boolean)|null} [guard] If it returns true on release, skip the
+   *   tap (used so a scroll-drag over a Lab control doesn't also trigger it).
    * @returns {Phaser.GameObjects.Text}
    */
-  _devButton(x, y, label, onClick, bg = '#444444', bgHover = '#666666') {
+  _devButton(x, y, label, onClick, bg = '#444444', bgHover = '#666666', guard = null) {
     const btn = this.add
       .text(x, y, label, {
         fontSize: '16px',
@@ -1341,7 +1213,7 @@ export class GameScene extends Phaser.Scene {
     btn.on('pointerover', () => btn.setBackgroundColor(bgHover));
     btn.on('pointerout', () => btn.setBackgroundColor(bg));
     btn.on('pointerup', () => {
-      if (this._devDragMoved) return; // release ended a scroll-drag, not a tap
+      if (guard && guard()) return; // release ended a scroll-drag, not a tap
       sfx.tick();
       onClick();
     });
@@ -1425,31 +1297,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Show/hide the dev panel (toggled by the Lab control in the menu).
+   * Show/hide the Lab panel (toggled by the Lab control in the menu, or its own ×).
+   * The persisted-open flag is set here on open and cleared by the panel's
+   * `onHidden` on close (see _buildDevPanel), so the × path clears it too.
    *
    * @returns {void}
    */
   _toggleDevPanel() {
-    this._devOpen = !this._devOpen;
-    this.registry.set('devOpen', this._devOpen); // survive scene restarts
-    this._devRows.forEach((r) => this._setDevRowText(r));
-    this._devHelp.setText(''); // no stale explanation on open/close
-    this._devScroll = 0; // open at the top
-    this._setDevPanelArea(); // re-fit to the current screen (it may have changed while closed)
-    for (const p of this.devPanelParts) p.setVisible(this._devOpen);
-    this._updateDevScrollbar(); // hide the bar unless the body actually overflows
-    this._updateDevControlInput();
-  }
-
-  /**
-   * @param {Phaser.Input.Pointer} p
-   * @returns {boolean} true if the open dev panel sits under the pointer (so the
-   *   game's aim/pan router should ignore the press).
-   */
-  _overDevPanel(p) {
-    if (!this._devOpen) return false;
-    const b = this._devBounds;
-    return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+    if (this._labPanel.open) {
+      this._labPanel.hide();
+    } else {
+      this._labPanel.show();
+      this.registry.set('devOpen', true); // survive scene restarts
+    }
   }
 
   /**
@@ -2229,7 +2089,7 @@ export class GameScene extends Phaser.Scene {
       bg.on('pointerout', () => bg.setFillStyle(U.color.row, U.color.rowAlpha));
       this._wireTap(bg, onTap);
     };
-    cell(0, 'Lab', this._devOpen, 'Developer tool: show a panel to live-tune slingshot and physics values.', () => {
+    cell(0, 'Lab', this._labPanel.open, 'Developer tool: show a panel to live-tune slingshot and physics values.', () => {
       this._toggleDevPanel();
       this._rerenderMenu();
     });
@@ -2436,7 +2296,6 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', (p) => {
       sfx.unlock(); // browsers need a user gesture to start audio
       this._stopCameraGlide(); // any press cancels an in-progress settle pan/zoom
-      this._devDragMoved = false; // a fresh press is a tap until it moves (see _devButton)
       // The top modal owns input while up (its buttons handle their own taps).
       if (this._activeModal) {
         this._activeModal.onPointerDown(p);
@@ -2460,20 +2319,9 @@ export class GameScene extends Phaser.Scene {
       }
       if (this._pinchDist) return; // a two-finger pinch owns the gesture
       if (p.y < this._hudHeight) return; // press is on the HUD ribbon, not the arena
-      if (this._overDevPanel(p)) {
-        // A press on the panel starts a drag-scroll when the body overflows (its
-        // buttons still handle their own taps); either way, never pan the arena.
-        // Grabbing the scrollbar drags the thumb; grabbing the body drags the
-        // content. Both track from the grab point (see pointermove). _devDownY +
-        // _devDragMoved let a control tell a tap from a scroll (see _devButton).
-        this._devDownY = p.y;
-        if (this._devScrollMax > 0) {
-          if (this._overDevScrollbar(p)) this._devScrollbarDragging = true;
-          else this._devDragging = true;
-          this._devDragLastY = p.y;
-        }
-        return;
-      }
+      // A modeless panel (the Lab) owns presses over itself (and starts its own
+      // scroll drag); anywhere else falls through to the arena.
+      for (const panel of this._panels) if (panel.onPointerDown(p)) return;
 
       // A press on the launcher is handled by Phaser's drag system (the
       // 'gameobjectdown' grab + 'drag' handler below), which sets isAiming; a
@@ -2527,20 +2375,7 @@ export class GameScene extends Phaser.Scene {
         }
         return;
       }
-      if (this._devDragging || this._devScrollbarDragging) {
-        // Past a small threshold it's a scroll, not a tap: suppress the control
-        // under the finger from firing on release (see _devButton).
-        if (Math.abs(p.y - this._devDownY) > 5) this._devDragMoved = true;
-        if (this._devScrollbarDragging) {
-          // Thumb drag: move the thumb WITH the pointer (down -> content down).
-          const range = this._devViewH - (this._devThumbH || 0);
-          if (range > 0) this._devScrollBy(((p.y - this._devDragLastY) * this._devScrollMax) / range);
-        } else {
-          this._devScrollBy(this._devDragLastY - p.y); // content drag: natural (inverted)
-        }
-        this._devDragLastY = p.y;
-        return;
-      }
+      for (const panel of this._panels) if (panel.onPointerMove(p)) return; // its scroll drag, if any
       if (this._pinning) return this._updatePinGesture(p); // moving the anchor's pin, not the camera
       if (this.isAiming) return; // Phaser's drag moves the launcher; don't pan
       if (this._isPanning) {
@@ -2567,11 +2402,7 @@ export class GameScene extends Phaser.Scene {
         this._scrollbarDragging = false;
         return;
       }
-      if (this._devDragging || this._devScrollbarDragging) {
-        this._devDragging = false;
-        this._devScrollbarDragging = false;
-        return;
-      }
+      for (const panel of this._panels) if (panel.onPointerUp(p)) return; // ends its scroll drag
       if (this._pinning) {
         this._finishPinGesture(p);
         return;
@@ -2630,10 +2461,7 @@ export class GameScene extends Phaser.Scene {
         this._menuScrollBy(dy); // wheel scrolls the menu list, not the arena
         return;
       }
-      if (this._devOpen && this._overDevPanel(p)) {
-        this._devScrollBy(dy); // wheel over the panel scrolls it, not the arena
-        return;
-      }
+      for (const panel of this._panels) if (panel.onWheel(p, dy)) return; // scrolls it, not the arena
       const step = Config.zoom.wheelStep;
       this._zoomBy(dy > 0 ? 1 - step : 1 + step, p.x, p.y);
     });

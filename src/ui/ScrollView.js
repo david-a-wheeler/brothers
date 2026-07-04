@@ -40,6 +40,12 @@ export class ScrollView {
 
     scene.cameras.main.ignore([this.container, this.scrollbar]); // HUD camera only
 
+    // The mask is an off-display-list graphics, so the scene's shutdown won't
+    // auto-destroy it (unlike the container/scrollbar). Destroy on shutdown too,
+    // so an overlay still open at scene restart doesn't leak one mask per restart.
+    this._onShutdown = () => this.destroy();
+    scene.events.once('shutdown', this._onShutdown);
+
     // Drag state. `_mode` is 'body' (content drags with the finger, inverted) or
     // 'thumb' (thumb tracks the finger); `dragged` reports whether the just-ended
     // gesture passed the tap-vs-drag threshold so a control can ignore the tap.
@@ -88,6 +94,7 @@ export class ScrollView {
     this.container.setPosition(region.x, region.y - this.scroll);
     this.scene.cameras.main.ignore(this.container); // re-walk: newly added children too
     this._updateBar();
+    this._gateInput();
   }
 
   /**
@@ -100,6 +107,24 @@ export class ScrollView {
     this.scroll = Phaser.Math.Clamp(this.scroll + delta, 0, this.scrollMax);
     this.container.y = this._region.y - this.scroll;
     this._updateBar();
+    this._gateInput();
+  }
+
+  /**
+   * Enable input only on interactive children currently inside the viewport. A
+   * geometry mask hides scrolled-out children but does NOT stop Phaser
+   * hit-testing them, so without this an off-view control could intercept a press
+   * meant for whatever is behind the (backdrop-less) panel.
+   *
+   * @returns {void}
+   */
+  _gateInput() {
+    const { y, h } = this._region;
+    for (const c of this.container.list) {
+      if (!c.input) continue;
+      const screenY = this.container.y + c.y;
+      c.input.enabled = screenY >= y - 2 && screenY <= y + h + 2;
+    }
   }
 
   /** Size/position the thumb for the current scroll, or hide it when it fits. */
@@ -186,6 +211,8 @@ export class ScrollView {
 
   /** Destroy the container (and its children), the mask, and the scrollbar. */
   destroy() {
+    if (!this._maskGfx) return; // already destroyed (e.g. hide() then shutdown)
+    this.scene.events.off('shutdown', this._onShutdown);
     this.container.clearMask(true);
     this._maskGfx.destroy();
     this.container.destroy();
