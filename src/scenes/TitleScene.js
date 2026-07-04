@@ -411,8 +411,8 @@ export class TitleScene extends Phaser.Scene {
     // after face — otherwise the face emoji paints over the glasses and hides them.
     this.stage.add(
       [
-        this.band, this.glow,
         this.goal.gfx, this.goal.reticle,
+        this.band, this.glow,
         this.ken.go, this.ken.face, this.ken.feature,
         this.david.go, this.david.face, this.david.feature,
         ...this._labels.map((l) => l.txt),
