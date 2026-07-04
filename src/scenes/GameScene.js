@@ -486,7 +486,7 @@ export class GameScene extends Phaser.Scene {
       // The modal is cheap, so reflow it at once for responsiveness.
       if (this._menuOpen) this._scheduleMenuRebuild();
       if (this._modalOpen) {
-        for (const part of this._modalParts) part.destroy();
+        this._teardownModalParts(); // keeps _modalScroll so the rebuild stays put
         this._buildModal(false);
       }
     } catch (e) {
@@ -1356,6 +1356,15 @@ export class GameScene extends Phaser.Scene {
     this._modalOpen = true;
     this._isPanning = false;
     this._modalSpec = spec; // kept so the modal can be rebuilt on resize
+    this._modalScroll = 0; // start at the top (a resize rebuild keeps its scroll)
+    this._modalDragging = false;
+    this._modalScrollbarDragging = false;
+    // A modal can open from a menu row (Help/About) while the menu is still up
+    // behind it. The pointerdown that opened it set the menu's drag flag, but the
+    // pointerup that follows early-returns on _modalOpen and never clears it — so
+    // clear it here, or a stray flag would drag the menu after the modal closes.
+    this._menuDragging = false;
+    this._scrollbarDragging = false;
     // Yes/No confirms bonk (an unusual situation to decide); info modals don't —
     // the tick from the control that opened them is enough.
     if (spec.warn !== false) sfx.bonk();
@@ -1409,13 +1418,16 @@ export class GameScene extends Phaser.Scene {
 
     const btnH = 44;
     const maxPh = L.h - 2 * L.pad;
-    // On a short screen a long body would overflow; shrink its font to fit.
-    if (bodyTxt) {
-      const availBody = maxPh - (pad + titleTxt.height + U.space.md + U.space.lg + btnH + pad);
-      for (let fs = 14; bodyTxt.height > availBody && fs >= 11; fs -= 1) bodyTxt.setFontSize(fs);
-    }
-    const contentH = titleTxt.height + (bodyTxt ? U.space.md + bodyTxt.height : 0);
-    const ph = Math.min(pad + contentH + U.space.lg + btnH + pad, maxPh);
+    // The title and buttons are pinned (always visible); the body lives in a fixed
+    // region between them. Everything but the body is the panel's "chrome". If the
+    // body fits under the remaining height, the panel shrinks to it (no scroll);
+    // otherwise the panel caps at the screen and the body scrolls within its
+    // region — so "OK" never gets pushed off. (No font-shrink: the body stays at
+    // its normal, readable size and scrolls instead.)
+    const chromeH = pad + titleTxt.height + (bodyTxt ? U.space.md : 0) + U.space.lg + btnH + pad;
+    const fullBodyH = bodyTxt ? bodyTxt.height : 0;
+    const bodyViewH = bodyTxt ? Math.max(0, Math.min(fullBodyH, maxPh - chromeH)) : 0;
+    const ph = chromeH + bodyViewH;
 
     const dim = 0.82;
     const backdrop = this.add
@@ -1428,12 +1440,49 @@ export class GameScene extends Phaser.Scene {
 
     const top = cy - ph / 2 + pad;
     titleTxt.setPosition(cx, top);
-    if (bodyTxt) bodyTxt.setPosition(cx, top + titleTxt.height + U.space.md);
+
+    // Scrollable body: clip it to its region with a geometry mask and shift it by
+    // _modalScroll. The UI camera is at scroll 0 / zoom 1, so screen px == mask px
+    // == text-local px (no coordinate conversion), matching the menu's scroll.
+    this._modalBody = bodyTxt;
+    this._modalScrollbar = null;
+    this._modalScrollMax = 0;
+    if (bodyTxt) {
+      const bodyTop = top + titleTxt.height + U.space.md;
+      const innerLeft = cx - pw / 2 + pad;
+      const innerRight = cx + pw / 2 - pad;
+      this._modalBodyTop = bodyTop;
+      this._modalBodyView = bodyViewH;
+      this._modalBodyRight = innerRight;
+      this._modalBodyRegion = { left: innerLeft, right: innerRight, top: bodyTop, bottom: bodyTop + bodyViewH };
+      this._modalScrollMax = Math.max(0, fullBodyH - bodyViewH);
+      this._modalScroll = Phaser.Math.Clamp(this._modalScroll, 0, this._modalScrollMax);
+
+      this._modalMaskGfx = this.make.graphics();
+      this._modalMaskGfx.fillStyle(0xffffff, 1).fillRect(innerLeft, bodyTop, innerW, bodyViewH);
+      bodyTxt.setMask(this._modalMaskGfx.createGeometryMask());
+      bodyTxt.setPosition(cx, bodyTop - this._modalScroll);
+
+      // Scrollbar (right edge of the region), shown only on overflow — like the menu.
+      this._modalScrollbar = this.add
+        .rectangle(innerRight - 3, bodyTop, 4, 20, 0xffffff, 0.45)
+        .setOrigin(0.5, 0.5)
+        .setDepth(42)
+        .setVisible(false);
+    }
 
     const btnObjs = this._layoutModalButtons(cx, cy + ph / 2 - pad - btnH / 2, buttons);
 
-    this._modalParts = [backdrop, panel, titleTxt, ...(bodyTxt ? [bodyTxt] : []), ...btnObjs];
+    this._modalParts = [
+      backdrop,
+      panel,
+      titleTxt,
+      ...(bodyTxt ? [bodyTxt] : []),
+      ...(this._modalScrollbar ? [this._modalScrollbar] : []),
+      ...btnObjs,
+    ];
     this.cameras.main.ignore(this._modalParts); // HUD-camera only
+    this._updateModalScrollbar(); // size/show the thumb (or leave hidden if it fits)
 
     for (const part of this._modalParts) {
       const to = part === backdrop ? dim : 1;
@@ -1541,10 +1590,88 @@ export class GameScene extends Phaser.Scene {
    */
   _hideConfirm() {
     if (!this._modalParts) return;
-    for (const part of this._modalParts) part.destroy();
-    this._modalParts = null;
+    this._teardownModalParts();
     this._modalSpec = null;
     this._modalOpen = false;
+  }
+
+  /**
+   * Destroy the modal's display objects and its (off-list) body mask, and clear
+   * the scroll drag flags. Shared by {@link _hideConfirm} (close) and the resize
+   * path in {@link _onResize} (rebuild). Leaves _modalOpen/_modalSpec alone so a
+   * rebuild can reuse the spec.
+   *
+   * @returns {void}
+   */
+  _teardownModalParts() {
+    if (this._modalParts) for (const part of this._modalParts) part.destroy();
+    this._modalParts = null;
+    if (this._modalMaskGfx) {
+      this._modalMaskGfx.destroy();
+      this._modalMaskGfx = null;
+    }
+    this._modalBody = null;
+    this._modalScrollbar = null;
+    this._modalDragging = false;
+    this._modalScrollbarDragging = false;
+  }
+
+  /**
+   * Scroll the modal body by `delta` screen pixels, clamped to its range, and
+   * reposition the text and scrollbar thumb.
+   *
+   * @param {number} delta @returns {void}
+   */
+  _modalScrollBy(delta) {
+    if (this._modalScrollMax <= 0 || !this._modalBody) return;
+    this._modalScroll = Phaser.Math.Clamp(this._modalScroll + delta, 0, this._modalScrollMax);
+    this._modalBody.setPosition(this._modalBody.x, this._modalBodyTop - this._modalScroll);
+    this._updateModalScrollbar();
+  }
+
+  /**
+   * Size/position the modal scrollbar thumb for the current scroll, or hide it
+   * when the body fits. Mirrors {@link _updateScrollbar} for the menu.
+   *
+   * @returns {void}
+   */
+  _updateModalScrollbar() {
+    const bar = this._modalScrollbar;
+    if (!bar) return;
+    if (this._modalScrollMax <= 0) {
+      bar.setVisible(false);
+      return;
+    }
+    const viewH = this._modalBodyView;
+    const contentH = viewH + this._modalScrollMax; // = full body height
+    const thumbH = Math.max(24, viewH * (viewH / contentH));
+    this._modalThumbH = thumbH; // for scrollbar-grab mapping (see pointermove)
+    const t = this._modalScroll / this._modalScrollMax;
+    const y = this._modalBodyTop + t * (viewH - thumbH);
+    bar.setSize(4, thumbH).setPosition(this._modalBodyRight - 3, y + thumbH / 2).setVisible(true);
+  }
+
+  /**
+   * @param {Phaser.Input.Pointer} p
+   * @returns {boolean} true if the pointer is in the modal scrollbar grab zone
+   *   (the right edge of the body region) while the body actually overflows.
+   */
+  _overModalScrollbar(p) {
+    if (this._modalScrollMax <= 0) return false;
+    const r = this._modalBodyRight;
+    return (
+      p.x >= r - 16 && p.x <= r + 6 && p.y >= this._modalBodyTop && p.y <= this._modalBodyTop + this._modalBodyView
+    );
+  }
+
+  /**
+   * @param {Phaser.Input.Pointer} p
+   * @returns {boolean} true if the pointer is over the scrollable modal body.
+   */
+  _overModalBody(p) {
+    const reg = this._modalBodyRegion;
+    if (!reg) return false;
+    return p.x >= reg.left && p.x <= reg.right && p.y >= reg.top && p.y <= reg.bottom;
   }
 
   // --- Menu / scoreboard --------------------------------------------------
@@ -2433,7 +2560,20 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', (p) => {
       sfx.unlock(); // browsers need a user gesture to start audio
       this._stopCameraGlide(); // any press cancels an in-progress settle pan/zoom
-      if (this._modalOpen) return; // modal owns input; its buttons handle themselves
+      if (this._modalOpen) {
+        // Modal owns input; its buttons handle their own taps. A press in the body
+        // (or on its scrollbar) starts a drag-scroll when the body overflows.
+        if (this._modalScrollMax > 0) {
+          if (this._overModalScrollbar(p)) {
+            this._modalScrollbarDragging = true;
+            this._modalDragLastY = p.y;
+          } else if (this._overModalBody(p)) {
+            this._modalDragging = true;
+            this._modalDragLastY = p.y;
+          }
+        }
+        return;
+      }
       if (this._menuOpen) {
         // The menu backdrop swallows game input; a press on the list starts a
         // drag-scroll (its own buttons handle their taps). _menuDownY lets a row
@@ -2482,7 +2622,18 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointermove', (p) => {
       // Keep an open entity-info label floating with the pointer, on-screen.
       if (this._infoEntity) this._placeEntityInfo(p.x, p.y);
-      if (this._modalOpen) return;
+      if (this._modalOpen) {
+        if (this._modalScrollbarDragging) {
+          // Thumb drag: move the thumb WITH the pointer (down -> content down).
+          const range = this._modalBodyView - (this._modalThumbH || 0);
+          if (range > 0) this._modalScrollBy(((p.y - this._modalDragLastY) * this._modalScrollMax) / range);
+          this._modalDragLastY = p.y;
+        } else if (this._modalDragging) {
+          this._modalScrollBy(this._modalDragLastY - p.y); // content drag: natural (inverted)
+          this._modalDragLastY = p.y;
+        }
+        return;
+      }
       if (this._menuOpen) {
         if (this._scrollbarDragging) {
           // Thumb drag: move the thumb WITH the pointer (down -> content down).
@@ -2511,7 +2662,11 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.on('pointerup', () => {
-      if (this._modalOpen) return;
+      if (this._modalOpen) {
+        this._modalDragging = false;
+        this._modalScrollbarDragging = false;
+        return;
+      }
       if (this._menuOpen) {
         this._menuDragging = false;
         this._scrollbarDragging = false;
@@ -2563,7 +2718,10 @@ export class GameScene extends Phaser.Scene {
 
     // Laptop: mouse wheel zooms toward the cursor.
     this.input.on('wheel', (p, _over, _dx, dy) => {
-      if (this._modalOpen) return;
+      if (this._modalOpen) {
+        this._modalScrollBy(dy); // wheel scrolls the modal body, not the arena
+        return;
+      }
       if (this._menuOpen) {
         this._menuScrollBy(dy); // wheel scrolls the menu list, not the arena
         return;
