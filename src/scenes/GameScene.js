@@ -24,7 +24,7 @@ import * as diag from '../diag.js';
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
 const HELP_TEXT = [
   'Help the brothers, David and Ken, reach the goal in as few turns as possible.',
-  'Move: The glowing brother is the one you move. Drag it back and release to slingshot it toward its partner. The two brothers are joined by an elastic band, so they travel together.',
+  'Move: The glowing brother is the one you move. Drag him back and release to slingshot him toward his partner. The two brothers are joined by an elastic band, so they travel together.',
   'Aim: A red X means that spot is blocked (a wall, the edge, or the other brother). Move and try again.',
   'Turns: Each launch uses one turn, then the other brother takes over. Turns left show as "#Left".',
   'Goal: Land a brother at rest inside the goal ring to win.',
@@ -36,7 +36,7 @@ const HELP_TEXT = [
 /** Body text for the About modal (plain text; the modal word-wraps it). */
 const ABOUT_TEXT =
   'This game was developed by David A. Wheeler based on an idea by his brother Kenneth A. Wheeler. ' +
-  'It was built using the Phaser 2D game framework from Phaser Studio Incorporated (MIT license).  Levels were created by the Tiled level editor from Thorbjørn Lindeijer and community (GPL license though that license does not apply to produced levels levels). AI assistance was provided by Claude Code and Google Gemini. Title screen music is "Don’t Resist the Groove (Ska) Loopable" by Johannes Söllner, 2024, license CC0.';
+  'It was built using the Phaser 2D game framework from Phaser Studio Incorporated (MIT license).  Levels were created by the Tiled level editor from Thorbjørn Lindeijer and community (GPL license though that license does not apply to produced levels). AI assistance was provided by Claude Code and Google Gemini. Title screen music is "Don’t Resist the Groove (Ska) Loopable" by Johannes Söllner, 2024 (CC0 license).';
 
 /**
  * Level state is tracked along two axes.
