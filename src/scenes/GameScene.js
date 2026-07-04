@@ -20,6 +20,7 @@ import * as scores from '../scores.js';
 import { World } from '../world/World.js';
 import { setSkipTitle } from '../prefs.js';
 import * as diag from '../diag.js';
+import { Modal } from '../ui/Modal.js';
 
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
 const HELP_TEXT = [
@@ -138,8 +139,10 @@ export class GameScene extends Phaser.Scene {
     /** Camera-pan drag state. */
     this._isPanning = false;
     this._panLast = { x: 0, y: 0 };
-    /** True while the "Restart level?" confirmation modal is open. */
-    this._modalOpen = false;
+    /** Open modal overlays (Modal/Menu), innermost last: the top owns all input. */
+    this._modalStack = [];
+    /** Open modeless overlays (the Lab panel): each owns input only over itself. */
+    this._panels = [];
     /** True while the dev parameter-tuning panel is open. Persisted in the
      *  registry so "Restart level" leaves an open lab panel in place. */
     this._devOpen = this.registry.get('devOpen') || false;
@@ -490,10 +493,8 @@ export class GameScene extends Phaser.Scene {
       // Menu rebuild takes some time, so we handle it specially.
       // The modal is cheap, so reflow it at once for responsiveness.
       if (this._menuOpen) this._scheduleMenuRebuild();
-      if (this._modalOpen) {
-        this._teardownModalParts(); // keeps _modalScroll so the rebuild stays put
-        this._buildModal(false);
-      }
+      // Modals are cheap: reflow each at once (rebuild preserves its scroll).
+      for (const o of this._modalStack) o.rebuild();
     } catch (e) {
       diag.error('game resize', e);
     }
@@ -1489,339 +1490,66 @@ export class GameScene extends Phaser.Scene {
     this.statusTooltip.setText(s.label);
   }
 
+  // --- Overlays (modals, menu, panels) ------------------------------------
+
+  /** @returns {boolean} true while a blocking modal (or the menu) owns input. */
+  get _modalOpen() {
+    return this._modalStack.length > 0;
+  }
+
+  /** @returns {import('../ui/Overlay.js').Overlay|null} the input-owning modal (top of stack). */
+  get _activeModal() {
+    return this._modalStack.length ? this._modalStack[this._modalStack.length - 1] : null;
+  }
+
   /**
-   * Open a modal: a dimming backdrop, a rounded panel with a centred title, an
-   * optional word-wrapped body, and one or more buttons. The panel auto-sizes to
-   * the content (capped to the viewport). Built on the fixed UI camera and on the
-   * world camera's ignore list; game input is gated by `_modalOpen` while it's
-   * up. Depths (40-42) sit ABOVE the menu (30-33), so a modal opened over the
-   * menu is never overdrawn. Used by {@link _showConfirm} and {@link _showMessage}.
+   * Overlay router hook: an overlay just opened. Any open cancels a camera pan; a
+   * modal joins the input-owning stack (and clears a stray menu drag flag left by
+   * the press that opened it from a menu row); a modeless panel joins `_panels`.
    *
-   * @param {{title:string, body?:string,
-   *   buttons:Array<{label:string, bg:string, onClick:()=>void}>}} opts
-   * @returns {void}
+   * @param {import('../ui/Overlay.js').Overlay} o @returns {void}
    */
-  _openModal(spec) {
-    if (this._modalOpen) return;
-    this._modalOpen = true;
+  _overlayOpened(o) {
     this._isPanning = false;
-    this._modalSpec = spec; // kept so the modal can be rebuilt on resize
-    this._modalScroll = 0; // start at the top (a resize rebuild keeps its scroll)
-    this._modalDragging = false;
-    this._modalScrollbarDragging = false;
-    // A modal can open from a menu row (Help/About) while the menu is still up
-    // behind it. The pointerdown that opened it set the menu's drag flag, but the
-    // pointerup that follows early-returns on _modalOpen and never clears it — so
-    // clear it here, or a stray flag would drag the menu after the modal closes.
-    this._menuDragging = false;
-    this._scrollbarDragging = false;
-    // Yes/No confirms bonk (an unusual situation to decide); info modals don't —
-    // the tick from the control that opened them is enough.
-    if (spec.warn !== false) sfx.bonk();
-    this._buildModal(true);
+    if (o.modal) {
+      this._modalStack.push(o);
+      this._menuDragging = false;
+      this._scrollbarDragging = false;
+    } else {
+      this._panels.push(o);
+    }
   }
 
   /**
-   * Build the modal's visuals from {@link _modalSpec} and the current layout.
-   * Called on open (`animate` = fade in) and again from {@link _onResize} to
-   * reflow to a new screen size (`animate` = false, no re-fade).
+   * Overlay router hook: an overlay closed. Remove it from whichever list holds it.
    *
-   * @param {boolean} animate  Fade in (open) vs. appear at once (resize rebuild).
-   * @returns {void}
+   * @param {import('../ui/Overlay.js').Overlay} o @returns {void}
    */
-  _buildModal(animate) {
-    const { title, body = '', buttons } = this._modalSpec;
-    const U = Config.ui;
-    const L = this._layout;
-    const cx = L.w / 2;
-    const cy = L.h / 2;
-    const pad = U.space.lg;
-    // Confirms stay narrow (a short question); a modal with body text (Help/About)
-    // may grow wider on a wide screen so it isn't a tall, narrow column — but
-    // still capped so lines don't get uncomfortably long to read.
-    const pw = Math.min(body ? 640 : 440, L.w - 2 * L.pad);
-    const innerW = pw - 2 * pad;
-
-    // Build the text first so we can measure it and size the panel to fit.
-    const titleTxt = this.add
-      .text(cx, 0, title, {
-        fontSize: '24px',
-        color: U.color.text,
-        fontStyle: 'bold',
-        align: 'center',
-        wordWrap: { width: innerW },
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(42);
-    let bodyTxt = null;
-    if (body) {
-      bodyTxt = this.add
-        .text(cx, 0, body, {
-          ...U.type.body,
-          align: 'left',
-          lineSpacing: 5,
-          wordWrap: { width: innerW },
-        })
-        .setOrigin(0.5, 0)
-        .setDepth(42);
-    }
-
-    const btnH = 44;
-    const maxPh = L.h - 2 * L.pad;
-    // The title and buttons are pinned (always visible); the body lives in a fixed
-    // region between them. Everything but the body is the panel's "chrome". If the
-    // body fits under the remaining height, the panel shrinks to it (no scroll);
-    // otherwise the panel caps at the screen and the body scrolls within its
-    // region — so "OK" never gets pushed off. (No font-shrink: the body stays at
-    // its normal, readable size and scrolls instead.)
-    const chromeH = pad + titleTxt.height + (bodyTxt ? U.space.md : 0) + U.space.lg + btnH + pad;
-    const fullBodyH = bodyTxt ? bodyTxt.height : 0;
-    const bodyViewH = bodyTxt ? Math.max(0, Math.min(fullBodyH, maxPh - chromeH)) : 0;
-    const ph = chromeH + bodyViewH;
-
-    const dim = 0.82;
-    const backdrop = this.add
-      .rectangle(cx, cy, L.w, L.h, 0x000000, dim)
-      .setDepth(40)
-      .setInteractive(); // swallow clicks on the dimmed area
-    const panel = this.add.graphics().setDepth(41);
-    panel.fillStyle(U.color.surface, 1).fillRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, U.radius.card);
-    panel.lineStyle(2, U.color.surfaceStroke, 1).strokeRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, U.radius.card);
-
-    const top = cy - ph / 2 + pad;
-    titleTxt.setPosition(cx, top);
-
-    // Scrollable body: clip it to its region with a geometry mask and shift it by
-    // _modalScroll. The UI camera is at scroll 0 / zoom 1, so screen px == mask px
-    // == text-local px (no coordinate conversion), matching the menu's scroll.
-    this._modalBody = bodyTxt;
-    this._modalScrollbar = null;
-    this._modalScrollMax = 0;
-    if (bodyTxt) {
-      const bodyTop = top + titleTxt.height + U.space.md;
-      const innerLeft = cx - pw / 2 + pad;
-      const innerRight = cx + pw / 2 - pad;
-      this._modalBodyTop = bodyTop;
-      this._modalBodyView = bodyViewH;
-      this._modalBodyRight = innerRight;
-      this._modalBodyRegion = { left: innerLeft, right: innerRight, top: bodyTop, bottom: bodyTop + bodyViewH };
-      this._modalScrollMax = Math.max(0, fullBodyH - bodyViewH);
-      this._modalScroll = Phaser.Math.Clamp(this._modalScroll, 0, this._modalScrollMax);
-
-      this._modalMaskGfx = this.make.graphics();
-      this._modalMaskGfx.fillStyle(0xffffff, 1).fillRect(innerLeft, bodyTop, innerW, bodyViewH);
-      bodyTxt.setMask(this._modalMaskGfx.createGeometryMask());
-      bodyTxt.setPosition(cx, bodyTop - this._modalScroll);
-
-      // Scrollbar (right edge of the region), shown only on overflow — like the menu.
-      this._modalScrollbar = this.add
-        .rectangle(innerRight - 3, bodyTop, 4, 20, 0xffffff, 0.45)
-        .setOrigin(0.5, 0.5)
-        .setDepth(42)
-        .setVisible(false);
-    }
-
-    const btnObjs = this._layoutModalButtons(cx, cy + ph / 2 - pad - btnH / 2, buttons);
-
-    this._modalParts = [
-      backdrop,
-      panel,
-      titleTxt,
-      ...(bodyTxt ? [bodyTxt] : []),
-      ...(this._modalScrollbar ? [this._modalScrollbar] : []),
-      ...btnObjs,
-    ];
-    this.cameras.main.ignore(this._modalParts); // HUD-camera only
-    this._updateModalScrollbar(); // size/show the thumb (or leave hidden if it fits)
-
-    for (const part of this._modalParts) {
-      const to = part === backdrop ? dim : 1;
-      if (animate) {
-        part.setAlpha(0);
-        this.tweens.add({ targets: part, alpha: to, duration: U.motion.dur, ease: U.motion.ease });
-      } else {
-        part.setAlpha(to); // resize rebuild: appear at once
-      }
-    }
+  _overlayClosed(o) {
+    const list = o.modal ? this._modalStack : this._panels;
+    const i = list.indexOf(o);
+    if (i >= 0) list.splice(i, 1);
   }
 
   /**
-   * A Yes/No confirmation. `Yes` runs `onYes` (which typically restarts or calls
-   * {@link _hideConfirm}); `No` just dismisses.
+   * A Yes/No confirmation (see {@link Modal.confirm}): `Yes` runs `onYes`, `No`
+   * dismisses; both close the modal first.
    *
    * @param {string} message @param {() => void} onYes @returns {void}
    */
   _showConfirm(message, onYes) {
-    this._openModal({
-      title: message,
-      buttons: [
-        { label: 'Yes', bg: '#2e7d46', onClick: onYes },
-        { label: 'No', bg: '#555560', onClick: () => this._hideConfirm() },
-      ],
-    });
+    Modal.confirm(this, message, onYes);
   }
 
   /**
-   * An informational modal with word-wrapped body text and a single "OK" button
-   * (used for Help / About). `OK` dismisses, then runs the optional `onOk`.
+   * An informational modal (see {@link Modal.info}) with word-wrapped body and a
+   * single "OK" that dismisses, then runs the optional `onOk`.
    *
    * @param {string} title @param {string} body @param {() => void} [onOk]
    * @returns {void}
    */
   _showMessage(title, body, onOk) {
-    this._openModal({
-      title,
-      body,
-      warn: false, // info-only: no bonk (the opening control already ticked)
-      buttons: [
-        {
-          label: 'OK',
-          bg: '#3a3a44',
-          onClick: () => {
-            this._hideConfirm();
-            onOk?.();
-          },
-        },
-      ],
-    });
-  }
-
-  /**
-   * Create the modal's buttons and centre them as a row at `y`.
-   *
-   * @param {number} cx @param {number} y
-   * @param {Array<{label:string, bg:string, onClick:()=>void}>} buttons
-   * @returns {Phaser.GameObjects.Text[]}
-   */
-  _layoutModalButtons(cx, y, buttons) {
-    const gap = Config.ui.space.lg;
-    const objs = buttons.map((b) => this._modalButton(0, y, b.label, b.bg, b.onClick));
-    const total = objs.reduce((s, o) => s + o.width, 0) + gap * (objs.length - 1);
-    let x = cx - total / 2;
-    objs.forEach((o) => {
-      o.setPosition(x + o.width / 2, y);
-      x += o.width + gap;
-    });
-    return objs;
-  }
-
-  /**
-   * A pill button for a modal: rounded text with a hover lift, a click sound,
-   * and a handler. Returned so the caller can position/group/destroy it.
-   *
-   * @param {number} x @param {number} y @param {string} label
-   * @param {string} bg  CSS background colour. @param {() => void} onClick
-   * @returns {Phaser.GameObjects.Text}
-   */
-  _modalButton(x, y, label, bg, onClick) {
-    const btn = this.add
-      .text(x, y, label, {
-        fontSize: '20px',
-        color: '#ffffff',
-        backgroundColor: bg,
-        padding: { x: 24, y: 8 },
-      })
-      .setOrigin(0.5)
-      .setDepth(42) // above the modal panel (41), matching the modal title
-      .setInteractive({ useHandCursor: true });
-    btn.on('pointerover', () => btn.setAlpha(0.85));
-    btn.on('pointerout', () => btn.setAlpha(1));
-    btn.on('pointerup', () => {
-      sfx.tick();
-      onClick();
-    });
-    return btn;
-  }
-
-  /**
-   * Dismiss the confirmation modal with no other effect.
-   *
-   * @returns {void}
-   */
-  _hideConfirm() {
-    if (!this._modalParts) return;
-    this._teardownModalParts();
-    this._modalSpec = null;
-    this._modalOpen = false;
-  }
-
-  /**
-   * Destroy the modal's display objects and its (off-list) body mask, and clear
-   * the scroll drag flags. Shared by {@link _hideConfirm} (close) and the resize
-   * path in {@link _onResize} (rebuild). Leaves _modalOpen/_modalSpec alone so a
-   * rebuild can reuse the spec.
-   *
-   * @returns {void}
-   */
-  _teardownModalParts() {
-    if (this._modalParts) for (const part of this._modalParts) part.destroy();
-    this._modalParts = null;
-    if (this._modalMaskGfx) {
-      this._modalMaskGfx.destroy();
-      this._modalMaskGfx = null;
-    }
-    this._modalBody = null;
-    this._modalScrollbar = null;
-    this._modalDragging = false;
-    this._modalScrollbarDragging = false;
-  }
-
-  /**
-   * Scroll the modal body by `delta` screen pixels, clamped to its range, and
-   * reposition the text and scrollbar thumb.
-   *
-   * @param {number} delta @returns {void}
-   */
-  _modalScrollBy(delta) {
-    if (this._modalScrollMax <= 0 || !this._modalBody) return;
-    this._modalScroll = Phaser.Math.Clamp(this._modalScroll + delta, 0, this._modalScrollMax);
-    this._modalBody.setPosition(this._modalBody.x, this._modalBodyTop - this._modalScroll);
-    this._updateModalScrollbar();
-  }
-
-  /**
-   * Size/position the modal scrollbar thumb for the current scroll, or hide it
-   * when the body fits. Mirrors {@link _updateScrollbar} for the menu.
-   *
-   * @returns {void}
-   */
-  _updateModalScrollbar() {
-    const bar = this._modalScrollbar;
-    if (!bar) return;
-    if (this._modalScrollMax <= 0) {
-      bar.setVisible(false);
-      return;
-    }
-    const viewH = this._modalBodyView;
-    const contentH = viewH + this._modalScrollMax; // = full body height
-    const thumbH = Math.max(24, viewH * (viewH / contentH));
-    this._modalThumbH = thumbH; // for scrollbar-grab mapping (see pointermove)
-    const t = this._modalScroll / this._modalScrollMax;
-    const y = this._modalBodyTop + t * (viewH - thumbH);
-    bar.setSize(4, thumbH).setPosition(this._modalBodyRight - 3, y + thumbH / 2).setVisible(true);
-  }
-
-  /**
-   * @param {Phaser.Input.Pointer} p
-   * @returns {boolean} true if the pointer is in the modal scrollbar grab zone
-   *   (the right edge of the body region) while the body actually overflows.
-   */
-  _overModalScrollbar(p) {
-    if (this._modalScrollMax <= 0) return false;
-    const r = this._modalBodyRight;
-    return (
-      p.x >= r - 16 && p.x <= r + 6 && p.y >= this._modalBodyTop && p.y <= this._modalBodyTop + this._modalBodyView
-    );
-  }
-
-  /**
-   * @param {Phaser.Input.Pointer} p
-   * @returns {boolean} true if the pointer is over the scrollable modal body.
-   */
-  _overModalBody(p) {
-    const reg = this._modalBodyRegion;
-    if (!reg) return false;
-    return p.x >= reg.left && p.x <= reg.right && p.y >= reg.top && p.y <= reg.bottom;
+    Modal.info(this, title, body, onOk);
   }
 
   // --- Menu / scoreboard --------------------------------------------------
@@ -2321,7 +2049,6 @@ export class GameScene extends Phaser.Scene {
         for (const k of keys) this.registry.set(`best:${k}`, null);
       }
       if (!this._testMode && inThisPack && currentIndex() > 0) {
-        this._hideConfirm();
         this._closeMenu();
         selectLevel(0).then(() => this.scene.restart()); // level 0 is already loaded
         return;
@@ -2330,7 +2057,6 @@ export class GameScene extends Phaser.Scene {
         this._refreshPackBest(); // scores cleared -> pack total back to "-"
         this._refreshHud(); // -> "Best: -"
       }
-      this._hideConfirm();
       this._showPackDetail(manifest, this._detailFrom); // re-render: scores cleared, button shaded
     });
   }
@@ -2674,7 +2400,7 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
-  /** Tear down the menu overlay (mirrors _hideConfirm). */
+  /** Tear down the menu overlay (mirrors {@link Overlay#hide}). */
   _closeMenu() {
     if (!this._menuOpen) return;
     this._menuContent.clearMask(true);
@@ -2711,18 +2437,9 @@ export class GameScene extends Phaser.Scene {
       sfx.unlock(); // browsers need a user gesture to start audio
       this._stopCameraGlide(); // any press cancels an in-progress settle pan/zoom
       this._devDragMoved = false; // a fresh press is a tap until it moves (see _devButton)
-      if (this._modalOpen) {
-        // Modal owns input; its buttons handle their own taps. A press in the body
-        // (or on its scrollbar) starts a drag-scroll when the body overflows.
-        if (this._modalScrollMax > 0) {
-          if (this._overModalScrollbar(p)) {
-            this._modalScrollbarDragging = true;
-            this._modalDragLastY = p.y;
-          } else if (this._overModalBody(p)) {
-            this._modalDragging = true;
-            this._modalDragLastY = p.y;
-          }
-        }
+      // The top modal owns input while up (its buttons handle their own taps).
+      if (this._activeModal) {
+        this._activeModal.onPointerDown(p);
         return;
       }
       if (this._menuOpen) {
@@ -2794,16 +2511,8 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointermove', (p) => {
       // Keep an open entity-info label floating with the pointer, on-screen.
       if (this._infoEntity) this._placeEntityInfo(p.x, p.y);
-      if (this._modalOpen) {
-        if (this._modalScrollbarDragging) {
-          // Thumb drag: move the thumb WITH the pointer (down -> content down).
-          const range = this._modalBodyView - (this._modalThumbH || 0);
-          if (range > 0) this._modalScrollBy(((p.y - this._modalDragLastY) * this._modalScrollMax) / range);
-          this._modalDragLastY = p.y;
-        } else if (this._modalDragging) {
-          this._modalScrollBy(this._modalDragLastY - p.y); // content drag: natural (inverted)
-          this._modalDragLastY = p.y;
-        }
+      if (this._activeModal) {
+        this._activeModal.onPointerMove(p); // drives its scroll drag, if any
         return;
       }
       if (this._menuOpen) {
@@ -2849,9 +2558,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.on('pointerup', (p) => {
-      if (this._modalOpen) {
-        this._modalDragging = false;
-        this._modalScrollbarDragging = false;
+      if (this._activeModal) {
+        this._activeModal.onPointerUp(p); // ends its scroll drag, if any
         return;
       }
       if (this._menuOpen) {
@@ -2914,8 +2622,8 @@ export class GameScene extends Phaser.Scene {
 
     // Laptop: mouse wheel zooms toward the cursor.
     this.input.on('wheel', (p, _over, _dx, dy) => {
-      if (this._modalOpen) {
-        this._modalScrollBy(dy); // wheel scrolls the modal body, not the arena
+      if (this._activeModal) {
+        this._activeModal.onWheel(p, dy); // wheel scrolls the modal body, not the arena
         return;
       }
       if (this._menuOpen) {
