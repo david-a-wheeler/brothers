@@ -3,7 +3,7 @@ import { Entity } from './Entity.js';
 
 /**
  * One brother: a dynamic circular body with an upright emoji face and a
- * subclass-specific facial feature (David's glasses, Ken's mustache). A
+ * subclass-specific facial feature (David's glasses, Ken's beard). A
  * {@link Entity}, so the {@link World} builds it from the level's `david`/`ken`
  * objects, its body carries `entity` for collision routing, and the pair can be
  * found via `world.byType(David|Ken)`.
@@ -61,7 +61,7 @@ export class Brother extends Entity {
       .setOrigin(0.5)
       .setDepth(6);
 
-    /** Subclass facial feature (glasses/mustache), positioned each frame. */
+    /** Subclass facial feature (glasses/beard), positioned each frame. */
     this.feature = this._createFeature();
 
     // Apply the level's authored size/mass. Mass first, so the radius setter's
