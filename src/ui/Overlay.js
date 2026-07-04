@@ -1,5 +1,6 @@
 import { Config } from '../config.js';
 import { ScrollView } from './ScrollView.js';
+import { chipButton } from './chipButton.js';
 
 /**
  * Base class for on-screen overlays (modals, the menu, the modeless Lab panel).
@@ -117,6 +118,19 @@ export class Overlay {
     this._backdropObj = bd;
     this._backdropAlpha = alpha;
     return bd;
+  }
+
+  /**
+   * A standard red top-right close "×", wired to hide this overlay. The caller
+   * positions it (each subclass knows its own chrome geometry) and pushes it into
+   * {@link parts}. On a Yes/No modal, dismissing this way is the cancel ("No")
+   * path — {@link hide} runs no affirmative action.
+   *
+   * @param {number} x @param {number} y @param {number} depth
+   * @returns {Phaser.GameObjects.Text}
+   */
+  _closeButton(x, y, depth) {
+    return chipButton(this.scene, x, y, '×', () => this.hide(), { bg: '#c0392b', bgHover: '#e74c3c' }).setDepth(depth);
   }
 
   /**

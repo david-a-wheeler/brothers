@@ -61,10 +61,7 @@ export class Menu extends Overlay {
     card.fillStyle(U.color.surface, 1).fillRoundedRect(cx0, cy0, cw, ch, U.radius.card);
     card.lineStyle(2, U.color.surfaceStroke, 1).strokeRoundedRect(cx0, cy0, cw, ch, U.radius.card);
     this._title = add.text(cx0 + 16, cy0 + 16, '', U.type.title).setDepth(32);
-    const close = chipButton(this.scene, cx0 + cw - 20, cy0 + 22, '×', () => this.hide(), {
-      bg: '#c0392b',
-      bgHover: '#e74c3c',
-    }).setDepth(32);
+    const close = this._closeButton(cx0 + cw - 20, cy0 + 22, 32);
 
     // Shared hover tooltip (above the content, below modals).
     this._tip = add

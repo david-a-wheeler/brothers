@@ -94,15 +94,17 @@ export class Modal extends Overlay {
     // so lines don't get uncomfortably long to read.
     const pw = Math.min(body ? 640 : 440, L.w - 2 * L.pad);
     const innerW = pw - 2 * pad;
+    const closeReserve = 48; // keep the (centred) title clear of the top-right ×
 
-    // Build the text first so we can measure it and size the card to fit.
+    // Build the text first so we can measure it and size the card to fit. The
+    // title wraps a little narrower so a long one can't tuck under the ×.
     const titleTxt = add
       .text(cx, 0, title, {
         fontSize: '24px',
         color: U.color.text,
         fontStyle: 'bold',
         align: 'center',
-        wordWrap: { width: innerW },
+        wordWrap: { width: innerW - closeReserve },
       })
       .setOrigin(0.5, 0)
       .setDepth(42);
@@ -131,7 +133,9 @@ export class Modal extends Overlay {
 
     const top = cy - ph / 2 + pad;
     titleTxt.setPosition(cx, top);
-    this.parts = [backdrop, panel, titleTxt];
+    // Top-right × (cancel: on a Yes/No confirm it's the "No"/dismiss path).
+    const close = this._closeButton(cx + pw / 2 - 20, cy - ph / 2 + 22, 42);
+    this.parts = [backdrop, panel, titleTxt, close];
 
     if (bodyTxt) {
       const bodyTop = top + titleTxt.height + U.space.md;
