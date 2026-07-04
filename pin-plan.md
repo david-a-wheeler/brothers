@@ -21,13 +21,54 @@ This is **not** cosmetic. Moving the pin changes the shot:
   over the anchor's follow-through direction, an axis of control that
   dragging the launcher alone does not provide (drag only sets
   angle-to-center plus power).
-- When the two balls collide, the pin returns to center (`pin_x=0`,
-  `pin_y=0`), and from that point on the elastic band/motion uses the
-  centers as usual. This "returns to center on collision" behavior lets
-  us ignore questions like "won't the ball spin?"; we may revisit it
-  after playtesting. The earlier note about "ignoring motion" was only
-  ever about *after* the collision — before the collision the pin
-  position definitely matters.
+- The pin returns to center at the end of the shot. *When* — and, with
+  it, *whether the pin affects the physics during flight* — is a **level
+  parameter** `pinResetOn` (default `'impact'`), plumbed like `moves` /
+  `wallRestitution` (`levels.js`: `pinResetOn: mapProps.pinResetOn ??
+  DEFAULTS.pinResetOn`). The two modes are meaningfully different, not
+  just different timings:
+  - `'impact'` (default): the pin only retargets the launch impulse (see
+    "Effect on the launch"); the Matter tether constraint is never
+    touched (stays center-to-center). Reset the instant the balls
+    collide, in `Brothers.snap()`. From then on band + motion use the
+    centers as usual, so we can ignore "won't the ball spin?".
+  - `'settle'`: the pin *also* becomes a live, off-center **tether
+    attachment** for the whole flight, and only resets when the balls
+    come to rest, in `Brothers.swapRoles()` (end-of-turn handoff). This
+    is the variant I want — the reason to wait is to change the physics,
+    not just the visuals.
+
+  ### Pin as a Matter constraint (the `'settle'` mode)
+
+  The tether is already a Matter constraint with `pointA` (launcher side)
+  and `pointB` (anchor side), each body-local, default `{0,0}` = center.
+  Attaching to the pin is `this._tether.pointB = { x: pinOffsetX, y:
+  pinOffsetY }`, and reset is `pointB = {0,0}`. The API is trivial; the
+  care is in three spots:
+
+  - **Local vs. world frame.** `pointB` is body-local and rotates with
+    the anchor's body angle, while `pinOffset` is captured in world axes
+    at placement. Cleanest fix: force the *static* anchor's body `angle =
+    0` while it's the anchor (the face is redrawn upright every frame, so
+    zero visual cost) — then `pinOffset` is directly usable as `pointB`.
+    Otherwise rotate the offset by `-body.angle`.
+  - **Pull-only gap.** `Brothers._applyPullOnlyTether()` measures the gap
+    center-to-center to decide when the band goes slack; with an
+    off-center attach it should measure attach-point → attach-point
+    (launcher center → `anchor.pinX`/`pinY`).
+  - **Deliberate spin, so budget tuning.** An off-center pull applies
+    torque — the anchor swings/tumbles as it's reeled in. That's the
+    payoff (real curved motion), but it injects angular energy into a
+    system whose Hybrid Snap is "the riskiest mechanic in the game"
+    (`snap()` note). The wiring is small; expect to playtest/tune the
+    feel, and its interaction with the snap.
+
+  Both modes share the same `Brother.resetPin()` (zero the offsets, reset
+  `pointB` to `{0,0}`, refresh the view), with a guarded call in *both*
+  `snap()` (fires when `pinResetOn === 'impact'`) and `swapRoles()`
+  (fires when `'settle'`). The earlier note about "ignoring motion" was
+  only ever about *after* the reset — before it, the pin position matters
+  (and in `'settle'` it matters mechanically all the way to rest).
 
 Here's a draft summary for the help info:
 You can adjust the anchor brother's pin before launch;
@@ -94,6 +135,42 @@ timing — they answer different questions:
   within 350 ms of it is the double-tap. (Without a recorded time there's
   no way to detect either the double-tap or a long-press.)
 
+## Settled decisions / assumptions
+
+Recorded so we don't have to re-derive them if we start over:
+
+- **Build in one pass.** Normally we'd stage this (mechanic + tap-snap
+  first, then free-drag/zoom polish), but as an exception we're building
+  the whole plan carefully in one go, not incrementally.
+- **Two level parameters gate the feature.** `pinEnabled` (default
+  `true`) turns pin control on/off for the level; `pinResetOn` (default
+  `'impact'`) picks the reset timing / physics mode. Both plumbed like
+  `moves`.
+- **Editing gate.** With pin control enabled, the anchor's pin is
+  editable only when `level.pinEnabled && phase === 'AIMING' && !isAiming
+  && status !== 'ENDED'` (see User interface).
+- **Reset timing is a level parameter, and picks the physics mode.**
+  `pinResetOn` (default `'impact'`) is per-level like `moves`.
+  `'impact'` = aim-retarget only, reset in `snap()`. `'settle'` = pin is
+  also a live off-center tether attachment (`_tether.pointB`) through the
+  flight, reset in `swapRoles()`. One `resetPin()` serves both. (See "Pin
+  as a Matter constraint" for the local-frame / pull-only / spin details.)
+- **Band drawing generalizes.** `drawBand` becomes
+  `drawBand(g, david.pinX, david.pinY, ken.pinX, ken.pinY)` — the
+  launcher's pin is always center, so one code path draws both the normal
+  (center-to-center) and pinned tether; no launcher/anchor special-case.
+- **Block check is mostly center-based.** In `_launcherBlocked`, the
+  overlap-with-the-other-brother test stays center-to-center (it's about
+  the physical circular bodies), and the launcher's arena-containment
+  test is unchanged. *Only* the wall/band line retargets to the pin.
+- **Power follows the pin (intended).** Pull distance is now measured
+  launcher→pin, so offsetting the pin changes power as well as angle.
+  This is a deliberate side effect we're keeping; revisit only if
+  playtesting says power should stay center-based.
+- **Pinch aborts a pin drag.** A second touch (pinch-zoom, guarded by
+  `_pinchDist`) takes over the gesture and cancels any in-progress pin
+  drag.
+
 ## Effect on the launch (where the mechanic lives)
 
 The pin has to feed into the launch code, or placing it changes nothing:
@@ -107,13 +184,28 @@ The pin has to feed into the launch code, or placing it changes nothing:
 - The block check follows the pin. `Brothers._launcherBlocked()` tests
   the launcher→anchor line against walls; that line must also end at the
   pin, not the anchor center.
-- Once the balls collide, the pin snaps back to center (above), so the
-  Hybrid Snap and post-collision motion are unchanged.
+- The pin is reset to center at end-of-shot (on impact or on settle — see
+  the `pinResetOn` level parameter above), so motion ultimately returns
+  to center-based behavior. In `'impact'` mode the aim retarget is the
+  *only* physics effect; in `'settle'` mode the pin is additionally a live
+  tether attachment through the flight (see "Pin as a Matter constraint").
 
 ## User interface
 
 Currently, pointerdown on an anchor reveals a tooltip
 (name), pointerup or exit removes the tooltip. That continues.
+
+**When is the pin editable?** First, the level must allow it at all: a
+`pinEnabled` level parameter (default `true`, plumbed like `moves`) gates
+the whole feature, so a level can turn pin control off (e.g. a tutorial,
+or a level designed around center-only aiming). When off, the anchor
+behaves exactly as today — tooltip only, no tap/double-tap/drag pin
+handling, no band/pin overlay. When on, the pin is editable only while
+it's the current player's aim and the launcher hasn't been grabbed —
+concretely `level.pinEnabled && phase === 'AIMING' && !isAiming &&
+status !== 'ENDED'`. Editing at any other time (mid-flight, after the
+game ends) would be confusing. Because the pin resets at end-of-shot,
+each new turn's anchor starts centered.
 
 In addition, the anchor brother now responds to new events:
 
@@ -141,10 +233,19 @@ In addition, the anchor brother now responds to new events:
   brother (at its radius) at the angle of the dragging pointer in relation
   to the center of the brother.
 
+  While a fine-drag is in progress, the HUD status message changes to
+  **"Moving <anchor.name>'s pin"**, rendered in the **anchor's** color —
+  note the unusual swap: the HUD normally shows the *launcher* (the
+  current player), but during pin-drag it shows the *anchor* whose pin is
+  being moved. Implement as a new aim sub-state in `_refreshHud()`
+  (`GameScene.js`) — e.g. a `_aimState === 'pinning'` branch (or a
+  dedicated flag) checked before the normal AIMING prompt, reading
+  `this.brothers.anchor.name` / `.color` instead of the launcher's.
+
   Note that dragging *could* also indicate a tooltip view request,
   especially from a touchscreen. Therefore, if a drag is ever more than
   1.5x the brother radius, the drag ends and the pin reverts to its
-  position before the gesture (`original_pin_x`, `original_pin_y`,
+  position before the gesture (`pinDownOffsetX`, `pinDownOffsetY`,
   recorded on pointerdown). This 1.5x rule is a deliberate balance of
   reversibility and ease of use. (A stationary long-press with no
   movement can reasonably be treated as just a tooltip request; we may
@@ -246,24 +347,34 @@ draw some "extenders" from the ball to try to justify it.
 
 - `src/world/Brother.js` — `pinOffsetX`/`pinOffsetY` state;
   `pinX`/`pinY`/`pinPlaced` read-only getters; `placePin(offsetX,
-  offsetY)` write funnel (clamp + refresh); gesture-tracking fields
-  `pinDownOffsetX/Y`, `pinDownX/Y`, `pinDownTime`, `lastTapTime`;
-  `interactiveView()` (returns `this.go`); the per-Brother
-  tap/double-tap/drag state machine.
+  offsetY)` write funnel (clamp + refresh); `resetPin()` (zero offsets +
+  refresh); gesture-tracking fields `pinDownOffsetX/Y`, `pinDownX/Y`,
+  `pinDownTime`, `lastTapTime`; `interactiveView()` (returns `this.go`);
+  the per-Brother tap/double-tap/drag state machine.
 - `src/Brothers.js` — `release()` (aim at the pin), `_launcherBlocked()`
   (block line ends at the pin), the tether constraint + `drawBand(...)`
   called from `update()` (draw band to the pin, depth toggling),
   `_updateDraggable()` (launcher-only draggable assumption to keep in
-  mind), and the snap/collision path that resets the pin to center.
+  mind); `'settle'` mode also sets `_tether.pointB` to the pin offset and
+  adjusts `_applyPullOnlyTether()` to measure attach-point→attach-point
+  (plus zero the static anchor's body `angle`); the end-of-shot reset: a
+  guarded `anchor.resetPin()` in *both* `snap()` (`pinResetOn ===
+  'impact'`) and `swapRoles()` (`pinResetOn === 'settle'`).
 - `src/scenes/GameScene.js` — the input router: `pointerdown` (~2560,
   add the `_pinning` guard so the anchor doesn't pan), `pointermove`
   (~2622, option (a) pin-drag tracking), `pointerup` (~2664),
   `gameobjectdown` (~2608) and `drag` (~2706) if we ever choose option
-  (b); `_infoSuppressed`/`_infoEntity` label handling; `Config.zoom.max`
-  (manual deep-zoom allowance); the existing pair-framing camera
-  pan/zoom helpers + `_clampCamera()` *only if* we add gentle
-  both-brothers-in-view framing (see Display — probably skip auto-focus).
+  (b); `_aimState`/`_refreshHud()` (new `'pinning'` sub-state → "Moving
+  <anchor.name>'s pin" in the anchor's color); `_infoSuppressed`/
+  `_infoEntity` label handling; `Config.zoom.max` (manual deep-zoom
+  allowance); the existing pair-framing camera pan/zoom helpers +
+  `_clampCamera()` *only if* we add gentle both-brothers-in-view framing
+  (see Display — probably skip auto-focus).
 - `src/world/Entity.js` — `_enableInfo()` (existing tooltip wiring the
   pin handling layers onto).
 - `src/config.js` — `Config.zoom` (raise `max`), `Config.ball`,
-  `Config.tether`; add pin appearance constants (pin color/size).
+  `Config.tether`; new `Config.pin` (appearance: color, size).
+- `src/levels.js` — new level parameters read from `mapProps` alongside
+  `moves` / `wallRestitution`, added to the `Level` typedef:
+  `pinEnabled` (`DEFAULTS.pinEnabled` = `true`) and `pinResetOn`
+  (`'impact' | 'settle'`, `DEFAULTS.pinResetOn` = `'impact'`).
