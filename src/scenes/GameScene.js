@@ -2674,7 +2674,7 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    this.input.on('pointerup', () => {
+    this.input.on('pointerup', (p) => {
       if (this._modalOpen) {
         this._modalDragging = false;
         this._modalScrollbarDragging = false;
