@@ -68,6 +68,63 @@ export class Brother extends Entity {
     // mass re-assertion (Body.scale recomputes mass from area) uses it.
     this.massMult = def.massMult ?? this._defaultMassMult;
     this.radiusMult = def.radiusMult ?? this._defaultRadiusMult;
+
+    // --- Aiming pin (see pin-plan.md) -------------------------------------
+    // The pin is stored as an offset from this brother's centre; the launcher
+    // is aimed at the anchor's pin instead of its centre. Only the anchor's
+    // pin is ever moved, and it recentres at end-of-shot. Rendering (the dot +
+    // the tether attaching to it) is driven each frame by {@link Brothers}.
+    /** Pin offset from centre, in world pixels. 0,0 = centred (the default). */
+    this.pinOffsetX = 0;
+    this.pinOffsetY = 0;
+    // Gesture-tracking state for the tap/double-tap/drag state machine (the
+    // scene's input router fills these on pointerdown; see GameScene).
+    /** Pin offset snapshot at pointerdown, so an over-long drag can revert. */
+    this.pinDownOffsetX = 0;
+    this.pinDownOffsetY = 0;
+    /** Pointer *screen* position at pointerdown, for the tap→drag threshold. */
+    this.pinDownX = 0;
+    this.pinDownY = 0;
+    /** When the previous tap completed (scene clock), persisted for double-tap. */
+    this.lastTapTime = 0;
+  }
+
+  /** @returns {number} Absolute world x of the pin (centre + offset). */
+  get pinX() {
+    return this.go.x + this.pinOffsetX;
+  }
+  /** @returns {number} Absolute world y of the pin (centre + offset). */
+  get pinY() {
+    return this.go.y + this.pinOffsetY;
+  }
+  /** @returns {boolean} True when the pin is off-centre. */
+  get pinPlaced() {
+    return this.pinOffsetX !== 0 || this.pinOffsetY !== 0;
+  }
+
+  /**
+   * Move the pin to an offset from centre, clamped inside the ball's radius (the
+   * single write path for tap-snap, recenter, and fine-drag — so the clamp lives
+   * in one place). Rendering follows each frame from {@link Brothers}.
+   *
+   * @param {number} offsetX @param {number} offsetY
+   * @returns {void}
+   */
+  placePin(offsetX, offsetY) {
+    const r = this.go.radius;
+    const d = Math.hypot(offsetX, offsetY);
+    if (d > r) {
+      offsetX = (offsetX / d) * r;
+      offsetY = (offsetY / d) * r;
+    }
+    this.pinOffsetX = offsetX;
+    this.pinOffsetY = offsetY;
+  }
+
+  /** Recentre the pin (end-of-shot, or a double-tap). @returns {void} */
+  resetPin() {
+    this.pinOffsetX = 0;
+    this.pinOffsetY = 0;
   }
 
   /** @returns {number} Current radius as a multiple of the base radius. */

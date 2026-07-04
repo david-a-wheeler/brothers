@@ -89,7 +89,7 @@ export const Config = {
    * only the maximum and the wheel step live here.
    */
   zoom: {
-    max: 3,
+    max: 10, // deep enough to place a pin on default-size Ken in fine detail
     wheelStep: 0.1, // fraction of zoom changed per mouse-wheel notch
     // World-pixels of gray kept around the arena when fully zoomed out (so you
     // can see it ends), and how far you may overscroll past an edge into gray
@@ -99,6 +99,23 @@ export const Config = {
 
   /** A faint reference grid on the arena floor, so zooming reads clearly. */
   grid: { size: 64, color: 0xffffff, alpha: 0.06 },
+
+  /**
+   * The anchor's aiming "pin" (see pin-plan.md). Before launch, the anchor
+   * brother's pin can be moved off-centre to aim the shot; a placed pin shows as
+   * a small near-black dot on the tether. `color`/`radius` are its look;
+   * `doubleTapMs` is the double-tap window (recenter); `dragThreshold` is the
+   * screen-pixel movement that promotes a press into a fine-drag; and a drag
+   * dragged past `revertRadiusMult` × the ball's radius is read as a tooltip
+   * request instead, ending the drag and reverting the pin.
+   */
+  pin: {
+    color: 0x111114, // nearly-black dot on the band
+    radius: 4, // small; slightly wider than the 4px-wide band line
+    doubleTapMs: 350, // max gap between two taps to count as a double-tap
+    dragThreshold: 6, // screen px of movement that promotes a press to a drag
+    revertRadiusMult: 1.5, // drag past this × ball radius ends + reverts the gesture
+  },
 
   /**
    * Shared rigid-body settings — the base every brother is sized from. `radius`

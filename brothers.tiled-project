@@ -166,7 +166,7 @@
                 {
                     "name": "info",
                     "type": "string",
-                    "value": "Level-wide settings. Set the MAP's Class to 'Level' to edit these. moves is the number of shots allowed; wallRestitution is the bounciness of every Wall (0-1). The arena size is just the map's pixel dimensions."
+                    "value": "Level-wide settings. Set the MAP's Class to 'Level' to edit these. moves is the number of shots allowed; wallRestitution is the bounciness of every Wall (0-1). pinEnabled turns the anchor's aiming pin on/off for this level (the pin lets the player aim the shot off-centre before launch). pinResetOn is when a placed pin recentres: 'impact' (default; the pin only bends the launch, then recentres when the balls collide) or 'settle' (the pin stays a live, off-centre tether the whole flight - so the anchor is reeled in off-centre and spins/curves - and recentres only once the balls come to rest). The arena size is just the map's pixel dimensions."
                 },
                 {
                     "name": "moves",
@@ -177,6 +177,16 @@
                     "name": "wallRestitution",
                     "type": "float",
                     "value": 0.6
+                },
+                {
+                    "name": "pinEnabled",
+                    "type": "bool",
+                    "value": true
+                },
+                {
+                    "name": "pinResetOn",
+                    "type": "string",
+                    "value": "impact"
                 }
             ],
             "name": "Level",
