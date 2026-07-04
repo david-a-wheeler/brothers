@@ -378,3 +378,8 @@ draw some "extenders" from the ball to try to justify it.
   `moves` / `wallRestitution`, added to the `Level` typedef:
   `pinEnabled` (`DEFAULTS.pinEnabled` = `true`) and `pinResetOn`
   (`'impact' | 'settle'`, `DEFAULTS.pinResetOn` = `'impact'`).
+- `brothers.tiled-project` — add `pinEnabled` (bool, default `true`) and
+  `pinResetOn` (string, default `'impact'`) as members of the `Level`
+  propertyType (id 7), and extend its `info` string to describe them, so
+  level creators discover them in Tiled the same way as `moves` /
+  `wallRestitution`. Do this as part of implementing the params.
