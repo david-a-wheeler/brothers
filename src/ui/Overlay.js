@@ -36,6 +36,15 @@ export class Overlay {
     this._backdropAlpha = 1;
   }
 
+  /**
+   * How the scene's router files this overlay: 'modal' (blocking, joins the modal
+   * stack), 'panel' (modeless, joins `_panels`), or 'menu' (tracked on its own).
+   * @returns {'modal'|'panel'|'menu'}
+   */
+  get role() {
+    return this.modal ? 'modal' : 'panel';
+  }
+
   // --- lifecycle ----------------------------------------------------------
 
   /** Open the overlay (idempotent). Creates the scroll view, builds, registers. */

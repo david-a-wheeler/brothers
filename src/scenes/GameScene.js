@@ -22,6 +22,7 @@ import { setSkipTitle } from '../prefs.js';
 import * as diag from '../diag.js';
 import { Modal } from '../ui/Modal.js';
 import { Panel } from '../ui/Panel.js';
+import { Menu } from '../ui/Menu.js';
 
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
 const HELP_TEXT = [
@@ -147,8 +148,8 @@ export class GameScene extends Phaser.Scene {
     /** The modeless Lab tuning {@link Panel} (created in _buildDevPanel). Its open
      *  state is persisted in the registry so "Restart level" leaves it in place. */
     this._labPanel = null;
-    /** True while the menu/scoreboard panel is open. */
-    this._menuOpen = false;
+    /** The menu/scoreboard {@link Menu} overlay (created in _buildHud). */
+    this._menu = null;
     /** Test mode: relaxes menu click-to-jump to allow any level. Persisted in
      *  the registry so it survives scene restarts within a session. */
     this._testMode = this.registry.get('testMode') || false;
@@ -520,7 +521,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       this._menuRebuildPending = false;
-      if (this._menuOpen) this._rebuildMenu();
+      if (this._menuOpen) this._menu.rebuild();
       this._menuRebuildTimer = this.time.delayedCall(30, tick);
     };
     tick(); // leading: rebuild now, then throttle
@@ -881,6 +882,17 @@ export class GameScene extends Phaser.Scene {
     });
 
     this._buildDevPanel();
+
+    // The menu/scoreboard overlay. Its objects are built lazily on show() (after
+    // the UI camera's ignore snapshot); the scene supplies the view content and
+    // navigation via these callbacks.
+    this._menu = new Menu(this, {
+      render: () => this._renderMenuView(),
+      onBack: () => this._menuBack(),
+      onLayout: () => this._raiseMenuButton(),
+      placeLabel: (label, x, y) => this._placeFloatingLabel(label, x, y),
+    });
+    this._menu.onHidden = () => this._onMenuHidden();
 
     // A glow ring pulsed on game-over to draw the eye to a HUD icon (restart, or
     // next level on a win); repositioned to the target icon (see _attract).
@@ -1352,7 +1364,9 @@ export class GameScene extends Phaser.Scene {
 
   // --- Overlays (modals, menu, panels) ------------------------------------
 
-  /** @returns {boolean} true while a blocking modal (or the menu) owns input. */
+  /** @returns {boolean} true while a blocking confirm/message modal is up. The
+   *  menu is modal too but tracked on its own (see _menuOpen), so this stays "a
+   *  confirm is up" — the meaning the game-input guards below rely on. */
   get _modalOpen() {
     return this._modalStack.length > 0;
   }
@@ -1362,31 +1376,38 @@ export class GameScene extends Phaser.Scene {
     return this._modalStack.length ? this._modalStack[this._modalStack.length - 1] : null;
   }
 
+  /** @returns {boolean} true while the menu overlay is open. */
+  get _menuOpen() {
+    return !!this._menu && this._menu.open;
+  }
+
   /**
-   * Overlay router hook: an overlay just opened. Any open cancels a camera pan; a
-   * modal joins the input-owning stack (and clears a stray menu drag flag left by
-   * the press that opened it from a menu row); a modeless panel joins `_panels`.
+   * Overlay router hook: an overlay just opened. Any open cancels a camera pan.
+   * A modal joins the input-owning stack (and clears any menu scroll-drag left by
+   * the press that opened it from a menu row); a modeless panel joins `_panels`;
+   * the menu is tracked on its own (`this._menu`), so it needs no list.
    *
    * @param {import('../ui/Overlay.js').Overlay} o @returns {void}
    */
   _overlayOpened(o) {
     this._isPanning = false;
-    if (o.modal) {
+    if (o.role === 'modal') {
       this._modalStack.push(o);
-      this._menuDragging = false;
-      this._scrollbarDragging = false;
-    } else {
+      this._menu?.scrollView?.endDrag(); // opened from a menu row: drop its drag
+    } else if (o.role === 'panel') {
       this._panels.push(o);
     }
   }
 
   /**
-   * Overlay router hook: an overlay closed. Remove it from whichever list holds it.
+   * Overlay router hook: an overlay closed. Remove it from whichever list holds it
+   * (the menu is tracked on its own, so nothing to do there).
    *
    * @param {import('../ui/Overlay.js').Overlay} o @returns {void}
    */
   _overlayClosed(o) {
-    const list = o.modal ? this._modalStack : this._panels;
+    const list = o.role === 'modal' ? this._modalStack : o.role === 'panel' ? this._panels : null;
+    if (!list) return;
     const i = list.indexOf(o);
     if (i >= 0) list.splice(i, 1);
   }
@@ -1420,27 +1441,43 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _toggleMenu() {
-    if (this._modalOpen) return; // a confirm is up; let it resolve first
+    if (this._activeModal) return; // a confirm is up; let it resolve first
     sfx.tick(); // opening or closing the menu always succeeds
-    if (this._menuOpen) this._closeMenu();
+    if (this._menu.open) this._closeMenu();
     else this._openMenu();
   }
 
   /**
-   * Open the menu/scoreboard overlay (no-op if a modal or the menu is up). The
-   * menu button is raised above the backdrop so clicking it again closes the
-   * menu (see _toggleMenu); _closeMenu restores its normal depth.
+   * Open the menu overlay (no-op if a confirm or the menu is up). Content and
+   * navigation come from _renderMenuView (the Menu's `render` callback); the
+   * hamburger is restacked against the card by _raiseMenuButton (its `onLayout`).
    *
    * @returns {void}
    */
   _openMenu() {
-    if (this._menuOpen || this._modalOpen) return;
-    this._menuOpen = true;
-    this._isPanning = false;
-    this._menuDragging = false;
-    this._scrollbarDragging = false;
-    this._buildMenuPanel(); // raises the hamburger above the backdrop when it's clear of the card
-    this._showMainMenu();
+    if (this._menu.open || this._activeModal) return;
+    this._menuView = 'main'; // a fresh open always lands on the main menu
+    this._menu.show();
+  }
+
+  /** Close the menu overlay (its onHidden restores the hamburger). */
+  _closeMenu() {
+    this._menu.hide();
+  }
+
+  /**
+   * Menu `onHidden` hook: restore the hamburger's normal HUD depth/look and cancel
+   * any pending throttled rebuild. Runs however the menu closes (× or hamburger).
+   *
+   * @returns {void}
+   */
+  _onMenuHidden() {
+    this.menuButton.setDepth(10).setAlpha(0.8);
+    this._menuRebuildPending = false;
+    if (this._menuRebuildTimer) {
+      this._menuRebuildTimer.remove();
+      this._menuRebuildTimer = null;
+    }
   }
 
   /**
@@ -1449,13 +1486,13 @@ export class GameScene extends Phaser.Scene {
    * second tap closes the menu (see _toggleMenu). When the card overlaps it (a
    * short screen, where the card nearly fills the height), leave it at its normal
    * HUD depth so the card covers it cleanly instead of the lit icon bleeding on
-   * top — closing is via the card's × there. Called from {@link _buildMenuPanel}
-   * so it's recomputed on every resize/rotation too. Restored by _closeMenu.
+   * top — closing is via the card's × there. Runs after each menu (re)build (the
+   * Menu's `onLayout`), so it tracks resizes/rotations. Restored by _onMenuHidden.
    *
    * @returns {void}
    */
   _raiseMenuButton() {
-    const c = this._menuCard;
+    const c = this._menu.card;
     const b = this.menuButton.getBounds();
     const covered = Phaser.Geom.Intersects.RectangleToRectangle(
       b,
@@ -1473,19 +1510,14 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Re-render the current menu view on the NEXT tick (not inside the current
-   * pointer event, which would destroy the row being tapped and can leave the
-   * drag-scroll flag stuck). Also clears the drag flags immediately as a belt.
+   * pointer event, which would destroy the row being tapped). Used by the dev
+   * toggles and after forgetting scores.
    *
    * @returns {void}
    */
   _rerenderMenu() {
-    this._menuDragging = false;
-    this._scrollbarDragging = false;
     this.time.delayedCall(0, () => {
-      if (!this._menuOpen) return;
-      if (this._menuView === 'detail') this._showPackDetail(this._menuDetail, this._detailFrom);
-      else if (this._menuView === 'packs') this._showPacksAvailable();
-      else this._showMainMenu();
+      if (this._menu.open) this._renderMenuView();
     });
   }
 
@@ -1502,149 +1534,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Build the menu chrome (modal-style, depth 30-32): a dimming backdrop, a
-   * rounded card, a fixed header (title + close, plus Lab/Test toggles when
-   * Config.devTools), a hidden Back button, and a mask-clipped scrollable
-   * content container. Mirrors _showConfirm's camera/cleanup pattern. The list
-   * itself is filled by _showMainMenu / _showPackDetail.
+   * (Re)draw the current menu view into the menu body. Passed to the {@link Menu}
+   * as its `render` callback, so it runs on open, on navigation, and on a resize
+   * rebuild (which the Menu makes scroll-preserving).
    *
    * @returns {void}
    */
-  _buildMenuPanel(animate = true) {
-    const U = Config.ui;
-    const L = this._layout;
-    const cw = Math.min(440, L.w - 2 * L.pad);
-    const ch = Math.min(L.h - 2 * L.pad, 560);
-    const cx0 = (L.w - cw) / 2;
-    const cy0 = (L.h - ch) / 2;
-    this._menuCard = { x: cx0, y: cy0, w: cw, h: ch };
-    this._raiseMenuButton(); // keep the hamburger clickable-to-close, unless the card covers it
-
-    const backdrop = this.add
-      .rectangle(L.w / 2, L.h / 2, L.w, L.h, 0x000000, 0.6)
-      .setDepth(30)
-      .setInteractive(); // swallow clicks on the dimmed area
-    const card = this.add.graphics().setDepth(31);
-    card.fillStyle(U.color.surface, 1).fillRoundedRect(cx0, cy0, cw, ch, U.radius.card);
-    card.lineStyle(2, U.color.surfaceStroke, 1).strokeRoundedRect(cx0, cy0, cw, ch, U.radius.card);
-    // Title text set per view (_showMainMenu / _showPackDetail).
-    this._menuTitle = this.add.text(cx0 + 16, cy0 + 16, '', U.type.title).setDepth(32);
-    const close = this._devButton(
-      cx0 + cw - 20,
-      cy0 + 22,
-      '×',
-      () => this._closeMenu(),
-      '#c0392b',
-      '#e74c3c'
-    ).setDepth(32);
-
-    // Shared menu tooltip (above the content, below modals). Hover/press-driven
-    // via _attachTooltip; destroyed with the menu.
-    this._uiTip = this.add
-      .text(0, 0, '', { fontSize: '14px', color: '#ffffff', backgroundColor: '#000000', padding: { x: 8, y: 5 } })
-      .setOrigin(0, 1)
-      .setDepth(34)
-      .setVisible(false);
-
-    this._menuParts = [backdrop, card, this._menuTitle, close, this._uiTip];
-    this._attachTooltip(close, 'Close the menu.');
-
-    this._menuHeaderBottom = cy0 + 46;
-    this._menuCardBottom = cy0 + ch;
-    this._menuListX = cx0 + 16;
-    this._menuListW = cw - 32;
-    // Back affordance (only shown in a pack's detail view). The list starts below
-    // it there, but higher in the main menu where there's no Back (see
-    // _setMenuListArea), so the main menu doesn't waste that space.
-    this._menuBackBtn = this._devButton(cx0 + 16, this._menuHeaderBottom + 16, '‹ Back', () =>
-      this._menuBack()
-    )
-      .setOrigin(0, 0.5)
-      .setDepth(32)
-      .setVisible(false);
-    this._attachTooltip(this._menuBackBtn, 'Go back.');
-    this._menuParts.push(this._menuBackBtn);
-
-    // Scroll viewport: a geometry mask (off-display-list make.graphics) clips a
-    // content container we shift vertically. The uiCamera is at scroll 0/zoom 1,
-    // so screen px == mask px == container-local px (no coordinate conversion).
-    this._menuScroll = 0;
-    this._menuScrollMax = 0;
-    this._menuMaskGfx = this.make.graphics();
-    this._menuContent = this.add.container(this._menuListX, 0).setDepth(32);
-    this._menuContent.setMask(this._menuMaskGfx.createGeometryMask());
-    this._menuParts.push(this._menuContent);
-    this._setMenuListArea(false); // establishes listTop/H + the mask rect
-
-    // Scrollbar indicator (right edge of the viewport). Shown only when the
-    // content overflows; sized/positioned by _updateScrollbar. Not in the
-    // content container, so it stays put while the list scrolls.
-    this._menuScrollbar = this.add
-      .rectangle(this._menuListX + this._menuListW - 3, this._menuListTop, 4, 20, 0xffffff, 0.45)
-      .setOrigin(0.5, 0.5)
-      .setDepth(32)
-      .setVisible(false);
-    this._menuParts.push(this._menuScrollbar);
-
-    this.cameras.main.ignore(this._menuParts); // HUD-camera only (like _showConfirm)
-
-    for (const part of this._menuParts) {
-      const to = part === backdrop ? 0.6 : 1;
-      if (animate) {
-        part.setAlpha(0);
-        this.tweens.add({ targets: part, alpha: to, duration: 130, ease: 'Sine.Out' });
-      } else {
-        part.setAlpha(to); // resize rebuild: appear at once
-      }
-    }
-  }
-
-  /**
-   * Rebuild the whole menu against the current layout (window resize / device
-   * rotation): tear down the old chrome + content, rebuild without animating, and
-   * re-run the current view, preserving the view/detail/scroll state. See
-   * {@link _finishMenuContent}, which skips its fade and restores the scroll while
-   * a rebuild is in progress.
-   *
-   * @returns {void}
-   */
-  _rebuildMenu() {
-    const savedScroll = this._menuScroll;
-    const view = this._menuView;
-    const detail = this._menuDetail;
-    const from = this._detailFrom;
-    // Tear down the current overlay.
-    this._menuContent.clearMask(true);
-    this._menuMaskGfx.destroy();
-    for (const part of this._menuParts) part.destroy();
-    this._menuDragging = false;
-    this._scrollbarDragging = false;
-    // Rebuild chrome (no fade), then repopulate the same view with scroll kept.
-    this._buildMenuPanel(false);
-    this._restoreScroll = savedScroll; // consumed by _finishMenuContent
-    if (view === 'detail') this._showPackDetail(detail, from);
-    else if (view === 'packs') this._showPacksAvailable();
+  _renderMenuView() {
+    if (this._menuView === 'detail') this._showPackDetail(this._menuDetail, this._detailFrom);
+    else if (this._menuView === 'packs') this._showPacksAvailable();
     else this._showMainMenu();
-  }
-
-  /**
-   * Set the scrollable list's vertical area based on whether the Back row is
-   * shown: the main menu (no Back) starts higher, reclaiming that space; a pack
-   * detail view starts below the Back button. Updates the mask rect and the
-   * content origin. Call from each view before populating it.
-   *
-   * @param {boolean} withBack @returns {void}
-   */
-  _setMenuListArea(withBack) {
-    const listTop = this._menuHeaderBottom + (withBack ? 34 : 10);
-    this._menuListTop = listTop;
-    // Floor the height so an extremely short screen can't collapse the mask.
-    this._menuListH = Math.max(44, this._menuCardBottom - 14 - listTop);
-    this._menuMaskGfx
-      .clear()
-      .fillStyle(0xffffff)
-      .fillRect(this._menuListX, listTop, this._menuListW, this._menuListH);
-    this._menuContent.y = listTop - this._menuScroll;
   }
 
   /**
@@ -1653,29 +1552,26 @@ export class GameScene extends Phaser.Scene {
    * is known here (from boot); other packs show just name + total score from
    * local storage (no probing), deferring their level count to Pack details.
    *
-   * @returns {Promise<void>}
+   * @returns {void}
    */
   _showMainMenu() {
-    if (!this._menuOpen) return; // may be deferred (see the Lab/Test toggles)
+    if (!this._menu.open) return; // may be deferred (see the Lab/Test toggles)
     this._menuView = 'main';
-    this._menuTitle.setText('Main Menu');
-    this._menuBackBtn.setVisible(false);
-    this._menuScroll = 0;
-    this._setMenuListArea(false); // no Back here: start the list higher
-    this._clearMenuContent();
+    this._menu.setTitle('Main Menu');
+    this._menu.beginView(false); // no Back here: start the list higher
     let y = 0;
 
     // Standard menu items first, with About last (as is conventional). Packs
     // Available sits high, right after Help.
-    y += this._menuRow(y, 'Help', '›', {
+    y += this._menu.row(y, 'Help', '›', {
       onTap: () => this._showMessage('How to play', HELP_TEXT),
       tip: 'How to play, and how scoring works.',
     });
-    y += this._menuRow(y, 'Packs Available', '›', {
+    y += this._menu.row(y, 'Packs Available', '›', {
       onTap: () => this._showPacksAvailable(),
       tip: 'Browse all packs and their scores; open one to jump between levels.',
     });
-    y += this._menuRow(y, 'Show title screen', '›', {
+    y += this._menu.row(y, 'Show title screen', '›', {
       // Clear the skip flag so this (and the next boot) lands on the title, then
       // switch scenes. Both scenes are always registered (see main.js).
       onTap: () => {
@@ -1684,32 +1580,53 @@ export class GameScene extends Phaser.Scene {
       },
       tip: 'Replay the intro title screen.',
     });
-    y += this._menuRow(y, 'About', '›', {
+    y += this._menu.row(y, 'About', '›', {
       onTap: () => this._showMessage('About', ABOUT_TEXT),
       tip: 'Credits and the tools behind the game.',
     });
-    y += this._menuRow(y, 'Report a problem', '›', {
+    y += this._menu.row(y, 'Report a problem', '›', {
       onTap: () => diag.showReport(),
       tip: 'Copy a problem report to send to David.',
     });
 
     // Everything below About is the "different" stuff: the current-pack section,
     // then the developer-only Lab/Test toggles tucked at the very bottom.
-    y += this._menuDivider(y);
-    y += this._menuSectionHeader(y, 'Current pack');
+    y += this._menu.divider(y);
+    y += this._menu.sectionHeader(y, 'Current pack');
     y += this._packInfoRows(y, activePackName(), levelCount(), true);
-    y += this._menuContentButton(y, 'Details', {
+    y += this._menu.button(y, 'Details', {
       danger: false,
       onTap: () => this._showPackDetail(activePackManifest(), 'main'),
       tip: 'See every level in this pack and your best on each.',
     });
 
     if (Config.devTools) {
-      y += this._menuDivider(y);
-      y += this._menuToggleRow(y);
+      y += this._menu.divider(y);
+      y += this._menu.toggleRow(
+        y,
+        {
+          label: 'Lab',
+          on: this._labPanel.open,
+          tip: 'Developer tool: show a panel to live-tune slingshot and physics values.',
+          onTap: () => {
+            this._toggleDevPanel();
+            this._rerenderMenu();
+          },
+        },
+        {
+          label: 'Test',
+          on: this._testMode,
+          tip: "Test mode: unlock every level and jump freely, ignoring the normal 'win to advance' rule.",
+          onTap: () => {
+            this._testMode = !this._testMode;
+            this.registry.set('testMode', this._testMode);
+            this._rerenderMenu();
+          },
+        }
+      );
     }
 
-    this._finishMenuContent(y);
+    this._menu.finish(y);
   }
 
   /**
@@ -1721,32 +1638,29 @@ export class GameScene extends Phaser.Scene {
    * @returns {Promise<void>}
    */
   async _showPacksAvailable() {
-    if (!this._menuOpen) return;
+    if (!this._menu.open) return;
     this._menuView = 'packs';
-    this._menuTitle.setText('Packs Available');
-    this._menuBackBtn.setVisible(true);
-    this._menuScroll = 0;
-    this._setMenuListArea(true); // has Back
-    this._clearMenuContent();
+    this._menu.setTitle('Packs Available');
+    this._menu.beginView(true); // has Back
     const U = Config.ui;
     let y = 0;
     const packs = await listPacks();
-    if (!this._menuOpen || this._menuView !== 'packs') return; // closed/changed mid-fetch
+    if (!this._menu.open || this._menuView !== 'packs') return; // closed/changed mid-fetch
     for (const { id, name } of packs) {
       const { total, completed } = scores.packTotal(id);
       const isCurrent = id === activePackId();
-      y += this._menuRow(y, isCurrent ? `${name}  ★` : name, completed > 0 ? String(total) : '-', {
+      y += this._menu.row(y, isCurrent ? `${name}  ★` : name, completed > 0 ? String(total) : '-', {
         valueColor: U.color.accentText,
         onTap: async () => {
           const m = await loadPackManifest(id);
-          if (this._menuOpen) this._showPackDetail(m, 'packs');
+          if (this._menu.open) this._showPackDetail(m, 'packs');
         },
         tip:
           (isCurrent ? "★ marks the pack you're currently playing. " : '') +
           "Open to see this pack's details. The number is your total best score across it ('-' if you haven't cleared any).",
       });
     }
-    this._finishMenuContent(y);
+    this._menu.finish(y);
   }
 
   /**
@@ -1763,18 +1677,18 @@ export class GameScene extends Phaser.Scene {
     // Compact info rows (no touch target needed) to keep the section tight.
     const compact = { rowH: 28, fontSize: '15px' };
     let y = y0;
-    y += this._menuRow(y, 'Pack name', packName, {
+    y += this._menu.row(y, 'Pack name', packName, {
       ...compact,
       current: isCurrent,
       valueColor: U.color.text,
       tip: isCurrent ? "The name of the pack you're currently playing" : 'The name of this pack',
     });
-    y += this._menuRow(y, 'Levels', String(count), { ...compact, tip: 'Number of levels in this pack.' });
-    y += this._menuRow(y, 'Completed', String(completed), {
+    y += this._menu.row(y, 'Levels', String(count), { ...compact, tip: 'Number of levels in this pack.' });
+    y += this._menu.row(y, 'Completed', String(completed), {
       ...compact,
       tip: "Levels in this pack you've cleared at least once.",
     });
-    y += this._menuRow(y, 'Pack total', completed > 0 ? String(total) : '-', {
+    y += this._menu.row(y, 'Pack total', completed > 0 ? String(total) : '-', {
       ...compact,
       valueColor: U.color.accentText,
       tip: "Sum of your best results across this pack (higher is better). '-' means none cleared yet.",
@@ -1797,20 +1711,17 @@ export class GameScene extends Phaser.Scene {
     this._menuView = 'detail';
     this._menuDetail = manifest;
     this._detailFrom = from;
-    this._menuTitle.setText('Pack details');
-    this._menuBackBtn.setVisible(true);
-    this._menuScroll = 0;
-    this._setMenuListArea(true); // leave room for the Back button
-    this._clearMenuContent();
+    this._menu.setTitle('Pack details');
+    this._menu.beginView(true); // leave room for the Back button
     const U = Config.ui;
     const isCurrentPack = manifest.id === activePackId();
     let y = 0;
 
-    y += this._menuSectionHeader(y, 'Pack');
+    y += this._menu.sectionHeader(y, 'Pack');
     y += this._packInfoRows(y, manifest.name, manifest.levelIds.length, isCurrentPack);
 
-    y += this._menuDivider(y);
-    y += this._menuSectionHeader(y, 'Levels');
+    y += this._menu.divider(y);
+    y += this._menu.sectionHeader(y, 'Levels');
     let hasScores = false;
     manifest.levelIds.forEach((file, i) => {
       const entry = scores.entryFor(`${manifest.id}/${file}`);
@@ -1840,7 +1751,7 @@ export class GameScene extends Phaser.Scene {
           ? 'Not cleared yet. Tap to play this level.'
           : 'Locked: clear the previous level first (or turn on Test mode).';
       }
-      y += this._menuRow(y, `Level ${i + 1}`, value, {
+      y += this._menu.row(y, `Level ${i + 1}`, value, {
         enabled: allowed,
         valueColor: best != null ? U.color.accentText : U.color.textDisabled,
         current: isCurrentPack && i === currentIndex(),
@@ -1851,7 +1762,7 @@ export class GameScene extends Phaser.Scene {
     // "Forget pack scores" at the bottom of the scrollable list (shaded out when
     // the pack has no scores).
     y += Config.ui.space.sm;
-    y += this._menuContentButton(y, 'Forget pack scores', {
+    y += this._menu.button(y, 'Forget pack scores', {
       danger: true,
       enabled: hasScores,
       onTap: () => this._confirmForgetPack(manifest),
@@ -1859,34 +1770,7 @@ export class GameScene extends Phaser.Scene {
         ? "Erase your saved best scores for this pack. This can't be undone."
         : 'No saved scores in this pack to forget yet.',
     });
-    this._finishMenuContent(y);
-  }
-
-  /**
-   * A section header row (uppercase, muted) added to the scrollable content.
-   *
-   * @param {number} y @param {string} text @returns {number} Space consumed.
-   */
-  _menuSectionHeader(y, text) {
-    const t = this.add
-      .text(2, y + 16, text.toUpperCase(), Config.ui.type.header)
-      .setOrigin(0, 0.5);
-    this._menuContent.add(t);
-    return 30;
-  }
-
-  /**
-   * A thin divider rule added to the scrollable content, with padding around it.
-   *
-   * @param {number} y @returns {number} Space consumed.
-   */
-  _menuDivider(y) {
-    const U = Config.ui;
-    const g = this.add
-      .rectangle(0, y + U.space.sm, this._menuListW, 1, U.color.divider, U.color.dividerAlpha)
-      .setOrigin(0, 0);
-    this._menuContent.add(g);
-    return U.space.md;
+    this._menu.finish(y);
   }
 
   /**
@@ -1988,299 +1872,6 @@ export class GameScene extends Phaser.Scene {
     else proceed();
   }
 
-  /**
-   * One menu list row (added to the scrollable content container): a subtle
-   * background, a left label, and a right-aligned value. If `onTap` is given the
-   * row is interactive (with an off-clip guard, since masks don't clip input).
-   *
-   * @param {number} localY  Top of the row in container-local space.
-   * @param {string} label
-   * @param {string} value  Right-aligned value ('' to omit).
-   * @param {{onTap?:(()=>void)|null, enabled?:boolean, valueColor?:string,
-   *   current?:boolean, tip?:string|null, rowH?:number, fontSize?:string}} [opts]
-   * @returns {number} The row height (so callers can advance `y`).
-   */
-  _menuRow(localY, label, value, opts = {}) {
-    const U = Config.ui;
-    const {
-      onTap = null,
-      enabled = true,
-      valueColor = U.color.textMuted,
-      current = false,
-      tip = null,
-      rowH = 44, // compact info rows pass a smaller height
-      fontSize = '17px',
-    } = opts;
-    const w = this._menuListW;
-    const midY = localY + (rowH - 6) / 2;
-    const bg = this.add
-      .rectangle(0, localY, w, rowH - 6, U.color.row, U.color.rowAlpha)
-      .setOrigin(0, 0);
-    const parts = [bg];
-    // "You are here" accent bar on the left edge.
-    if (current) parts.push(this.add.rectangle(0, localY, 3, rowH - 6, U.color.accent, 1).setOrigin(0, 0));
-    parts.push(
-      this.add
-        .text(14, midY, label, { fontSize, color: enabled ? U.color.text : U.color.textDisabled })
-        .setOrigin(0, 0.5)
-    );
-    if (value) {
-      parts.push(
-        // Top/bottom padding gives the text canvas room: Phaser under-measures
-        // emoji height (✓/★/🔒), so without it the glyph's top is clipped.
-        this.add
-          .text(w - 12, midY, value, { fontSize, color: valueColor, padding: { top: 6, bottom: 6 } })
-          .setOrigin(1, 0.5)
-      );
-    }
-    this._menuContent.add(parts);
-    if (onTap || tip) bg.setInteractive(onTap ? { useHandCursor: true } : {});
-    if (tip) this._attachTooltip(bg, tip);
-    if (onTap) {
-      bg.on('pointerover', () => bg.setFillStyle(U.color.row, U.color.rowHoverAlpha));
-      bg.on('pointerout', () => bg.setFillStyle(U.color.row, U.color.rowAlpha));
-      this._wireTap(bg, onTap);
-    }
-    return rowH;
-  }
-
-  /**
-   * Wire a tap handler onto a menu content object, with the shared guards: ignore
-   * a scrollbar grab, an off-clip (scrolled-out) press, or a drag-scroll; play the
-   * click sound. Used by every tappable menu element.
-   *
-   * @param {Phaser.GameObjects.GameObject} obj @param {() => void} onTap
-   * @returns {void}
-   */
-  _wireTap(obj, onTap) {
-    obj.on('pointerup', (p) => {
-      if (this._scrollbarDragging) return; // grabbing the scrollbar, not tapping
-      if (p.y < this._menuListTop || p.y > this._menuListTop + this._menuListH) return; // scrolled out
-      if (Math.abs(p.y - this._menuDownY) > 6) return; // a drag-scroll, not a tap
-      sfx.tick();
-      onTap();
-    });
-  }
-
-  /**
-   * A single row holding the Lab and Test dev toggles side by side (each a
-   * tappable half with its On/Off state), so they don't cost two full rows.
-   *
-   * @param {number} localY @returns {number} Row height.
-   */
-  _menuToggleRow(localY) {
-    const U = Config.ui;
-    const rowH = 44;
-    const half = this._menuListW / 2;
-    const midY = localY + (rowH - 6) / 2;
-    const cell = (x0, label, on, tip, onTap) => {
-      const bg = this.add.rectangle(x0, localY, half - 3, rowH - 6, U.color.row, U.color.rowAlpha).setOrigin(0, 0);
-      const lbl = this.add.text(x0 + 12, midY, label, { fontSize: '16px', color: U.color.text }).setOrigin(0, 0.5);
-      const val = this.add
-        .text(x0 + half - 3 - 12, midY, on ? 'On' : 'Off', {
-          fontSize: '16px',
-          color: on ? U.color.accentText : U.color.textMuted,
-        })
-        .setOrigin(1, 0.5);
-      this._menuContent.add([bg, lbl, val]);
-      bg.setInteractive({ useHandCursor: true });
-      this._attachTooltip(bg, tip);
-      bg.on('pointerover', () => bg.setFillStyle(U.color.row, U.color.rowHoverAlpha));
-      bg.on('pointerout', () => bg.setFillStyle(U.color.row, U.color.rowAlpha));
-      this._wireTap(bg, onTap);
-    };
-    cell(0, 'Lab', this._labPanel.open, 'Developer tool: show a panel to live-tune slingshot and physics values.', () => {
-      this._toggleDevPanel();
-      this._rerenderMenu();
-    });
-    cell(half, 'Test', this._testMode, "Test mode: unlock every level and jump freely, ignoring the normal 'win to advance' rule.", () => {
-      this._testMode = !this._testMode;
-      this.registry.set('testMode', this._testMode);
-      this._rerenderMenu();
-    });
-    return rowH;
-  }
-
-  /**
-   * A centered button inside the scrollable content. `danger` styles it red
-   * (destructive, e.g. "Forget pack scores"); otherwise neutral gray (e.g.
-   * "Details"). Disabled = grayed and inert (a tooltip still shows). Same
-   * off-clip / drag-vs-tap guards as _menuRow.
-   *
-   * @param {number} localY  Top of the button in container-local space.
-   * @param {string} label
-   * @param {{onTap?:(()=>void)|null, enabled?:boolean, tip?:string|null, danger?:boolean}} [opts]
-   * @returns {number} The vertical space the button occupies.
-   */
-  _menuContentButton(localY, label, opts = {}) {
-    const U = Config.ui;
-    const { onTap = null, enabled = true, tip = null, danger = false } = opts;
-    const h = 32;
-    const cx = this._menuListW / 2;
-    const midY = localY + h / 2;
-    const base = danger ? (enabled ? U.color.danger : U.color.dangerOff) : 0x3a3a44;
-    const hover = danger ? U.color.dangerHover : 0x50505a;
-    const rect = this.add
-      .rectangle(cx, midY, Math.min(240, this._menuListW), h, base, 1)
-      .setOrigin(0.5);
-    const txt = this.add
-      .text(cx, midY, label, { fontSize: '15px', color: enabled ? '#ffffff' : '#777' })
-      .setOrigin(0.5);
-    this._menuContent.add([rect, txt]);
-    const tappable = enabled && onTap;
-    if (tappable || tip) rect.setInteractive(tappable ? { useHandCursor: true } : {});
-    if (tip) this._attachTooltip(rect, tip);
-    if (tappable) {
-      rect.on('pointerover', () => rect.setFillStyle(hover, 1));
-      rect.on('pointerout', () => rect.setFillStyle(base, 1));
-      this._wireTap(rect, onTap);
-    }
-    return h;
-  }
-
-  /**
-   * Wire a hover/press tooltip onto an interactive game object, using the shared
-   * menu tooltip (`_uiTip`) and the on-screen floating-label placement.
-   *
-   * @param {Phaser.GameObjects.GameObject} target @param {string} text
-   * @returns {void}
-   */
-  _attachTooltip(target, text) {
-    const show = () => this._showUiTip(text);
-    const hide = () => this._hideUiTip();
-    target.on('pointerover', show);
-    target.on('pointerdown', show);
-    target.on('pointerout', hide);
-    target.on('pointerup', hide);
-  }
-
-  /** Show the shared menu tooltip near the pointer, word-wrapped and on-screen. */
-  _showUiTip(text) {
-    if (!this._uiTip) return;
-    const p = this.input.activePointer;
-    // Masks don't clip input, so a scrolled-off row's hit area can leak outside
-    // the card; only show a tooltip when the pointer is actually over the card.
-    if (this._menuCard && !this._overMenuPanel(p)) return;
-    const maxW = Math.min(320, this.scale.width - 40);
-    this._uiTip.setWordWrapWidth(maxW, true).setText(text).setVisible(true);
-    this._placeFloatingLabel(this._uiTip, p.x, p.y);
-  }
-
-  /** Hide the shared menu tooltip. */
-  _hideUiTip() {
-    if (this._uiTip) this._uiTip.setVisible(false);
-  }
-
-  /** Destroy the current list rows (keeps the container + mask). */
-  _clearMenuContent() {
-    if (this._menuContent) this._menuContent.removeAll(true);
-  }
-
-  /**
-   * Finalise a populated list: set the scroll range, keep the world camera off
-   * the new rows, and fade them in.
-   *
-   * @param {number} contentH  Total height of the rows just added.
-   * @returns {void}
-   */
-  _finishMenuContent(contentH) {
-    if (!this._menuContent) return; // menu closed mid-populate
-    this._menuContentH = contentH;
-    this._menuScrollMax = Math.max(0, contentH - this._menuListH);
-    // On a resize rebuild (_restoreScroll set), keep the prior scroll and don't
-    // re-fade; on a normal open/navigation, start at the current scroll and fade.
-    const rebuilding = this._restoreScroll != null;
-    const target = rebuilding ? this._restoreScroll : this._menuScroll;
-    this._restoreScroll = null;
-    this._menuScroll = Phaser.Math.Clamp(target, 0, this._menuScrollMax);
-    this._menuContent.y = this._menuListTop - this._menuScroll;
-    this.cameras.main.ignore(this._menuContent); // re-walk: new children too
-    if (!rebuilding) {
-      this._menuContent.setAlpha(0);
-      this.tweens.add({ targets: this._menuContent, alpha: 1, duration: 150, ease: 'Sine.Out' });
-    }
-    this._updateScrollbar();
-  }
-
-  /**
-   * Scroll the list by `delta` screen pixels, clamped to its range.
-   *
-   * @param {number} delta
-   * @returns {void}
-   */
-  _menuScrollBy(delta) {
-    this._menuScroll = Phaser.Math.Clamp(this._menuScroll + delta, 0, this._menuScrollMax);
-    this._menuContent.y = this._menuListTop - this._menuScroll;
-    this._updateScrollbar();
-  }
-
-  /**
-   * Size/position the scrollbar thumb for the current scroll, or hide it when
-   * the content fits. Gives a clear, draggable-feeling cue that there's more.
-   *
-   * @returns {void}
-   */
-  _updateScrollbar() {
-    const bar = this._menuScrollbar;
-    if (!bar) return;
-    if (this._menuScrollMax <= 0) {
-      bar.setVisible(false);
-      return;
-    }
-    const viewH = this._menuListH;
-    const thumbH = Math.max(24, viewH * (viewH / this._menuContentH));
-    this._menuThumbH = thumbH; // for scrollbar-grab mapping (see _overScrollbar)
-    const t = this._menuScroll / this._menuScrollMax;
-    const y = this._menuListTop + t * (viewH - thumbH);
-    bar.setSize(4, thumbH).setPosition(this._menuListX + this._menuListW - 3, y + thumbH / 2).setVisible(true);
-  }
-
-  /**
-   * @param {Phaser.Input.Pointer} p
-   * @returns {boolean} true if the pointer is over the open menu card.
-   */
-  _overMenuPanel(p) {
-    const c = this._menuCard;
-    return p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h;
-  }
-
-  /**
-   * @param {Phaser.Input.Pointer} p
-   * @returns {boolean} true if the pointer is in the scrollbar grab zone (the
-   *   right edge of the list) while the list actually overflows.
-   */
-  _overScrollbar(p) {
-    if (this._menuScrollMax <= 0) return false;
-    const right = this._menuListX + this._menuListW;
-    return (
-      p.x >= right - 16 &&
-      p.x <= right + 6 &&
-      p.y >= this._menuListTop &&
-      p.y <= this._menuListTop + this._menuListH
-    );
-  }
-
-  /** Tear down the menu overlay (mirrors {@link Overlay#hide}). */
-  _closeMenu() {
-    if (!this._menuOpen) return;
-    this._menuContent.clearMask(true);
-    this._menuMaskGfx.destroy();
-    for (const part of this._menuParts) part.destroy();
-    this._menuParts = null;
-    this._menuContent = null;
-    this._uiTip = null; // was destroyed with _menuParts
-    this._menuOpen = false;
-    this._menuDragging = false;
-    this._scrollbarDragging = false;
-    this._restoreScroll = null;
-    this._menuRebuildPending = false;
-    if (this._menuRebuildTimer) {
-      this._menuRebuildTimer.remove();
-      this._menuRebuildTimer = null;
-    }
-    this.menuButton.setDepth(10).setAlpha(0.8); // restore normal HUD depth/look
-  }
-
   // --- Input --------------------------------------------------------------
 
   /**
@@ -2296,25 +1887,14 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', (p) => {
       sfx.unlock(); // browsers need a user gesture to start audio
       this._stopCameraGlide(); // any press cancels an in-progress settle pan/zoom
-      // The top modal owns input while up (its buttons handle their own taps).
+      // A blocking overlay owns input while up (its buttons handle their own
+      // taps); a press starts its scroll drag. Confirms sit above the menu.
       if (this._activeModal) {
         this._activeModal.onPointerDown(p);
         return;
       }
       if (this._menuOpen) {
-        // The menu backdrop swallows game input; a press on the list starts a
-        // drag-scroll (its own buttons handle their taps). _menuDownY lets a row
-        // tell a tap from a drag (see _menuRow).
-        this._menuDownY = p.y;
-        // Grabbing the scrollbar drags the thumb (direct); grabbing the list body
-        // drags the content (natural). Both track from the grab point (no jump).
-        if (this._overScrollbar(p)) {
-          this._scrollbarDragging = true;
-          this._menuDragLastY = p.y;
-        } else if (this._overMenuPanel(p)) {
-          this._menuDragging = true;
-          this._menuDragLastY = p.y;
-        }
+        this._menu.onPointerDown(p);
         return;
       }
       if (this._pinchDist) return; // a two-finger pinch owns the gesture
@@ -2364,15 +1944,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (this._menuOpen) {
-        if (this._scrollbarDragging) {
-          // Thumb drag: move the thumb WITH the pointer (down -> content down).
-          const range = this._menuListH - (this._menuThumbH || 0);
-          if (range > 0) this._menuScrollBy(((p.y - this._menuDragLastY) * this._menuScrollMax) / range);
-          this._menuDragLastY = p.y;
-        } else if (this._menuDragging) {
-          this._menuScrollBy(this._menuDragLastY - p.y); // content drag: natural (inverted)
-          this._menuDragLastY = p.y;
-        }
+        this._menu.onPointerMove(p); // drives its scroll drag, if any
         return;
       }
       for (const panel of this._panels) if (panel.onPointerMove(p)) return; // its scroll drag, if any
@@ -2398,8 +1970,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (this._menuOpen) {
-        this._menuDragging = false;
-        this._scrollbarDragging = false;
+        this._menu.onPointerUp(p); // ends its scroll drag, if any
         return;
       }
       for (const panel of this._panels) if (panel.onPointerUp(p)) return; // ends its scroll drag
@@ -2458,7 +2029,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (this._menuOpen) {
-        this._menuScrollBy(dy); // wheel scrolls the menu list, not the arena
+        this._menu.onWheel(p, dy); // wheel scrolls the menu list, not the arena
         return;
       }
       for (const panel of this._panels) if (panel.onWheel(p, dy)) return; // scrolls it, not the arena
