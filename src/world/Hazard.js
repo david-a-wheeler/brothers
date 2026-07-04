@@ -75,16 +75,20 @@ export class Hazard extends Entity {
     /**
      * Pre-launch preview arrow: shows the heading and (by its spin rate) the
      * speed this hazard will move at, so the player can plan before starting.
-     * Cleared at kickoff in {@link onPlayStart}.
+     * Cleared at kickoff in {@link onPlayStart}. A hazard with zero initial speed
+     * isn't moving at first, so it has no direction to preview — no arrow.
      * @type {Phaser.GameObjects.Container|null}
      */
-    this._indicator = directionArrow(scene, {
-      x: def.x,
-      y: def.y,
-      angleDeg: this.angleDeg,
-      speed: this.speed,
-      offset: this.radius + Config.anim.arrow.gap,
-    });
+    this._indicator =
+      this.speed > 0
+        ? directionArrow(scene, {
+            x: def.x,
+            y: def.y,
+            angleDeg: this.angleDeg,
+            speed: this.speed,
+            offset: this.radius + Config.anim.arrow.gap,
+          })
+        : null;
   }
 
   /**
