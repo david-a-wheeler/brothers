@@ -404,12 +404,17 @@ export class TitleScene extends Phaser.Scene {
     // a unit (see _layoutDemo). Added back-to-front; the geometry the demo uses is
     // now fixed local coordinates (_computeGeo), independent of screen size.
     this.stage = this.add.container(0, 0).setDepth(1);
+    // A container renders its children in insertion order and ignores their per-
+    // object depth, so each brother's parts must be added back-to-front to match
+    // the depth stack they use in-game: body, then face, then the facial feature
+    // ON TOP (David's glasses at depth 7 sit over the face at depth 6). Feature
+    // after face — otherwise the face emoji paints over the glasses and hides them.
     this.stage.add(
       [
         this.band, this.glow,
         this.goal.gfx, this.goal.reticle,
-        this.ken.go, this.ken.feature, this.ken.face,
-        this.david.go, this.david.feature, this.david.face,
+        this.ken.go, this.ken.face, this.ken.feature,
+        this.david.go, this.david.face, this.david.feature,
         ...this._labels.map((l) => l.txt),
       ].filter(Boolean)
     );
