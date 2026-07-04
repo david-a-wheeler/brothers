@@ -71,6 +71,10 @@ export class TitleScene extends Phaser.Scene {
     // are already cleared by _stopMusic on the way out).
     this._soundOn = false;
     this._audioPaused = false;
+    // Pressing Play to leave sets this and never clears it (we navigate away before
+    // pointerout), so it would leak into the next visit and suppress that visit's
+    // "tap for sound" (see _wireAudio). Clear it so each visit starts fresh.
+    this._playArmed = false;
 
     this._buildBackground();
     this._buildTitle();
@@ -190,13 +194,25 @@ export class TitleScene extends Phaser.Scene {
     });
     this._playHit.on('pointerout', () => {
       this._playHover = false;
+      this._playArmed = false; // dragged off Play: a release elsewhere may start audio
       this._playText.setScale(1);
       this._drawPlayButton();
     });
-    this._playHit.on('pointerdown', () => this._playText.setScale(0.96));
+    this._playHit.on('pointerdown', () => {
+      this._playText.setScale(0.96);
+      // Suppress the "first tap starts the title audio" behaviour for THIS press:
+      // pressing Play means "go play the game", not "start the music" (see
+      // _wireAudio). Cleared on pointerout so a drag-off still enables sound.
+      this._playArmed = true;
+    });
     // On pressup: remember the choice, silence the music, enter the game.
     this._playHit.on('pointerup', () => {
       this._playText.setScale(1);
+      // If Play is the first interaction, _wireAudio's kick was suppressed, so the
+      // context is still locked and the tick would be silent — unlock here (a
+      // silent warm-up) purely so the tick sounds as button feedback. This starts
+      // NO music: _startMusic only runs from kick, which stays suppressed.
+      sfx.unlock();
       sfx.tick();
       setSkipTitle(true);
       this._stopMusic();
@@ -725,17 +741,21 @@ export class TitleScene extends Phaser.Scene {
   /** @returns {void} */
   _wireAudio() {
     // Unlock audio + start the music on the first interaction, then retire the
-    // "tap for sound" hint. We listen on SEVERAL event types and retry the unlock
-    // on each until the context is actually running: on mobile the first
-    // `pointerdown` often doesn't resume the AudioContext (a `pointerup`/
-    // `touchend` does). _startMusic then starts the loop the moment the context
-    // reaches 'running' (its statechange handler), whichever event resumes it. A
-    // DOM-level listener catches the press even over the Play button (which stops
-    // Phaser propagation).
+    // "tap for sound" hint. Fire on press-UP (`pointerup`/`touchend`), never
+    // press-down: a press that goes to the Play button means "play the game", and
+    // its pointerdown arms `_playArmed` so the release here is skipped — the game
+    // starts in silence instead of the music wheeping up as we leave. (Press-up is
+    // also where mobile actually resumes the AudioContext; a bare `pointerdown`
+    // often doesn't.) We listen on both event types and retry the unlock on each
+    // until the context is running; _startMusic then starts the loop the moment
+    // the context reaches 'running' (its statechange handler). A DOM-level
+    // listener catches the press even over the Play button (which stops Phaser
+    // propagation).
     const canvas = this.game.canvas;
-    const events = ['pointerdown', 'pointerup', 'touchend'];
+    const events = ['pointerup', 'touchend'];
     const stop = () => events.forEach((ev) => canvas.removeEventListener(ev, kick));
     const kick = () => {
+      if (this._playArmed) return; // this press is a Play tap → jump to the game, no title audio
       this._soundOn = true; // the "tap for sound" happened: the demo band may sound now
       sfx.unlock();
       this._startMusic();
