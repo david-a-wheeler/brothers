@@ -42,8 +42,16 @@ export class Brothers {
     /** @type {import('./world/Brother.js').Brother} The frozen brother that unfreezes on impact. */
     this.anchor = this.ken;
 
-    /** The elastic band, drawn fresh each frame (see {@link update}). */
+    /**
+     * The elastic band, drawn fresh each frame (see {@link update}). Its depth
+     * is toggled in {@link update}: normally 4 (under the faces, so the faces
+     * read), but raised above the faces/features when a pin is placed so the
+     * off-centre tether stays legible.
+     */
     this.band = scene.add.graphics().setDepth(4);
+
+    /** The pin dot(s), drawn each frame above the band (see {@link update}). */
+    this.pins = scene.add.graphics().setDepth(9);
 
     /** Pulsing halo ring marking whichever ball can currently be moved. */
     this._glow = this._createGlow();
@@ -76,6 +84,7 @@ export class Brothers {
     );
 
     this.anchor.go.setStatic(true);
+    this.anchor.go.setRotation(0); // keep the static anchor axis-aligned (pin offsets are world-axis)
     this.setExpressions('idle');
     this._indicateLauncher();
     this._updateDraggable();
@@ -234,7 +243,33 @@ export class Brothers {
       sfx.updateBand((gap - rest) / (Config.slingshot.maxPull - rest));
     }
 
-    drawBand(this.band, this.david.go.x, this.david.go.y, this.ken.go.x, this.ken.go.y);
+    // Draw the tether to each brother's PIN (the launcher's is always centre, so
+    // this one path covers both the normal centre-to-centre band and a pinned,
+    // off-centre one). When a pin is placed, lift the band above the faces (and
+    // draw the pin dot above that) so the off-centre attach stays legible.
+    const pinned = this.david.pinPlaced || this.ken.pinPlaced;
+    this.band.setDepth(pinned ? 8 : 4);
+    drawBand(this.band, this.david.pinX, this.david.pinY, this.ken.pinX, this.ken.pinY);
+    this._drawPins();
+  }
+
+  /**
+   * Draw the small near-black pin dot on each brother whose pin is off-centre
+   * (both, if both are placed — a placed pin on either end reads more clearly on
+   * a phone, where a finger hides much of a ball). Above the band; see
+   * {@link Config.pin}.
+   *
+   * @returns {void}
+   */
+  _drawPins() {
+    const g = this.pins;
+    g.clear();
+    const { color, radius } = Config.pin;
+    for (const b of [this.david, this.ken]) {
+      if (!b.pinPlaced) continue;
+      g.fillStyle(color, 1);
+      g.fillCircle(b.pinX, b.pinY, radius);
+    }
   }
 
   /**
@@ -249,12 +284,13 @@ export class Brothers {
    */
   _applyPullOnlyTether() {
     const t = Config.tether;
-    const gap = Phaser.Math.Distance.Between(
-      this.david.go.x,
-      this.david.go.y,
-      this.ken.go.x,
-      this.ken.go.y
-    );
+    // In 'settle' mode the constraint attaches at the anchor's pin, so the slack
+    // test must measure between the actual attach points (launcher centre →
+    // anchor pin); otherwise it's the usual centre-to-centre gap.
+    const live = this.world.level.pinResetOn === 'settle';
+    const ax = live ? this.anchor.pinX : this.anchor.go.x;
+    const ay = live ? this.anchor.pinY : this.anchor.go.y;
+    const gap = Phaser.Math.Distance.Between(this.launcher.go.x, this.launcher.go.y, ax, ay);
     // Re-sync length/damping from Config each frame so live dev-panel tweaks
     // (and not just stiffness) take effect on the existing constraint.
     this._tether.length = t.restLength;
@@ -377,7 +413,9 @@ export class Brothers {
     // wall rectangle (no inflation), so a band that merely passes close by — but
     // doesn't touch — is allowed. Both balls being clear is already covered by
     // the launcher checks above and by the band's endpoints sitting on them.
-    const band = new Phaser.Geom.Line(l.x, l.y, a.x, a.y);
+    // The band ends at the anchor's PIN (where the ball actually flies), not its
+    // centre, so an off-centre pin is validated along its real line.
+    const band = new Phaser.Geom.Line(l.x, l.y, this.anchor.pinX, this.anchor.pinY);
     return walls.some(({ def: w }) =>
       Phaser.Geom.Intersects.LineToRectangle(
         band,
@@ -387,7 +425,8 @@ export class Brothers {
   }
 
   /**
-   * Release the slingshot: fire the launcher toward the anchor. The anchor
+   * Release the slingshot: fire the launcher toward the anchor's PIN (its centre
+   * unless the player moved the pin off-centre — see pin-plan.md). The anchor
    * stays frozen until they collide (see {@link snap}).
    *
    * @returns {number} The pull distance in pixels (the scene uses this to
@@ -395,9 +434,12 @@ export class Brothers {
    */
   release() {
     const l = this.launcher.go;
-    const a = this.anchor.go;
+    const anchor = this.anchor;
     const s = Config.slingshot;
-    const pull = Phaser.Math.Distance.Between(l.x, l.y, a.x, a.y);
+    // Aim at the pin, not the centre: the pull magnitude (→ power) and the fire
+    // angle are both measured launcher → pin, so an off-centre pin bends the
+    // shot and changes its strength.
+    const pull = Phaser.Math.Distance.Between(l.x, l.y, anchor.pinX, anchor.pinY);
 
     // Block a too-short pull, OR a release where the ball would start already
     // overlapping something solid (the other brother, a wall, or the board
@@ -407,7 +449,7 @@ export class Brothers {
       return 0;
     }
 
-    const angle = Phaser.Math.Angle.Between(l.x, l.y, a.x, a.y);
+    const angle = Phaser.Math.Angle.Between(l.x, l.y, anchor.pinX, anchor.pinY);
     // Eased launch between a non-zero floor and the max: normalise the pull and
     // apply a >1 exponent so gentle pulls stay gentle, but `minSpeed` ensures
     // even the shortest valid pull still carries the pair a meaningful distance.
@@ -416,6 +458,12 @@ export class Brothers {
     this._aiming = false;
     this._refusalXs.forEach((x) => x.setVisible(false));
     sfx.stopBand();
+    // In 'settle' mode the pin also becomes a live, off-centre tether attachment
+    // for the whole flight (the anchor is axis-aligned while static, so the
+    // world offset is usable directly as the body-local constraint point).
+    if (this.world.level.pinResetOn === 'settle' && anchor.pinPlaced) {
+      this._setAnchorTetherPoint(anchor.pinOffsetX, anchor.pinOffsetY);
+    }
     l.setStatic(false);
     // Matter normalises velocity to per-frame units regardless of sub-step
     // count, so `speed` is passed through unscaled.
@@ -423,6 +471,39 @@ export class Brothers {
     this.setExpressions('flight');
     this._hideIndicator();
     return pull;
+  }
+
+  /**
+   * Point the tether's anchor-side attachment at an offset from the anchor's
+   * centre (body-local px), leaving the launcher side at centre. Which of the
+   * constraint's two points is the anchor's depends on the current role, since
+   * the David/Ken bodies are fixed as bodyA/bodyB but the roles swap.
+   *
+   * @param {number} offsetX @param {number} offsetY
+   * @returns {void}
+   */
+  _setAnchorTetherPoint(offsetX, offsetY) {
+    const pt = { x: offsetX, y: offsetY };
+    const zero = { x: 0, y: 0 };
+    if (this.anchor.go.body === this._tether.bodyA) {
+      this._tether.pointA = pt;
+      this._tether.pointB = zero;
+    } else {
+      this._tether.pointB = pt;
+      this._tether.pointA = zero;
+    }
+  }
+
+  /** Return both tether attach points to the bodies' centres. @returns {void} */
+  _clearTetherPoints() {
+    this._tether.pointA = { x: 0, y: 0 };
+    this._tether.pointB = { x: 0, y: 0 };
+  }
+
+  /** Recentre the anchor's pin and drop any off-centre tether attach. @returns {void} */
+  _resetAnchorPin() {
+    this.anchor.resetPin();
+    this._clearTetherPoints();
   }
 
   /**
@@ -440,6 +521,9 @@ export class Brothers {
   snap() {
     if (!this.anchor.go.body.isStatic) return;
     this.anchor.go.setStatic(false);
+    // In 'impact' mode the pin was aim-only; recentre it now so the rest of the
+    // shot is centre-based. ('settle' mode keeps it live until the balls rest.)
+    if (this.world.level.pinResetOn === 'impact') this._resetAnchorPin();
     this.setBothFaces(FACES.collision);
     this.scene.time.delayedCall(150, () => this.setExpressions('flight'));
   }
@@ -485,12 +569,17 @@ export class Brothers {
    * @returns {void}
    */
   swapRoles() {
+    // In 'settle' mode the pin stayed live through the flight; the balls are now
+    // at rest, so recentre it (and drop the off-centre tether attach) here. In
+    // 'impact' mode it was already recentred at the snap — this is then a no-op.
+    this._resetAnchorPin();
     for (const b of [this.david, this.ken]) {
       b.go.setVelocity(0, 0);
       b.go.setAngularVelocity(0);
     }
     [this.launcher, this.anchor] = [this.anchor, this.launcher];
     this.anchor.go.setStatic(true);
+    this.anchor.go.setRotation(0); // keep the static anchor axis-aligned (pin offsets are world-axis)
     this.launcher.go.setStatic(false);
     this._settleFrames = 0;
     this.setExpressions('idle');

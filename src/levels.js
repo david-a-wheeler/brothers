@@ -19,6 +19,8 @@ import { recordLevelCount } from './scores.js';
 const DEFAULTS = {
   moves: 6,
   wallRestitution: 0.6,
+  pinEnabled: true, // whether the anchor's aiming pin can be moved (see pin-plan.md)
+  pinResetOn: 'impact', // when a placed pin recentres: 'impact' (aim-only) or 'settle' (live off-centre tether)
 };
 
 /**
@@ -37,6 +39,8 @@ const DEFAULTS = {
  * @property {{width:number, height:number}} arena
  * @property {number} moves
  * @property {number} wallRestitution
+ * @property {boolean} pinEnabled  Whether the anchor's aiming pin can be moved.
+ * @property {'impact'|'settle'} pinResetOn  When a placed pin recentres (see pin-plan.md).
  * @property {EntityDef[]} objects  Every placed entity (brothers, goals, teleporters, walls, …).
  */
 
@@ -75,6 +79,8 @@ export function loadTiledLevel(map) {
     arena,
     moves: mapProps.moves ?? DEFAULTS.moves,
     wallRestitution: mapProps.wallRestitution ?? DEFAULTS.wallRestitution,
+    pinEnabled: mapProps.pinEnabled ?? DEFAULTS.pinEnabled,
+    pinResetOn: mapProps.pinResetOn ?? DEFAULTS.pinResetOn,
     objects: [],
   };
 

@@ -130,6 +130,10 @@ export class GameScene extends Phaser.Scene {
     this._aimBlocked = false;
     /** Last finger-spread distance while pinch-zooming (0 = not pinching). */
     this._pinchDist = 0;
+    /** True between an anchor pointerdown and pointerup while editing its pin. */
+    this._pinning = false;
+    /** True once a pin press has been promoted to a fine-drag (drives the HUD). */
+    this._pinDragging = false;
     /** Camera-pan drag state. */
     this._isPanning = false;
     this._panLast = { x: 0, y: 0 };
@@ -2595,9 +2599,10 @@ export class GameScene extends Phaser.Scene {
       if (this._overDevPanel(p)) return; // press is on the dev panel
 
       // A press on the launcher is handled by Phaser's drag system (the
-      // 'gameobjectdown' grab + 'drag' handler below), which sets isAiming;
-      // anything else on the board pans the camera.
-      if (this.isAiming) return; // a launcher grab just started
+      // 'gameobjectdown' grab + 'drag' handler below), which sets isAiming; a
+      // press on the anchor starts a pin gesture (sets `_pinning`); anything
+      // else on the board pans the camera.
+      if (this.isAiming || this._pinning) return; // a launcher grab / pin gesture just started
       this._isPanning = true;
       this._panLast.x = p.x;
       this._panLast.y = p.y;
@@ -2605,18 +2610,25 @@ export class GameScene extends Phaser.Scene {
 
     // Grab: a press on the current launcher (Phaser's own hit-testing, so it
     // works across the world/HUD cameras). The drag itself is Phaser's, below.
-    this.input.on('gameobjectdown', (_p, go) => {
+    this.input.on('gameobjectdown', (p, go) => {
       sfx.unlock(); // fires before scene 'pointerdown', so unlock audio here too
       if (this._modalOpen || this._menuOpen || this._pinchDist) return;
       if (this.status === 'ENDED' || this.phase !== 'AIMING') return;
-      if (go !== this.brothers.launcher.go) return;
-      this.isAiming = true;
-      this._isPanning = false; // never pan while grabbing (guards event ordering)
-      this._aimState = 'grabbed';
-      this.brothers.beginAim();
-      sfx.grab(); // soft "tick" so it's clear the launcher is grabbed
-      this._hideCursorForGrab(); // hide cursor (the label still reveals on press — see below)
-      this._refreshHud(); // "X's turn, grabbed"
+      if (go === this.brothers.launcher.go) {
+        this.isAiming = true;
+        this._isPanning = false; // never pan while grabbing (guards event ordering)
+        this._aimState = 'grabbed';
+        this.brothers.beginAim();
+        sfx.grab(); // soft "tick" so it's clear the launcher is grabbed
+        this._hideCursorForGrab(); // hide cursor (the label still reveals on press — see below)
+        this._refreshHud(); // "X's turn, grabbed"
+        return;
+      }
+      // A press on the anchor (when the level allows it) starts a pin gesture —
+      // a tap/double-tap snaps the pin, a drag fine-positions it. Like the
+      // launcher grab, this fires before the scene 'pointerdown' pan router, so
+      // setting `_pinning` here lets that router skip panning (see below).
+      if (go === this.brothers.anchor.go && this._pinEditable()) this._beginPinGesture(p);
     });
 
     this.input.on('pointermove', (p) => {
@@ -2646,6 +2658,7 @@ export class GameScene extends Phaser.Scene {
         }
         return;
       }
+      if (this._pinning) return this._updatePinGesture(p); // moving the anchor's pin, not the camera
       if (this.isAiming) return; // Phaser's drag moves the launcher; don't pan
       if (this._isPanning) {
         // Drag the world under the finger: scroll opposite to the move, scaled
@@ -2670,6 +2683,10 @@ export class GameScene extends Phaser.Scene {
       if (this._menuOpen) {
         this._menuDragging = false;
         this._scrollbarDragging = false;
+        return;
+      }
+      if (this._pinning) {
+        this._finishPinGesture(p);
         return;
       }
       this._isPanning = false;
@@ -2750,6 +2767,149 @@ export class GameScene extends Phaser.Scene {
     const io = this.brothers.launcher.go.input;
     if (io) io.cursor = '';
     this.input.manager.canvas.style.cursor = 'default';
+  }
+
+  // --- Anchor pin editing (see pin-plan.md) --------------------------------
+
+  /**
+   * Can the anchor's aiming pin be edited right now? The level must allow it,
+   * and it's only sensible while the current player is aiming and hasn't grabbed
+   * the launcher (editing mid-flight or after the game ends would confuse).
+   *
+   * @returns {boolean}
+   */
+  _pinEditable() {
+    return (
+      this.level.pinEnabled &&
+      this.phase === 'AIMING' &&
+      !this.isAiming &&
+      this.status !== 'ENDED' &&
+      !this._modalOpen &&
+      !this._menuOpen &&
+      !this._pinchDist
+    );
+  }
+
+  /**
+   * Begin a pin gesture on the anchor: snapshot the pin's offset (to revert an
+   * over-long drag) and the pointer's press position/time (to tell a tap from a
+   * drag, and to run the double-tap window). Movement is tracked in
+   * {@link _updatePinGesture}; the gesture resolves in {@link _finishPinGesture}.
+   *
+   * @param {Phaser.Input.Pointer} p
+   * @returns {void}
+   */
+  _beginPinGesture(p) {
+    this._pinning = true;
+    this._pinDragging = false;
+    this._isPanning = false;
+    const b = this.brothers.anchor;
+    b.pinDownOffsetX = b.pinOffsetX;
+    b.pinDownOffsetY = b.pinOffsetY;
+    b.pinDownX = p.x; // screen coords: the tap→drag threshold is a finger-move distance
+    b.pinDownY = p.y;
+  }
+
+  /**
+   * While a pin press moves: promote it to a fine-drag once the finger travels
+   * past the threshold (suppressing the name label and switching the HUD to
+   * "Moving X's pin"), then track the pin under the pointer — clamped inside the
+   * ball by {@link Brother#placePin}. A drag dragged out past
+   * `revertRadiusMult × radius` is read as a tooltip request instead: the pin
+   * reverts and the gesture ends.
+   *
+   * @param {Phaser.Input.Pointer} p
+   * @returns {void}
+   */
+  _updatePinGesture(p) {
+    const b = this.brothers.anchor;
+    if (!this._pinDragging) {
+      const moved = Phaser.Math.Distance.Between(p.x, p.y, b.pinDownX, b.pinDownY);
+      if (moved < Config.pin.dragThreshold) return; // still might be a tap
+      this._pinDragging = true;
+      this._infoSuppressed = true; // keep the name label from flashing during the drag
+      this.hideEntityInfo(this._infoEntity);
+      this._refreshHud(); // -> "Moving X's pin"
+    }
+    const wp = this.cameras.main.getWorldPoint(p.x, p.y);
+    const ox = wp.x - b.go.x;
+    const oy = wp.y - b.go.y;
+    if (Math.hypot(ox, oy) > b.go.radius * Config.pin.revertRadiusMult) {
+      b.placePin(b.pinDownOffsetX, b.pinDownOffsetY); // over-long: treat as tooltip, revert
+      this._endPinGesture();
+      return;
+    }
+    b.placePin(ox, oy);
+  }
+
+  /**
+   * Resolve a pin gesture on release. A drag has already positioned the pin, so
+   * it just ends. A tap (no drag) either recenters the pin — if it lands within
+   * the double-tap window of the previous tap — or snaps it to the nearest
+   * simple point (centre or one of the 8 compass edges) to the tap location.
+   *
+   * @param {Phaser.Input.Pointer} p
+   * @returns {void}
+   */
+  _finishPinGesture(p) {
+    const b = this.brothers.anchor;
+    if (!this._pinDragging) {
+      const now = this.time.now;
+      if (now - b.lastTapTime <= Config.pin.doubleTapMs) {
+        b.placePin(0, 0); // double-tap: recenter
+        b.lastTapTime = 0; // consume, so a third tap isn't a second double-tap
+      } else {
+        const wp = this.cameras.main.getWorldPoint(p.x, p.y);
+        this._snapPinToNearest(b, wp.x, wp.y);
+        b.lastTapTime = now;
+      }
+    }
+    this._endPinGesture();
+  }
+
+  /**
+   * Snap the pin to whichever "simple point" — the centre or one of the 8
+   * compass-edge points at the ball's radius — is nearest the given world
+   * location (where the player tapped on the ball).
+   *
+   * @param {import('../world/Brother.js').Brother} b
+   * @param {number} worldX @param {number} worldY
+   * @returns {void}
+   */
+  _snapPinToNearest(b, worldX, worldY) {
+    const tx = worldX - b.go.x;
+    const ty = worldY - b.go.y;
+    const r = b.go.radius;
+    let best = [0, 0]; // centre
+    let bestD = tx * tx + ty * ty;
+    for (let k = 0; k < 8; k++) {
+      const ang = (k * Math.PI) / 4; // 8 compass directions
+      const cx = Math.cos(ang) * r;
+      const cy = Math.sin(ang) * r;
+      const d = (cx - tx) ** 2 + (cy - ty) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = [cx, cy];
+      }
+    }
+    b.placePin(best[0], best[1]);
+  }
+
+  /** Abort an in-progress pin gesture (e.g. a pinch begins), reverting the pin. */
+  _cancelPinGesture() {
+    const b = this.brothers.anchor;
+    b.placePin(b.pinDownOffsetX, b.pinDownOffsetY);
+    this._endPinGesture();
+  }
+
+  /** Clear pin-gesture state; if it was a drag, restore the label + HUD. */
+  _endPinGesture() {
+    this._pinning = false;
+    if (this._pinDragging) {
+      this._pinDragging = false;
+      this._infoSuppressed = false;
+      this._refreshHud(); // back to the normal turn prompt
+    }
   }
 
   /**
@@ -2872,6 +3032,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this._isPanning = false; // pinch takes over from a single-finger pan
+    if (this._pinning) this._cancelPinGesture(); // a second finger ends a pin drag (revert)
     if (this.isAiming) {
       this.isAiming = false;
       this.brothers.cancelAim();
@@ -3201,6 +3362,12 @@ export class GameScene extends Phaser.Scene {
     } else if (this.phase === 'MOVING') {
       text = 'Moving';
       color = launcher.color;
+    } else if (this._pinDragging) {
+      // Unusual swap: the HUD normally names the launcher (the current player),
+      // but while fine-dragging the pin it names the ANCHOR whose pin is moving.
+      const anchor = this.brothers.anchor;
+      text = `Moving ${anchor.name}'s pin`;
+      color = anchor.color;
     } else {
       // AIMING: the prompt tracks the grab sub-state (and, while dragging,
       // whether the current spot is launchable).
