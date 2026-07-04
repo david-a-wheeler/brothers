@@ -1,6 +1,7 @@
 import { Config } from '../config.js';
 import { sfx } from '../Sfx.js';
 import { Overlay } from './Overlay.js';
+import { chipButton } from './chipButton.js';
 
 /**
  * The menu / scoreboard overlay: a modal card (backdrop + rounded panel) with a
@@ -60,9 +61,10 @@ export class Menu extends Overlay {
     card.fillStyle(U.color.surface, 1).fillRoundedRect(cx0, cy0, cw, ch, U.radius.card);
     card.lineStyle(2, U.color.surfaceStroke, 1).strokeRoundedRect(cx0, cy0, cw, ch, U.radius.card);
     this._title = add.text(cx0 + 16, cy0 + 16, '', U.type.title).setDepth(32);
-    const close = this.scene
-      ._devButton(cx0 + cw - 20, cy0 + 22, '×', () => this.hide(), '#c0392b', '#e74c3c')
-      .setDepth(32);
+    const close = chipButton(this.scene, cx0 + cw - 20, cy0 + 22, '×', () => this.hide(), {
+      bg: '#c0392b',
+      bgHover: '#e74c3c',
+    }).setDepth(32);
 
     // Shared hover tooltip (above the content, below modals).
     this._tip = add
@@ -80,8 +82,7 @@ export class Menu extends Overlay {
     this._listW = cw - 32;
     // Back (only shown in a pack's detail / packs view). The list starts below it
     // there, but higher when it's hidden (see beginView) so no space is wasted.
-    this._backBtn = this.scene
-      ._devButton(cx0 + 16, this._headerBottom + 16, '‹ Back', () => this._opts.onBack())
+    this._backBtn = chipButton(this.scene, cx0 + 16, this._headerBottom + 16, '‹ Back', () => this._opts.onBack())
       .setOrigin(0, 0.5)
       .setDepth(32)
       .setVisible(false);

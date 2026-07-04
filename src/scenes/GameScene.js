@@ -23,6 +23,7 @@ import * as diag from '../diag.js';
 import { Modal } from '../ui/Modal.js';
 import { Panel } from '../ui/Panel.js';
 import { Menu } from '../ui/Menu.js';
+import { chipButton } from '../ui/chipButton.js';
 
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
 const HELP_TEXT = [
@@ -1151,8 +1152,8 @@ export class GameScene extends Phaser.Scene {
 
     this._devRows = this._devParams.map((param, i) => {
       const rowY = 8 + i * rowH;
-      const minus = this._devButton(24, rowY, '-', () => this._adjustParam(param, -1), undefined, undefined, dragged);
-      const plus = this._devButton(w - 24, rowY, '+', () => this._adjustParam(param, 1), undefined, undefined, dragged);
+      const minus = chipButton(this, 24, rowY, '-', () => this._adjustParam(param, -1), { guard: dragged });
+      const plus = chipButton(this, w - 24, rowY, '+', () => this._adjustParam(param, 1), { guard: dragged });
       // Click the value to type one directly (prompt works desktop + mobile).
       const value = this.add
         .text(44, rowY, '', { fontSize: '14px', color: '#ffffff' })
@@ -1177,8 +1178,8 @@ export class GameScene extends Phaser.Scene {
 
     // "More turns" lets us keep experimenting past a win/loss (see _moreTurns).
     view.add([
-      this._devButton(w / 2, moreTurnsY, 'More turns', () => this._moreTurns(), undefined, undefined, dragged),
-      this._devButton(w / 2, resetY, 'Reset parameters', () => this._resetParams(), undefined, undefined, dragged),
+      chipButton(this, w / 2, moreTurnsY, 'More turns', () => this._moreTurns(), { guard: dragged }),
+      chipButton(this, w / 2, resetY, 'Reset parameters', () => this._resetParams(), { guard: dragged }),
     ]);
 
     return resetY + 26; // full height of the scrollable body
@@ -1200,36 +1201,6 @@ export class GameScene extends Phaser.Scene {
     param.obj[param.key] = Math.min(param.max ?? Infinity, Math.max(param.min, v));
     this._devRows.forEach((r) => this._setDevRowText(r));
     this.brothers?._applyDavidPhysique(); // apply if this was a David size/mass row
-  }
-
-  /**
-   * A small button for the dev panel (steppers, close, reset).
-   *
-   * @param {number} x @param {number} y @param {string} label @param {() => void} onClick
-   * @param {string} [bg] Background colour. @param {string} [bgHover] Hover colour.
-   * @param {(() => boolean)|null} [guard] If it returns true on release, skip the
-   *   tap (used so a scroll-drag over a Lab control doesn't also trigger it).
-   * @returns {Phaser.GameObjects.Text}
-   */
-  _devButton(x, y, label, onClick, bg = '#444444', bgHover = '#666666', guard = null) {
-    const btn = this.add
-      .text(x, y, label, {
-        fontSize: '16px',
-        color: '#ffffff',
-        backgroundColor: bg,
-        padding: { x: 8, y: 2 },
-      })
-      .setOrigin(0.5, 0.5)
-      .setDepth(21)
-      .setInteractive({ useHandCursor: true });
-    btn.on('pointerover', () => btn.setBackgroundColor(bgHover));
-    btn.on('pointerout', () => btn.setBackgroundColor(bg));
-    btn.on('pointerup', () => {
-      if (guard && guard()) return; // release ended a scroll-drag, not a tap
-      sfx.tick();
-      onClick();
-    });
-    return btn;
   }
 
   /**

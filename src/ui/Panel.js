@@ -1,4 +1,5 @@
 import { Overlay } from './Overlay.js';
+import { chipButton } from './chipButton.js';
 
 /**
  * A modeless, anchored panel (e.g. the Lab tuning panel). Unlike {@link Modal} /
@@ -53,9 +54,10 @@ export class Panel extends Overlay {
     // the menu that toggled this panel is still up over it).
     const bg = add.rectangle(x, y, w, 100, 0x000000, 0.72).setOrigin(0, 0).setDepth(o.bgDepth);
     const title = add.text(x + 10, y + 8, o.title, { fontSize: '14px', color: '#ffd479' }).setDepth(o.titleDepth);
-    const close = this.scene
-      ._devButton(x + w - 20, y + 14, '×', () => this.hide(), '#c0392b', '#e74c3c')
-      .setDepth(o.closeDepth);
+    const close = chipButton(this.scene, x + w - 20, y + 14, '×', () => this.hide(), {
+      bg: '#c0392b',
+      bgHover: '#e74c3c',
+    }).setDepth(o.closeDepth);
     this.parts = [bg, title, close];
 
     // Fill the scroll body (local coords: 0,0 = viewport top-left) and get its
