@@ -48,6 +48,8 @@ export class Overlay {
     this._minCardH = 120;
     /** @type {((cardH:number)=>void)|null} */
     this._relayout = null;
+    /** True while we've overridden the canvas cursor (title/resize hover). */
+    this._cursorSet = false;
   }
 
   /**
@@ -77,6 +79,10 @@ export class Overlay {
   /** Close and destroy the overlay. */
   hide() {
     if (!this.open) return;
+    if (this._cursorSet) {
+      this.scene.input.setDefaultCursor('default'); // don't leave a move/resize cursor behind
+      this._cursorSet = false;
+    }
     this._teardownParts();
     if (this.scrollView) {
       this.scrollView.destroy();
@@ -217,7 +223,26 @@ export class Overlay {
       sv.drag(p);
       return true;
     }
+    this._updateHoverCursor(p);
     return this.modal;
+  }
+
+  /**
+   * Show a windowing cursor while hovering the drag/resize handles: `move` over
+   * the title bar, `ns-resize` over the bottom edge. Elsewhere, restore the
+   * default once (so a modeless panel doesn't keep a stale cursor over the arena).
+   *
+   * @param {Phaser.Input.Pointer} p @returns {void}
+   */
+  _updateHoverCursor(p) {
+    const c = this._overResizeEdge(p) ? 'ns-resize' : this._overTitleBar(p) ? 'move' : null;
+    if (c) {
+      this.scene.input.setDefaultCursor(c);
+      this._cursorSet = true;
+    } else if (this._cursorSet) {
+      this.scene.input.setDefaultCursor('default');
+      this._cursorSet = false;
+    }
   }
 
   /** @param {Phaser.Input.Pointer} p @returns {boolean} true if owned. */
