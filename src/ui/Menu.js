@@ -78,9 +78,20 @@ export class Menu extends Overlay {
     this._listX = cx0 + 16;
     this._listW = cw - 32;
     // Draggable like a window: the card (== this.card) clamps on-screen; the
-    // header strip (minus the × zone) is the drag handle.
+    // header strip (minus the × zone) is the drag handle. Resizable by the bottom.
     this._windowRect = this.card;
     this._titleBar = { x: cx0, y: cy0, w: cw - 44, h: this._headerBottom - cy0 };
+    this._resizable = true;
+    this._minCardH = 160;
+    this._relayout = (cardH) => {
+      card.clear();
+      card.fillStyle(U.color.surface, 1).fillRoundedRect(cx0, cy0, cw, cardH, U.radius.card);
+      card.lineStyle(2, U.color.surfaceStroke, 1).strokeRoundedRect(cx0, cy0, cw, cardH, U.radius.card);
+      this._cardBottom = this._windowRect.y + cardH;
+      const rg = this.scrollView.region;
+      this._listH = Math.max(44, this._cardBottom - 14 - rg.y);
+      this.scrollView.relayout({ x: rg.x, y: rg.y, w: rg.w, h: this._listH });
+    };
     // Back (only shown in a pack's detail / packs view). The list starts below it
     // there, but higher when it's hidden (see beginView) so no space is wasted.
     this._backBtn = chipButton(this.scene, cx0 + 16, this._headerBottom + 16, '‹ Back', () => this._opts.onBack())
@@ -107,6 +118,7 @@ export class Menu extends Overlay {
   _afterTranslate(dx, dy) {
     this._headerBottom += dy;
     this._cardBottom += dy;
+    this._listTop += dy;
     this._listX += dx;
   }
 

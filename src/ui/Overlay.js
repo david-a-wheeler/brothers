@@ -41,6 +41,13 @@ export class Overlay {
     this._windowRect = null;
     this._titleBar = null;
     this._windowDragging = false;
+    /** Bottom-edge resize: a subclass opts in by setting `_resizable`, a minimum
+     *  card height, and `_relayout(cardH)` (redraw the card + re-fit the body). */
+    this._resizable = false;
+    this._resizing = false;
+    this._minCardH = 120;
+    /** @type {((cardH:number)=>void)|null} */
+    this._relayout = null;
   }
 
   /**
@@ -166,9 +173,14 @@ export class Overlay {
    * @returns {boolean} true if this overlay owns the press (scene must not pan).
    */
   onPointerDown(p) {
-    // A press on the title bar drags the whole overlay (like a window).
+    // A press on the title bar drags the whole overlay; on the bottom edge,
+    // resizes it (like a window).
     if (this._overTitleBar(p)) {
       this._beginWindowDrag(p);
+      return true;
+    }
+    if (this._overResizeEdge(p)) {
+      this._beginResize(p);
       return true;
     }
     const sv = this.scrollView;
@@ -196,6 +208,10 @@ export class Overlay {
       this._dragWindow(p);
       return true;
     }
+    if (this._resizing) {
+      this._doResize(p);
+      return true;
+    }
     const sv = this.scrollView;
     if (sv && sv.dragging) {
       sv.drag(p);
@@ -206,8 +222,9 @@ export class Overlay {
 
   /** @param {Phaser.Input.Pointer} p @returns {boolean} true if owned. */
   onPointerUp(p) {
-    if (this._windowDragging) {
+    if (this._windowDragging || this._resizing) {
       this._windowDragging = false;
+      this._resizing = false;
       return true;
     }
     const sv = this.scrollView;
@@ -296,6 +313,41 @@ export class Overlay {
       this._titleBar.y += dy;
     }
     this._afterTranslate(dx, dy);
+  }
+
+  // --- bottom-edge resizing (opt-in via `_resizable`) ---------------------
+
+  /**
+   * @param {Phaser.Input.Pointer} p
+   * @returns {boolean} true if `p` is on the bottom-edge resize strip (derived
+   *   from the current card rect, so it tracks drags and prior resizes).
+   */
+  _overResizeEdge(p) {
+    if (!this._resizable) return false;
+    const r = this._windowRect;
+    const bottom = r.y + r.h;
+    return p.y >= bottom - 8 && p.y <= bottom + 6 && p.x >= r.x && p.x <= r.x + r.w;
+  }
+
+  /** Begin a resize, recording the pointer's offset from the bottom edge. */
+  _beginResize(p) {
+    this._resizing = true;
+    this._resizeGrab = this._windowRect.y + this._windowRect.h - p.y;
+  }
+
+  /**
+   * Resize the card's height so its bottom follows the pointer, clamped between a
+   * minimum and the screen bottom, then re-lay-out via the subclass {@link _relayout}.
+   *
+   * @param {Phaser.Input.Pointer} p @returns {void}
+   */
+  _doResize(p) {
+    const r = this._windowRect;
+    const maxH = this.scene._layout.h - r.y; // keep the bottom on-screen
+    const newH = Phaser.Math.Clamp(p.y + this._resizeGrab - r.y, this._minCardH, maxH);
+    if (newH === r.h) return;
+    r.h = newH;
+    this._relayout?.(newH);
   }
 
   /**

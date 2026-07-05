@@ -67,6 +67,20 @@ export class ScrollView {
     return [this.container, this.scrollbar, this.hscrollbar];
   }
 
+  /** @returns {{x:number,y:number,w:number,h:number}} a copy of the current viewport rect. */
+  get region() {
+    return { ...this._region };
+  }
+
+  /**
+   * Re-fit to a new viewport rect, keeping the same content size (e.g. the owning
+   * overlay was resized). @param {{x:number,y:number,w:number,h:number}} region
+   * @returns {void}
+   */
+  relayout(region) {
+    this.layout({ ...region }, this._contentH, this._contentW);
+  }
+
   /**
    * Add a child in local coordinates (local 0,0 = viewport top-left).
    *

@@ -70,6 +70,15 @@ export class Panel extends Overlay {
     this._titleBar = { x, y, w: w - 40, h: o.headerH };
     this.scrollView.layout({ x, y: contentTop, w, h: viewH }, contentH);
 
+    // Resizable by the bottom edge: grow/shrink the backing rect and the viewport.
+    this._resizable = true;
+    this._minCardH = o.headerH + 60;
+    this._relayout = (cardH) => {
+      bg.setSize(w, cardH);
+      const rg = this.scrollView.region;
+      this.scrollView.relayout({ x: rg.x, y: rg.y, w: rg.w, h: cardH - o.headerH });
+    };
+
     this.scene.cameras.main.ignore(this.parts); // HUD camera only
     this._fadeIn(animate);
   }

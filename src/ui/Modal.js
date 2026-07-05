@@ -139,10 +139,12 @@ export class Modal extends Overlay {
     const bodyViewH = bodyTxt ? Math.max(0, Math.min(fullBodyH, maxPh - chromeH)) : 0;
     const ph = chromeH + bodyViewH;
 
+    const cardLeft = cx - pw / 2;
+    const cardTop = cy - ph / 2;
     const backdrop = this._backdrop(0.82, 40);
     const panel = add.graphics().setDepth(41);
-    panel.fillStyle(U.color.surface, 1).fillRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, U.radius.card);
-    panel.lineStyle(2, U.color.surfaceStroke, 1).strokeRoundedRect(cx - pw / 2, cy - ph / 2, pw, ph, U.radius.card);
+    panel.fillStyle(U.color.surface, 1).fillRoundedRect(cardLeft, cardTop, pw, ph, U.radius.card);
+    panel.lineStyle(2, U.color.surfaceStroke, 1).strokeRoundedRect(cardLeft, cardTop, pw, ph, U.radius.card);
 
     const top = cy - ph / 2 + pad;
     titleTxt.setPosition(cx, top);
@@ -170,6 +172,22 @@ export class Modal extends Overlay {
 
     const btnObjs = this._layoutButtons(cx, cy + ph / 2 - pad - btnH / 2, buttons);
     this.parts.push(...btnObjs);
+
+    // A scrollable modal is resizable by its bottom edge: redraw the card taller/
+    // shorter, move the button row to the new bottom, and re-fit the body region.
+    if (bodyTxt) {
+      this._resizable = true;
+      this._minCardH = chromeH + 40;
+      this._relayout = (cardH) => {
+        const bottom = this._windowRect.y + cardH;
+        panel.clear();
+        panel.fillStyle(U.color.surface, 1).fillRoundedRect(cardLeft, cardTop, pw, cardH, U.radius.card);
+        panel.lineStyle(2, U.color.surfaceStroke, 1).strokeRoundedRect(cardLeft, cardTop, pw, cardH, U.radius.card);
+        for (const b of btnObjs) b.y = bottom - pad - btnH / 2;
+        const rg = this.scrollView.region;
+        this.scrollView.relayout({ x: rg.x, y: rg.y, w: rg.w, h: cardH - chromeH });
+      };
+    }
 
     this.scene.cameras.main.ignore(this.parts); // HUD camera only
     this._fadeIn(animate);
