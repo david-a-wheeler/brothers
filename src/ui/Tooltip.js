@@ -85,15 +85,21 @@ export class Tooltip {
     const up = (p) => {
       if (p?.wasTouch) this._hide(target);
     };
+    // If the target is destroyed while its tip shows (e.g. a menu row cleared on
+    // navigation, or the close button on close), no pointer-out fires — hide so
+    // the shared label doesn't linger.
+    const gone = () => this._hide(target);
     target.on('pointerover', show);
     target.on('pointerdown', show);
     target.on('pointerout', out);
     target.on('pointerup', up);
+    target.once('destroy', gone);
     return () => {
       target.off('pointerover', show);
       target.off('pointerdown', show);
       target.off('pointerout', out);
       target.off('pointerup', up);
+      target.off('destroy', gone);
     };
   }
 

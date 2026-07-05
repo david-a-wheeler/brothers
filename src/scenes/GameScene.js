@@ -884,7 +884,6 @@ export class GameScene extends Phaser.Scene {
       render: () => this._renderMenuView(),
       onBack: () => this._menuBack(),
       onLayout: () => this._raiseMenuButton(),
-      placeLabel: (label, x, y) => this._placeFloatingLabel(label, x, y),
     });
     this._menu.onHidden = () => this._onMenuHidden();
 
@@ -2243,32 +2242,6 @@ export class GameScene extends Phaser.Scene {
    */
   get _infoAllowed() {
     return !this._modalOpen && !this._menuOpen && !this._infoSuppressed;
-  }
-
-  /**
-   * Position an origin-(0,1) label near the pointer but fully on-screen: prefer
-   * above-right, flip to the roomier side of an edge (left / below), then clamp
-   * so the whole box stays within the viewport. The label's text (and wrap) must
-   * already be set so its size is known. Shared by the entity info label and the
-   * menu tooltip.
-   *
-   * @param {Phaser.GameObjects.Text} t
-   * @param {number} px @param {number} py  Pointer position (screen px).
-   * @returns {void}
-   */
-  _placeFloatingLabel(t, px, py) {
-    const pad = 6;
-    const W = this.scale.width;
-    const H = this.scale.height;
-    const w = t.width; // includes the label's own padding
-    const h = t.height;
-    let x = px + 14;
-    if (x + w > W - pad) x = px - 14 - w; // flip left
-    let top = py - 8 - h;
-    if (top < pad) top = py + 14; // flip below
-    x = Phaser.Math.Clamp(x, pad, Math.max(pad, W - pad - w));
-    top = Phaser.Math.Clamp(top, pad, Math.max(pad, H - pad - h));
-    t.setPosition(x, top + h); // origin (0,1): position is the box's bottom-left
   }
 
   /**
