@@ -323,7 +323,7 @@ export class GameScene extends Phaser.Scene {
     ];
     // Icons sit on a full-height row below any compact text rows (in wide mode
     // there are none, so the icons share the single row with the edge text).
-    // Their tooltips are placed on reveal (see _placeHudTip), not here.
+    // Their tooltips are the shared service, positioned on reveal, not here.
     const iconRowY = L.textRows * L.textRow + rh / 2;
     const startX = cx - ((icons.length - 1) * L.gap) / 2;
     icons.forEach((ic, i) => ic.setDisplaySize(L.iconSize, L.iconSize).setPosition(startX + i * L.gap, iconRowY));
@@ -374,7 +374,7 @@ export class GameScene extends Phaser.Scene {
       L.mode === 'narrow' ? L.textRow * 1.5 : L.mode === 'compact' ? L.textRow / 2 : L.rowHeight / 2;
     const total = stats.reduce((s, e) => s + e.width, 0) + gap * (stats.length - 1);
     // Right edge of the group: the HUD edge (wide/compact) or centred (narrow).
-    // Each stat's tooltip is placed on reveal (see _placeHudTip), not here.
+    // Each stat's tooltip is the shared service, positioned on reveal, not here.
     let x = L.mode === 'narrow' ? L.w / 2 + total / 2 : L.w - L.pad;
     for (let i = stats.length - 1; i >= 0; i--) {
       stats[i].setOrigin(1, 0.5).setPosition(x, y);
@@ -383,19 +383,26 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Reveal a HUD tooltip centred on `anchorX`, just below the ribbon. Word-wraps
-   * it to the screen width so it never runs off the edge (long labels on a narrow
-   * phone), then clamps its position on-screen. Shared by every HUD tooltip (the
-   * turn text, the right-hand stats, and the icons).
+   * Attach a HUD tooltip to `target` via the shared Tooltip service: anchored
+   * centred below the ribbon (a shared baseline, evaluated live so it tracks the
+   * 1/2/3-row layout across resizes), and dismissed on release — HUD icons are
+   * click-to-act buttons, so a hint that lingers after the click reads as stale.
+   * Wording is a string, or a function for labels that change with state.
    *
-   * @param {Phaser.GameObjects.Text} tip @param {number} anchorX @returns {void}
+   * @param {Phaser.GameObjects.GameObject} target
+   * @param {string | (() => string)} textOrFn
+   * @returns {void}
    */
-  _placeHudTip(tip, anchorX) {
-    const L = this._layout;
-    tip.setWordWrapWidth(L.w - 2 * L.pad, true); // wrap to fit the screen
-    const half = tip.width / 2;
-    const x = Phaser.Math.Clamp(anchorX, half + L.pad, L.w - L.pad - half);
-    tip.setPosition(x, L.hudHeight + 6).setVisible(true);
+  _attachHudTip(target, textOrFn) {
+    this.tip.attach(target, textOrFn, {
+      place: 'anchor',
+      anchorY: () => this._hudHeight + 6,
+      hideOnUp: true,
+      // No HUD tips while an overlay owns the screen (the HUD analog of
+      // _infoAllowed). Matters for the menu button, which stays raised and
+      // hoverable above the backdrop while the menu is open.
+      clip: () => !this._modalOpen && !this._menuOpen,
+    });
   }
 
   /**
@@ -429,24 +436,15 @@ export class GameScene extends Phaser.Scene {
       this.hudBar,
       this.hudBorder,
       this.turnText,
-      this.turnTooltip,
       this.packText,
-      this.packTooltip,
       this.bestText,
-      this.bestTooltip,
       this.leftText,
-      this.leftTooltip,
       this.restartButton,
-      this.restartTooltip,
       this.attractGlow,
       this.prevButton,
-      this.prevTooltip,
       this.nextButton,
-      this.nextTooltip,
       this.statusIcon,
-      this.statusTooltip,
       this.menuButton,
-      this.menuTooltip,
       this.tip.label,
       this.bannerPanel,
       this.banner,
@@ -705,38 +703,18 @@ export class GameScene extends Phaser.Scene {
     this.turnText = this.add.text(20, 18, '', { fontSize: '22px' }).setDepth(10).setInteractive();
     // A general explanation of the left-hand entry, revealed on hover/press. Kept
     // deliberately state-agnostic ("play state" covers non-turn conditions like
-    // game over). Positioned from turnText's live bounds on reveal (its width and
-    // placement change with the state string and layout).
-    this.turnTooltip = this.add
-      .text(0, 0, 'Active brother and current play state', {
-        fontSize: '15px',
-        color: '#ffffff',
-        backgroundColor: '#000000',
-        padding: { x: 8, y: 4 },
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(11)
-      .setVisible(false);
-    const revealTurnTip = () => this._placeHudTip(this.turnTooltip, this.turnText.getCenter().x);
-    const hideTurnTip = () => this.turnTooltip.setVisible(false);
-    this.turnText.on('pointerover', revealTurnTip);
-    this.turnText.on('pointerout', hideTurnTip);
-    this.turnText.on('pointerdown', (_p, _x, _y, e) => {
-      e?.stopPropagation(); // don't let the press reach the aim/pan router
-      revealTurnTip();
-    });
-    this.turnText.on('pointerup', hideTurnTip);
+    // game over).
+    this._attachHudTip(this.turnText, 'Active brother and current play state');
+    this.turnText.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
     // Right-hand stats — Pack / Best / #Left — each its own interactive text with
     // a hover/press tooltip (see _buildHudStat), laid out as a right-aligned group
     // by _layoutRightGroup and filled with values in _refreshHud. The pack name is
     // fixed for the scene (switching packs restarts it), so it's baked in here.
-    [this.packText, this.packTooltip] = this._buildHudStat(
-      `Total best results of current pack (${activePackName()})`
-    );
-    [this.bestText, this.bestTooltip] = this._buildHudStat(
+    this.packText = this._buildHudStat(`Total best results of current pack (${activePackName()})`);
+    this.bestText = this._buildHudStat(
       'Best result on this level: the most turns ever left when you won'
     );
-    [this.leftText, this.leftTooltip] = this._buildHudStat('Turns left in the current game');
+    this.leftText = this._buildHudStat('Turns left in the current game');
 
     // Restart button: the clockwise-arrow icon, vertically centred in the
     // ribbon. Clicking opens a confirmation modal (see _showConfirm).
@@ -746,18 +724,6 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0.8)
       .setInteractive({ useHandCursor: true });
 
-    // Tooltip shown on hover or press (hidden on release / pointer-out).
-    this.restartTooltip = this.add
-      .text(Config.view.width / 2, h + 12, 'Restart Level', {
-        fontSize: '15px',
-        color: '#ffffff',
-        backgroundColor: '#000000',
-        padding: { x: 8, y: 4 },
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(11)
-      .setVisible(false);
-
     // The floating name label for hovered/pressed arena entities is the shared
     // Tooltip service (this.tip); Entity._enableInfo attaches to it. This flag
     // suppresses it while dragging the launcher/pin, to keep the aim uncluttered
@@ -766,27 +732,18 @@ export class GameScene extends Phaser.Scene {
 
     // The tooltip always reveals on hover/press (even when reset is disabled);
     // brightening and the actual restart only apply when reset is enabled. The
-    // label names the current pack + level, set fresh on reveal since both can
-    // change as the player navigates.
-    const showTip = () => {
-      this.restartTooltip.setText(`Restart Level (${activePackName()} Level ${currentIndex() + 1})`);
-      this._placeHudTip(this.restartTooltip, this.restartButton.x);
-    };
-    const hideTip = () => this.restartTooltip.setVisible(false);
+    // label names the current pack + level, computed fresh on each reveal since
+    // both can change as the player navigates.
+    this._attachHudTip(
+      this.restartButton,
+      () => `Restart Level (${activePackName()} Level ${currentIndex() + 1})`
+    );
     this.restartButton.on('pointerover', () => {
       if (this._resetEnabled()) this.restartButton.setAlpha(1);
-      showTip();
     });
-    this.restartButton.on('pointerout', () => {
-      this._refreshResetButton();
-      hideTip();
-    });
-    this.restartButton.on('pointerdown', (_p, _x, _y, e) => {
-      e?.stopPropagation(); // don't let the press reach the aim/pan router
-      showTip();
-    });
+    this.restartButton.on('pointerout', () => this._refreshResetButton());
+    this.restartButton.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
     this.restartButton.on('pointerup', () => {
-      hideTip();
       if (!this._resetEnabled()) return; // not lit: nothing to reset, no sound
       sfx.tick();
       // After the level is over there's nothing else to do, so skip the
@@ -799,18 +756,8 @@ export class GameScene extends Phaser.Scene {
     // position in the pack and whether the current level has been won (see
     // _navEnabled); tooltips reveal on hover/press regardless.
     const gap = 44;
-    [this.prevButton, this.prevTooltip] = this._buildNavIcon(
-      'prev',
-      Config.view.width / 2 - gap,
-      'icon-prev',
-      'Previous level'
-    );
-    [this.nextButton, this.nextTooltip] = this._buildNavIcon(
-      'next',
-      Config.view.width / 2 + gap,
-      'icon-next',
-      'Next level'
-    );
+    this.prevButton = this._buildNavIcon('prev', Config.view.width / 2 - gap, 'icon-prev', 'Previous level');
+    this.nextButton = this._buildNavIcon('next', Config.view.width / 2 + gap, 'icon-next', 'Next level');
 
     // Read-only lifecycle indicator, right of "next". Its glyph/colour reflect
     // `status` (see _refreshStatusIcon); hover/press reveals the label. It's
@@ -820,24 +767,11 @@ export class GameScene extends Phaser.Scene {
       .image(Config.view.width / 2 + 2 * gap, h / 2, 'icon-ready')
       .setDepth(10)
       .setInteractive();
-    this.statusTooltip = this.add
-      .text(Config.view.width / 2 + 2 * gap, h + 12, '', {
-        fontSize: '15px',
-        color: '#ffffff',
-        backgroundColor: '#000000',
-        padding: { x: 8, y: 4 },
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(11)
-      .setVisible(false);
-    const showStatusTip = () => this._placeHudTip(this.statusTooltip, this.statusIcon.x);
-    this.statusIcon.on('pointerover', showStatusTip);
-    this.statusIcon.on('pointerout', () => this.statusTooltip.setVisible(false));
-    this.statusIcon.on('pointerdown', (_p, _x, _y, e) => {
-      e?.stopPropagation();
-      showStatusTip();
-    });
-    this.statusIcon.on('pointerup', () => this.statusTooltip.setVisible(false));
+    // The label reflects `status`; _refreshStatusIcon keeps it current and the
+    // tooltip reads it fresh on each reveal.
+    this._statusLabel = '';
+    this._attachHudTip(this.statusIcon, () => this._statusLabel);
+    this.statusIcon.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
 
     // Menu button (hamburger): opens the dropdown of less-used options and the
     // pack/level scoreboard. Laid out at the FRONT of the cluster in _layoutHud.
@@ -847,31 +781,11 @@ export class GameScene extends Phaser.Scene {
       .setDepth(10)
       .setAlpha(0.8)
       .setInteractive({ useHandCursor: true });
-    this.menuTooltip = this.add
-      .text(Config.view.width / 2 - 2 * gap, h + 12, 'Open main menu', {
-        fontSize: '15px',
-        color: '#ffffff',
-        backgroundColor: '#000000',
-        padding: { x: 8, y: 4 },
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(11)
-      .setVisible(false);
-    const showMenuTip = () => this._placeHudTip(this.menuTooltip, this.menuButton.x);
-    this.menuButton.on('pointerover', () => {
-      this.menuButton.setAlpha(1);
-      showMenuTip();
-    });
-    this.menuButton.on('pointerout', () => {
-      this.menuButton.setAlpha(0.8);
-      this.menuTooltip.setVisible(false);
-    });
-    this.menuButton.on('pointerdown', (_p, _x, _y, e) => {
-      e?.stopPropagation();
-      showMenuTip();
-    });
+    this._attachHudTip(this.menuButton, 'Open main menu');
+    this.menuButton.on('pointerover', () => this.menuButton.setAlpha(1));
+    this.menuButton.on('pointerout', () => this.menuButton.setAlpha(0.8));
+    this.menuButton.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
     this.menuButton.on('pointerup', () => {
-      this.menuTooltip.setVisible(false);
       this._toggleMenu(); // open, or close if already showing (button is raised above the backdrop)
     });
 
@@ -915,13 +829,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Build a right-hand HUD stat: an interactive (right-aligned) text plus a
-   * tooltip revealed on hover or press and hidden on out/release — mirroring the
-   * icon tooltips so the two read the same. The value string and positions are
-   * set later (see {@link _refreshHud} / {@link _layoutRightGroup}).
+   * Build a right-hand HUD stat: an interactive (right-aligned) text with a HUD
+   * tooltip revealed on hover or press — mirroring the icon tooltips so the two
+   * read the same. The value string and positions are set later (see
+   * {@link _refreshHud} / {@link _layoutRightGroup}).
    *
    * @param {string} tooltipText  The explanation shown on hover/press.
-   * @returns {[Phaser.GameObjects.Text, Phaser.GameObjects.Text]}  [stat, tooltip]
+   * @returns {Phaser.GameObjects.Text}  the stat text
    */
   _buildHudStat(tooltipText) {
     const stat = this.add
@@ -929,26 +843,9 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(1, 0.5)
       .setDepth(10)
       .setInteractive();
-    const tip = this.add
-      .text(0, 0, tooltipText, {
-        fontSize: '15px',
-        color: '#ffffff',
-        backgroundColor: '#000000',
-        padding: { x: 8, y: 4 },
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(11)
-      .setVisible(false);
-    const reveal = () => this._placeHudTip(tip, stat.getCenter().x);
-    const hide = () => tip.setVisible(false);
-    stat.on('pointerover', reveal);
-    stat.on('pointerout', hide);
-    stat.on('pointerdown', (_p, _x, _y, e) => {
-      e?.stopPropagation(); // don't let the press reach the aim/pan router
-      reveal();
-    });
-    stat.on('pointerup', hide);
-    return [stat, tip];
+    this._attachHudTip(stat, tooltipText);
+    stat.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
+    return stat;
   }
 
   /**
@@ -961,46 +858,23 @@ export class GameScene extends Phaser.Scene {
    * @param {number} x
    * @param {string} key   Texture key.
    * @param {string} tooltipText
-   * @returns {[Phaser.GameObjects.Image, Phaser.GameObjects.Text]}
+   * @returns {Phaser.GameObjects.Image}
    */
   _buildNavIcon(dir, x, key, tooltipText) {
     const icon = this.add
       .image(x, this._hudHeight / 2, key)
       .setDepth(10)
       .setInteractive({ useHandCursor: true });
-    const tip = this.add
-      .text(x, this._hudHeight + 12, tooltipText, {
-        fontSize: '15px',
-        color: '#ffffff',
-        backgroundColor: '#000000',
-        padding: { x: 8, y: 4 },
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(11)
-      .setVisible(false);
     // Name the target level on reveal (it changes as the player navigates), or
     // "(None)" when there's no such level in this direction.
-    const reveal = () => {
-      tip.setText(tooltipText + this._navTargetSuffix(dir));
-      this._placeHudTip(tip, icon.x);
-    };
+    this._attachHudTip(icon, () => tooltipText + this._navTargetSuffix(dir));
     icon.on('pointerover', () => {
       if (this._navEnabled(dir)) icon.setAlpha(1);
-      reveal();
     });
-    icon.on('pointerout', () => {
-      this._refreshNavButtons();
-      tip.setVisible(false);
-    });
-    icon.on('pointerdown', (_p, _x, _y, e) => {
-      e?.stopPropagation();
-      reveal();
-    });
-    icon.on('pointerup', () => {
-      tip.setVisible(false);
-      this._navClicked(dir);
-    });
-    return [icon, tip];
+    icon.on('pointerout', () => this._refreshNavButtons());
+    icon.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
+    icon.on('pointerup', () => this._navClicked(dir));
+    return icon;
   }
 
   /**
@@ -1325,7 +1199,7 @@ export class GameScene extends Phaser.Scene {
     };
     const s = byStatus[this.status];
     this.statusIcon.setTexture(s.key).setTint(s.tint);
-    this.statusTooltip.setText(s.label);
+    this._statusLabel = s.label;
   }
 
   // --- Overlays (modals, menu, panels) ------------------------------------
@@ -1363,6 +1237,10 @@ export class GameScene extends Phaser.Scene {
     } else if (o.role === 'panel') {
       this._panels.push(o);
     }
+    // A modal overlay (a confirm or the menu) now owns the screen — clear any
+    // HUD/arena tooltip so it can't linger over it. The modeless Lab panel
+    // (modal: false) coexists with the game, so it must NOT hide tooltips.
+    if (o.modal) this.tip.hide();
   }
 
   /**
@@ -1516,7 +1394,7 @@ export class GameScene extends Phaser.Scene {
       // Under the card now: normal depth, and clear any hover state so it can't
       // light up or flash its tooltip through the menu.
       this.menuButton.setDepth(10).setAlpha(0.8);
-      this.menuTooltip.setVisible(false);
+      this.tip.hide();
     } else {
       this.menuButton.setDepth(33); // above the depth-30 backdrop so it stays clickable
     }

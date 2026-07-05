@@ -321,14 +321,20 @@ export class Menu extends Overlay {
 
   /**
    * Attach a hover/press tooltip to an interactive object via the scene's shared
-   * Tooltip service. The `clip` reproduces the old guard: masks clip rendering but
-   * not input, so a scrolled-off row's hit area can leak outside the card — only
-   * show while the pointer is actually over the card.
+   * Tooltip service. Anchored to the target (just below the row it describes, or
+   * above near the card bottom) rather than following the pointer, so it never
+   * covers the very row you're reading. Wrapped to ~the card width. The `clip`
+   * reproduces the old guard: masks clip rendering but not input, so a scrolled-off
+   * row's hit area can leak outside the card — only show while over the card.
    *
    * @param {Phaser.GameObjects.GameObject} target @param {string} text @returns {void}
    */
   attachTooltip(target, text) {
-    this.scene.tip.attach(target, text, { place: 'pointer', clip: (p) => this._overCard(p) });
+    this.scene.tip.attach(target, text, {
+      place: 'anchor',
+      maxWidth: this.card.w,
+      clip: (p) => this._overCard(p),
+    });
   }
 
   // --- input geometry (Overlay hooks) -------------------------------------

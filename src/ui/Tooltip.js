@@ -71,19 +71,28 @@ export class Tooltip {
    * @param {Phaser.GameObjects.GameObject} target  Must already be interactive.
    * @param {string | (() => string)} textOrFn  Static text, or a function
    *   returning it fresh on each show (for dynamic labels).
-   * @param {{ place?: 'anchor'|'pointer', anchorY?: number,
-   *           clip?: (p: Phaser.Input.Pointer) => boolean }} [opts]
+   * @param {{ place?: 'anchor'|'pointer', anchorY?: number|(() => number),
+   *           clip?: (p: Phaser.Input.Pointer) => boolean, hideOnUp?: boolean,
+   *           maxWidth?: number }} [opts]
    *   `place` — anchor (default) or pointer-follow. `anchorY` — anchor-mode
-   *   baseline y (defaults to the target's bottom edge). `clip` — gate a show to
-   *   a region (e.g. only while the pointer is over a scrolling card, whose
-   *   masked rows keep interactive hit areas outside the visible card).
+   *   baseline y: a number, or a function evaluated at show time for a value that
+   *   changes with layout (e.g. the HUD height across 1/2/3-row modes); defaults
+   *   to the target's bottom edge. `clip` — gate a show to a region (e.g. only
+   *   while the pointer is over a scrolling card, whose masked rows keep
+   *   interactive hit areas outside the visible card). `hideOnUp` — also hide on a
+   *   mouse release (touch always hides on release); used for HUD buttons so the
+   *   hint clears when you click. `maxWidth` — cap the word-wrap width (px);
+   *   defaults to roughly the screen width.
    * @returns {() => void} detach — removes the wired listeners.
    */
   attach(target, textOrFn, opts = {}) {
     const show = (p) => this._show(target, textOrFn, opts, p ?? this.scene.input.activePointer);
     const out = () => this._hide(target);
     const up = (p) => {
-      if (p?.wasTouch) this._hide(target);
+      // Touch has no hover, so a lifted finger always hides. hideOnUp extends that
+      // to the mouse — HUD icons are click-to-act buttons whose hint should clear
+      // on release rather than linger.
+      if (p?.wasTouch || opts.hideOnUp) this._hide(target);
     };
     // If the target is destroyed while its tip shows (e.g. a menu row cleared on
     // navigation, or the close button on close), no pointer-out fires — hide so
@@ -138,7 +147,9 @@ export class Tooltip {
     this._anchorY = opts.anchorY;
     const W = this.scene.scale.width;
     // Word-wrap so a long label uses more lines instead of running off-screen.
-    const maxW = this._place === 'pointer' ? Math.min(360, W - 40) : W - 2 * Config.hud.pad;
+    // `maxWidth` lets a caller cap it tighter (e.g. a menu tip to ~the card width
+    // rather than the whole screen).
+    const maxW = opts.maxWidth ?? (this._place === 'pointer' ? Math.min(360, W - 40) : W - 2 * Config.hud.pad);
     this.label.setWordWrapWidth(maxW, true).setText(text).setVisible(true);
     if (this._place === 'pointer') this._placePointer(p.x, p.y);
     else this._placeAnchor(target);
@@ -182,17 +193,26 @@ export class Tooltip {
   }
 
   /**
-   * Centre the label on the target's x, top at `anchorY` (or the target's bottom
-   * edge), clamped horizontally to the screen. (Was _placeHudTip.)
+   * Centre the label on the target's x, just below it — at `anchorY` if given (a
+   * fixed baseline, e.g. the HUD ribbon), else the target's own bottom edge. When
+   * anchored to the target's edge (no fixed baseline) and there's no room below,
+   * flip above the target so a row near the card/screen bottom still clears. Then
+   * clamp on-screen. (Was _placeHudTip, extended for menu rows.)
    * @param {Phaser.GameObjects.GameObject} target
    */
   _placeAnchor(target) {
     const pad = Config.hud.pad;
     const W = this.scene.scale.width;
+    const H = this.scene.scale.height;
     const b = target.getBounds();
     this.label.setOrigin(0.5, 0);
     const half = this.label.width / 2;
+    const h = this.label.height;
     const x = Phaser.Math.Clamp(b.centerX, half + pad, W - pad - half);
-    this.label.setPosition(x, this._anchorY ?? b.bottom);
+    const anchorY = typeof this._anchorY === 'function' ? this._anchorY() : this._anchorY;
+    let top = anchorY ?? b.bottom; // default: just below the target
+    if (anchorY == null && top + h > H - pad) top = b.top - h; // no room below → flip above
+    top = Phaser.Math.Clamp(top, pad, Math.max(pad, H - pad - h));
+    this.label.setPosition(x, top);
   }
 }
