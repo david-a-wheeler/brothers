@@ -442,13 +442,14 @@ export class TitleScene extends Phaser.Scene {
    * @returns {Phaser.GameObjects.Text}
    */
   _nameLabel(text) {
+    // Shares the one tooltip look (Config.ui.tooltip) with the in-game tips, so a
+    // restyle propagates here too; overrides only the genuinely title-specific
+    // bits — a translucent background (the demo shows through) and system-ui.
     return this.add
       .text(0, 0, text, {
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: '15px',
-        color: '#ffffff',
+        ...Config.ui.tooltip,
         backgroundColor: '#000000cc',
-        padding: { x: 6, y: 3 },
+        fontFamily: 'system-ui, sans-serif',
       })
       .setOrigin(0.5, 0)
       .setDepth(9);
