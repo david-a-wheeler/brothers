@@ -85,10 +85,15 @@ export const Config = {
     // with a couple of overrides, the title's always-on name labels. One place to
     // restyle. `depth.tooltip` sits above cards (31-34), below modals (41-42).
     tooltip: {
+      fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
       fontSize: '15px',
-      color: '#ffffff',
-      backgroundColor: '#000000',
-      padding: { x: 8, y: 4 },
+      color: '#f2f3f5', // refined off-white, softer than harsh pure #fff
+      bg: 0x23232c, // = color.surface, so tips read as siblings of the cards
+      bgAlpha: 0.94, // mostly opaque; a hint of the background bleeds through
+      border: 0x4d4d55, // = color.surfaceStroke; a crisp hairline edge
+      radius: 8, // = radius.control, a touch tighter than the cards' 14
+      padding: { x: 9, y: 6 },
+      shadow: { y: 2, color: 0x000000, alpha: 0.33 }, // soft drop shadow (faked in layers)
     },
     depth: { tooltip: 40 },
   },

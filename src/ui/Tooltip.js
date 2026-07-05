@@ -5,27 +5,32 @@ import { Config } from '../config.js';
  *  no matter where in the control the pointer sits (or moves to) while it's up. */
 const CURSOR_CLEARANCE = 24;
 
+/** Fast fade-in/out (ms). Snappy so info still appears promptly. */
+const FADE_MS = 120;
+
 /**
- * One shared tooltip label for a scene, reused across every surface (HUD icons,
- * arena entities, menu rows). Replaces the ~8 per-anchor HUD `Text`s, the arena's
- * `entityInfoText`, and the menu's own `_tip` — one look (Config.ui.tooltip), one
- * behavior home.
+ * One shared tooltip for a scene, reused across every surface (HUD icons, arena
+ * entities, menu rows, Lab controls). Replaces the ~8 per-anchor HUD `Text`s, the
+ * arena's `entityInfoText`, and the menu's own `_tip` — one look
+ * (`Config.ui.tooltip`), one behavior home.
  *
- * Only one tooltip is ever visible (you point at one thing), so a single reused
- * label suffices. `attach` owns the hover/press trigger wiring so callers don't
- * re-spell it; button-state feedback (icon brighten/dim) is deliberately NOT here
- * — callers keep their own hover handlers alongside `attach`.
+ * The tip is a small box: a backing `Graphics` (soft drop shadow + rounded fill +
+ * hairline border) with the `Text` on top, wrapped in a `Container` (`this.box`)
+ * so it positions, fades, and camera-ignores as a unit. Only one is ever visible
+ * (you point at one thing), so a single reused box suffices. `attach` owns the
+ * hover/press trigger wiring so callers don't re-spell it; button-state feedback
+ * (icon brighten/dim) is deliberately NOT here — callers keep their own hover
+ * handlers alongside `attach`.
  *
- * Camera note: the label renders in UI space only. The owning scene must add
- * `tip.label` to its HUD-camera list so the world camera ignores it (see
+ * Camera note: the box renders in UI space only. The owning scene must add
+ * `tip.box` to its HUD-camera list so the world camera ignores it (see
  * GameScene._setupCameras) — otherwise it would draw in the zoomed world.
  *
  * Placement modes:
- *  - `anchor` (default): centred on the target's x, top at `anchorY`, clamped to
- *    the screen. Reproduces the old _placeHudTip (HUD icons below the ribbon).
+ *  - `anchor` (default): centred on the target's x, below it (or at a fixed
+ *    `anchorY` baseline, e.g. the HUD ribbon), flipping above / clamping on-screen.
  *  - `pointer`: floats near the pointer (above-right, flips to the roomier side,
- *    clamps on-screen) and follows it while visible. Reproduces the old
- *    _placeFloatingLabel (arena + menu).
+ *    clamps on-screen) and follows it while visible.
  *
  * Always-on behaviors (universal, not per-context):
  *  - Anti-flicker: a `hide` from any target other than the one currently showing
@@ -38,24 +43,30 @@ export class Tooltip {
   /** @param {Phaser.Scene} scene */
   constructor(scene) {
     this.scene = scene;
-    const t = Config.ui.tooltip;
+    /** @type {typeof Config.ui.tooltip} */
+    this._tk = Config.ui.tooltip;
 
-    /** The single shared label. Add this to the scene's HUD-camera list. */
-    this.label = scene.add
-      .text(0, 0, '', {
-        fontSize: t.fontSize,
-        color: t.color,
-        backgroundColor: t.backgroundColor,
-        padding: { x: t.padding.x, y: t.padding.y },
-      })
+    this.bg = scene.add.graphics();
+    this.label = scene.add.text(0, 0, '', {
+      fontFamily: this._tk.fontFamily,
+      fontSize: this._tk.fontSize,
+      color: this._tk.color,
+    });
+    /** The tip box (shadow + fill + text). Add this to the scene's HUD-camera list. */
+    this.box = scene.add
+      .container(0, 0, [this.bg, this.label])
       .setDepth(Config.ui.depth.tooltip)
+      .setAlpha(0)
       .setVisible(false);
 
+    /** Box size for the current text (set by _layout). */
+    this._bw = 0;
+    this._bh = 0;
     /** Target that last requested a show (anti-flicker token). @type {?object} */
     this._owner = null;
     /** @type {'anchor'|'pointer'} Placement of the visible tip. */
     this._place = 'anchor';
-    /** @type {?number} Anchor-mode baseline y for the visible tip. */
+    /** @type {?(number|(() => number))} Anchor-mode baseline y for the visible tip. */
     this._anchorY = undefined;
     /** @type {?Phaser.GameObjects.GameObject} Anchor-mode target for reposition. */
     this._target = null;
@@ -64,7 +75,7 @@ export class Tooltip {
 
     // Keep a pointer-placed tip glued to the moving pointer while it's visible.
     this._onMove = (p) => {
-      if (this.label.visible && this._place === 'pointer') this._placePointer(p.x, p.y);
+      if (this.box.visible && this._place === 'pointer') this._reposition(p);
     };
     scene.input.on('pointermove', this._onMove);
     scene.events.once('shutdown', () => scene.input.off('pointermove', this._onMove));
@@ -101,7 +112,7 @@ export class Tooltip {
     };
     // If the target is destroyed while its tip shows (e.g. a menu row cleared on
     // navigation, or the close button on close), no pointer-out fires — hide so
-    // the shared label doesn't linger.
+    // the shared box doesn't linger.
     const gone = () => this._hide(target);
     target.on('pointerover', show);
     target.on('pointerdown', show);
@@ -128,8 +139,8 @@ export class Tooltip {
   }
 
   /**
-   * Force-hide any visible tip regardless of which target owns it — e.g. when an
-   * aim/pin drag starts and the arena label must clear immediately.
+   * Force-hide any visible tip immediately (no fade), regardless of which target
+   * owns it — e.g. when an aim/pin drag starts or an overlay takes the screen.
    * @returns {void}
    */
   hide() {
@@ -151,72 +162,125 @@ export class Tooltip {
     this._target = target;
     this._anchorY = opts.anchorY;
     const W = this.scene.scale.width;
+    const pad = this._tk.padding;
     // Word-wrap so a long label uses more lines instead of running off-screen.
-    // `maxWidth` lets a caller cap it tighter (e.g. a menu tip to ~the card width
-    // rather than the whole screen).
-    const maxW = opts.maxWidth ?? (this._place === 'pointer' ? Math.min(360, W - 40) : W - 2 * Config.hud.pad);
-    this.label.setWordWrapWidth(maxW, true).setText(text).setVisible(true);
-    if (this._place === 'pointer') this._placePointer(p.x, p.y);
-    else this._placeAnchor(target);
+    // `maxWidth` (a box width) lets a caller cap it tighter than the screen; the
+    // text wraps inside the box padding.
+    const cap = opts.maxWidth ?? (this._place === 'pointer' ? Math.min(360, W - 40) : W - 2 * Config.hud.pad);
+    this.label.setWordWrapWidth(Math.max(40, cap - 2 * pad.x), true).setText(text);
+    this._layout();
+    this._reposition(p);
+    this._fadeIn();
+  }
+
+  /** Size the box to the wrapped text, draw the backing, and inset the text. */
+  _layout() {
+    const pad = this._tk.padding;
+    this._bw = Math.ceil(this.label.width) + 2 * pad.x;
+    this._bh = Math.ceil(this.label.height) + 2 * pad.y;
+    this.label.setPosition(pad.x, pad.y);
+    this._drawBg();
+  }
+
+  /** Redraw the backing graphics for the current box size. */
+  _drawBg() {
+    const tk = this._tk;
+    const g = this.bg;
+    const w = this._bw;
+    const h = this._bh;
+    const r = tk.radius;
+    g.clear();
+    // Soft drop shadow: stack a few translucent rounded rects, each nudged down,
+    // so they accumulate near the box and thin out below (a cheap blur, no FX).
+    for (let i = 3; i >= 1; i--) {
+      g.fillStyle(tk.shadow.color, tk.shadow.alpha / 3);
+      g.fillRoundedRect(0, tk.shadow.y + i * 2, w, h, r);
+    }
+    g.fillStyle(tk.bg, tk.bgAlpha);
+    g.fillRoundedRect(0, 0, w, h, r);
+    g.lineStyle(1, tk.border, 1);
+    g.strokeRoundedRect(0, 0, w, h, r);
+  }
+
+  /** Position the box's top-left per the current placement. @param {Phaser.Input.Pointer} p */
+  _reposition(p) {
+    const [x, y] = this._place === 'pointer' ? this._placePointer(p.x, p.y) : this._placeAnchor(this._target);
+    this.box.setPosition(Math.round(x), Math.round(y));
+  }
+
+  /** Fade the box in (interrupting any fade-out). @returns {void} */
+  _fadeIn() {
+    this.scene.tweens.killTweensOf(this.box);
+    this.box.setVisible(true);
+    this.scene.tweens.add({ targets: this.box, alpha: 1, duration: FADE_MS, ease: 'Sine.Out' });
   }
 
   /**
-   * Hide, but only if `target` is the one currently showing — so a stale
-   * pointer-out from a target we already left can't kill the new tip.
+   * Hide with a fade, but only if `target` is the one currently showing — so a
+   * stale pointer-out from a target we already left can't kill the new tip.
    * @param {object} target @returns {void}
    */
   _hide(target) {
     if (this._owner !== target) return;
-    this._forceHide();
+    this._owner = null;
+    this.scene.tweens.killTweensOf(this.box);
+    this.scene.tweens.add({
+      targets: this.box,
+      alpha: 0,
+      duration: FADE_MS,
+      ease: 'Sine.Out',
+      onComplete: () => this.box.setVisible(false),
+    });
   }
 
-  /** Hide unconditionally. @returns {void} */
+  /** Hide immediately, no fade. @returns {void} */
   _forceHide() {
     this._owner = null;
-    this.label.setVisible(false);
+    this.scene.tweens.killTweensOf(this.box);
+    this.box.setVisible(false).setAlpha(0);
   }
 
   /**
-   * Float the label near the pointer but fully on-screen: prefer above-right,
-   * flip to the roomier side of an edge, then clamp. (Was _placeFloatingLabel.)
+   * Float near the pointer but fully on-screen: prefer above-right, flip to the
+   * roomier side of an edge, then clamp. Returns the box's top-left.
    * @param {number} px @param {number} py  Pointer position (screen px).
+   * @returns {[number, number]}
    */
   _placePointer(px, py) {
     const pad = 6;
     const W = this.scene.scale.width;
     const H = this.scene.scale.height;
-    this.label.setOrigin(0, 1);
-    const w = this.label.width; // includes the label's own padding
-    const h = this.label.height;
+    const w = this._bw;
+    const h = this._bh;
     let x = px + 14;
     if (x + w > W - pad) x = px - 14 - w; // flip left
     let top = py - 8 - h;
     if (top < pad) top = py + 14; // flip below
     x = Phaser.Math.Clamp(x, pad, Math.max(pad, W - pad - w));
     top = Phaser.Math.Clamp(top, pad, Math.max(pad, H - pad - h));
-    this.label.setPosition(x, top + h); // origin (0,1): position is the box's bottom-left
+    return [x, top];
   }
 
   /**
-   * Centre the label on the target's x, just below it — at `anchorY` if given (a
-   * fixed baseline, e.g. the HUD ribbon), else a cursor's-reach below the target's
-   * own bottom edge. That clearance is off the control's bottom (not the current
+   * Centre on the target's x, just below it — at `anchorY` if given (a fixed
+   * baseline, e.g. the HUD ribbon), else a cursor's-reach below the target's own
+   * bottom edge. That clearance is off the control's bottom (not the current
    * pointer), because the tip is placed once and stays up while the pointer roams
-   * the control's hit area — so it must clear wherever the cursor could reach. If
-   * there's no room below, flip above (the cursor stays below the pointer, clear
-   * of a tip there). Then clamp on-screen. (Was _placeHudTip, extended for menu
-   * rows and Lab controls.)
+   * the hit area — so it must clear wherever the cursor could reach. If there's no
+   * room below, flip above (the cursor stays below the pointer, clear of a tip
+   * there). Then clamp on-screen. Returns the box's top-left.
    * @param {Phaser.GameObjects.GameObject} target
+   * @returns {[number, number]}
    */
   _placeAnchor(target) {
     const pad = Config.hud.pad;
     const W = this.scene.scale.width;
     const H = this.scene.scale.height;
     const b = target.getBounds();
-    this.label.setOrigin(0.5, 0);
-    const half = this.label.width / 2;
-    const h = this.label.height;
-    const x = Phaser.Math.Clamp(b.centerX, half + pad, W - pad - half);
+    const w = this._bw;
+    const h = this._bh;
+    const half = w / 2;
+    const cx = Phaser.Math.Clamp(b.centerX, half + pad, W - pad - half);
     const anchorY = typeof this._anchorY === 'function' ? this._anchorY() : this._anchorY;
     let top;
     if (anchorY != null) {
@@ -226,6 +290,6 @@ export class Tooltip {
       if (top + h > H - pad) top = b.top - h; // no room below → flip above (clear of the cursor)
     }
     top = Phaser.Math.Clamp(top, pad, Math.max(pad, H - pad - h));
-    this.label.setPosition(x, top);
+    return [cx - half, top];
   }
 }

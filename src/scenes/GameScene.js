@@ -445,7 +445,7 @@ export class GameScene extends Phaser.Scene {
       this.nextButton,
       this.statusIcon,
       this.menuButton,
-      this.tip.label,
+      this.tip.box,
       this.bannerPanel,
       this.banner,
     ];
