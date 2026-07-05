@@ -84,18 +84,21 @@ export const Config = {
     // Text roles: one place for every UI text size/colour/weight. Spread a role
     // into a style and override only what varies (e.g. a per-state colour). The
     // font is global (see main.js), so it's not repeated here.
+    // Six sizes with real steps between them (13 / 16 / 18 / 20 / 24 / 52); the
+    // whole 14-17 cluster collapses onto 16, the workhorse. Role names stay
+    // semantic even where they share a size, so any can diverge again later.
     type: {
       banner: { fontSize: '52px', color: '#ffffff', fontStyle: 'bold' }, // end-of-level banner
       heading: { fontSize: '24px', color: '#ffffff', fontStyle: 'bold' }, // modal title
       title: { fontSize: '20px', color: '#ffffff', fontStyle: 'bold' }, // card/menu title
       button: { fontSize: '20px', color: '#ffffff' }, // modal button label
       stat: { fontSize: '18px', color: '#dddddd' }, // HUD right-hand stats
-      row: { fontSize: '17px', color: '#ffffff' }, // list row label
-      value: { fontSize: '17px', color: '#9aa0a6' }, // list row value
+      row: { fontSize: '16px', color: '#ffffff' }, // list row label
+      value: { fontSize: '16px', color: '#9aa0a6' }, // list row value
       control: { fontSize: '16px', color: '#ffffff' }, // chip button / two-up cell
-      toggle: { fontSize: '15px', color: '#ffffff' }, // menu toggle label
-      body: { fontSize: '15px', color: '#dddddd' }, // prose
-      small: { fontSize: '14px', color: '#ffffff' }, // Lab value / panel title
+      toggle: { fontSize: '16px', color: '#ffffff' }, // menu toggle label
+      body: { fontSize: '16px', color: '#dddddd' }, // prose
+      small: { fontSize: '16px', color: '#ffffff' }, // Lab value / panel title
       header: { fontSize: '13px', color: '#9aa0a6', fontStyle: 'bold' }, // section header
     },
     motion: { dur: 150, ease: 'Sine.Out', rowStagger: 25 },
@@ -103,7 +106,7 @@ export const Config = {
     // with a couple of overrides, the title's always-on name labels. One place to
     // restyle. `depth.tooltip` sits above cards (31-34), below modals (41-42).
     tooltip: {
-      fontSize: '15px',
+      fontSize: '16px', // matches the body/help size in `type`
       color: '#f2f3f5', // refined off-white, softer than harsh pure #fff
       bg: 0x23232c, // = color.surface, so tips read as siblings of the cards
       bgAlpha: 0.94, // mostly opaque; a hint of the background bleeds through
