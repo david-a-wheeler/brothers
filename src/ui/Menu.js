@@ -77,6 +77,10 @@ export class Menu extends Overlay {
     this._cardBottom = cy0 + ch;
     this._listX = cx0 + 16;
     this._listW = cw - 32;
+    // Draggable like a window: the card (== this.card) clamps on-screen; the
+    // header strip (minus the × zone) is the drag handle.
+    this._windowRect = this.card;
+    this._titleBar = { x: cx0, y: cy0, w: cw - 44, h: this._headerBottom - cy0 };
     // Back (only shown in a pack's detail / packs view). The list starts below it
     // there, but higher when it's hidden (see beginView) so no space is wasted.
     this._backBtn = chipButton(this.scene, cx0 + 16, this._headerBottom + 16, '‹ Back', () => this._opts.onBack())
@@ -96,6 +100,14 @@ export class Menu extends Overlay {
   rebuild() {
     this._preserveScroll = true;
     super.rebuild();
+  }
+
+  /** @override — keep the list geometry that beginView/finish read in sync with
+   *  the dragged position, so navigating after a drag re-lays-out in place. */
+  _afterTranslate(dx, dy) {
+    this._headerBottom += dy;
+    this._cardBottom += dy;
+    this._listX += dx;
   }
 
   // --- view API (called by the scene's view renderers) --------------------

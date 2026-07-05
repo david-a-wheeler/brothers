@@ -152,6 +152,11 @@ export class Modal extends Overlay {
     this.parts = [backdrop, panel, titleTxt, close];
     if (subtitleTxt) this.parts.push(subtitleTxt);
 
+    // Draggable like a window: the whole card clamps on-screen; the title/subtitle
+    // strip (minus the × zone on the right) is the drag handle.
+    this._windowRect = { x: cx - pw / 2, y: cy - ph / 2, w: pw, h: ph };
+    this._titleBar = { x: cx - pw / 2, y: cy - ph / 2, w: pw - 44, h: pad + titleTxt.height + subBlock };
+
     if (bodyTxt) {
       const bodyTop = top + titleTxt.height + subBlock + U.space.md;
       const innerLeft = cx - pw / 2 + pad;

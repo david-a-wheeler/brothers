@@ -35,6 +35,12 @@ export class Overlay {
     this.parts = [];
     this._backdropObj = null;
     this._backdropAlpha = 1;
+    /** Screen-space rects a subclass sets in {@link _build}: the whole card
+     *  (for on-screen clamping) and the draggable title strip. Both are shifted
+     *  by {@link _translate} when the overlay is dragged. */
+    this._windowRect = null;
+    this._titleBar = null;
+    this._windowDragging = false;
   }
 
   /**
@@ -160,6 +166,11 @@ export class Overlay {
    * @returns {boolean} true if this overlay owns the press (scene must not pan).
    */
   onPointerDown(p) {
+    // A press on the title bar drags the whole overlay (like a window).
+    if (this._overTitleBar(p)) {
+      this._beginWindowDrag(p);
+      return true;
+    }
     const sv = this.scrollView;
     if (sv && (sv.scrollMax > 0 || sv.scrollXMax > 0)) {
       if (sv.overScrollbar(p)) {
@@ -181,6 +192,10 @@ export class Overlay {
 
   /** @param {Phaser.Input.Pointer} p @returns {boolean} true if owned. */
   onPointerMove(p) {
+    if (this._windowDragging) {
+      this._dragWindow(p);
+      return true;
+    }
     const sv = this.scrollView;
     if (sv && sv.dragging) {
       sv.drag(p);
@@ -191,6 +206,10 @@ export class Overlay {
 
   /** @param {Phaser.Input.Pointer} p @returns {boolean} true if owned. */
   onPointerUp(p) {
+    if (this._windowDragging) {
+      this._windowDragging = false;
+      return true;
+    }
     const sv = this.scrollView;
     if (sv && sv.dragging) {
       sv.endDrag();
@@ -221,8 +240,69 @@ export class Overlay {
     return this.scrollView ? this.scrollView.overBody(p) : false;
   }
 
-  /** Whole-overlay bounds, for modeless hit-testing. Default: the drag area. */
+  /** Whole-overlay bounds, for modeless hit-testing / on-screen clamping. */
   _overSelf(p) {
+    const r = this._windowRect;
+    if (r) return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
     return this._overDragArea(p);
   }
+
+  // --- window dragging ----------------------------------------------------
+
+  /**
+   * @param {Phaser.Input.Pointer} p
+   * @returns {boolean} true if `p` is on the draggable title strip (set by the
+   *   subclass in {@link _build}; excludes the × so a press there still closes).
+   */
+  _overTitleBar(p) {
+    const t = this._titleBar;
+    return !!t && p.x >= t.x && p.x <= t.x + t.w && p.y >= t.y && p.y <= t.y + t.h;
+  }
+
+  /** Begin a window drag, recording the grab offset within the card. */
+  _beginWindowDrag(p) {
+    this._windowDragging = true;
+    this._grabX = p.x - this._windowRect.x;
+    this._grabY = p.y - this._windowRect.y;
+  }
+
+  /** Move the overlay so the grab point follows the pointer, clamped on-screen. */
+  _dragWindow(p) {
+    const L = this.scene._layout;
+    const r = this._windowRect;
+    const nx = Phaser.Math.Clamp(p.x - this._grabX, 0, Math.max(0, L.w - r.w));
+    const ny = Phaser.Math.Clamp(p.y - this._grabY, 0, Math.max(0, L.h - r.h));
+    this._translate(nx - r.x, ny - r.y);
+  }
+
+  /**
+   * Shift the whole overlay by (dx, dy): every chrome part (except the fixed
+   * full-screen backdrop), the scroll viewport, and the window/title rects.
+   *
+   * @param {number} dx @param {number} dy @returns {void}
+   */
+  _translate(dx, dy) {
+    if (!dx && !dy) return;
+    for (const part of this.parts) {
+      if (part === this._backdropObj) continue; // full-screen; stays put
+      part.x += dx;
+      part.y += dy;
+    }
+    this.scrollView?.translate(dx, dy);
+    this._windowRect.x += dx;
+    this._windowRect.y += dy;
+    if (this._titleBar) {
+      this._titleBar.x += dx;
+      this._titleBar.y += dy;
+    }
+    this._afterTranslate(dx, dy);
+  }
+
+  /**
+   * Subclass hook: shift any stored layout coordinates a later re-layout reads, so
+   * the overlay stays coherent at its dragged position. Default: nothing.
+   *
+   * @param {number} dx @param {number} dy @returns {void}
+   */
+  _afterTranslate(dx, dy) {}
 }

@@ -124,6 +124,21 @@ export class ScrollView {
     this._gateInput();
   }
 
+  /**
+   * Shift the whole viewport (mask, content, scrollbars) by (dx, dy) screen px,
+   * keeping the current scroll offsets. Used when the owning overlay is dragged.
+   *
+   * @param {number} dx @param {number} dy @returns {void}
+   */
+  translate(dx, dy) {
+    this._region.x += dx;
+    this._region.y += dy;
+    const { x, y, w, h } = this._region;
+    this._maskGfx.clear().fillStyle(0xffffff, 1).fillRect(x, y, w, h);
+    this.container.setPosition(x - this.scrollX, y - this.scroll);
+    this._updateBars();
+  }
+
   /** Scroll vertically by `delta` px, clamped. No-op when it fits. */
   scrollBy(delta) {
     if (this.scrollMax > 0) this._applyScroll(0, delta);

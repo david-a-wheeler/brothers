@@ -37,7 +37,6 @@ export class Panel extends Overlay {
       bottomMargin: 8,
       ...opts,
     };
-    this._bounds = null;
   }
 
   /** @override */
@@ -64,16 +63,14 @@ export class Panel extends Overlay {
     const viewH = Math.max(60, Math.min(contentH, avail));
 
     bg.setSize(w, o.headerH + viewH);
-    this._bounds = { x, y, w, h: o.headerH + viewH };
+    // Draggable like a window: the whole panel clamps on-screen (also the
+    // modeless hit-test, via Overlay._overSelf); the header strip (minus the ×
+    // zone) is the drag handle.
+    this._windowRect = { x, y, w, h: o.headerH + viewH };
+    this._titleBar = { x, y, w: w - 40, h: o.headerH };
     this.scrollView.layout({ x, y: contentTop, w, h: viewH }, contentH);
 
     this.scene.cameras.main.ignore(this.parts); // HUD camera only
     this._fadeIn(animate);
-  }
-
-  /** @override — the whole panel rectangle (header + body), for modeless hits. */
-  _overSelf(p) {
-    const b = this._bounds;
-    return !!b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
   }
 }
