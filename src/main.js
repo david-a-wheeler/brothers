@@ -11,6 +11,17 @@ import * as diag from './diag.js';
 diag.install();
 diag.breadcrumb('boot');
 
+// Give every Text the shared UI font by default (Phaser's built-in default is
+// Courier). We wrap the `text` factory once — re-registering is a no-op since
+// GameObjectFactory.register guards existing types — so `scene.add.text(...)`
+// inherits Config.ui.font unless a style passes its own fontFamily (e.g. the
+// title's serif). One place to set it; no per-style footgun.
+const _factory = Phaser.GameObjects.GameObjectFactory.prototype;
+const _text = _factory.text;
+_factory.text = function (x, y, text, style) {
+  return _text.call(this, x, y, text, { fontFamily: Config.ui.font, ...style });
+};
+
 // Load the first pack before the game boots, so the scene has level data ready.
 // The starting pack is just the first entry in packs/index.json (no hardcoded
 // pack name). Top-level await means boot.js's `await import('./main.js')` waits

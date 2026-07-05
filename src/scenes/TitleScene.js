@@ -160,7 +160,6 @@ export class TitleScene extends Phaser.Scene {
   _buildPremise() {
     this._premise = this.add
       .text(0, 0, 'Help the brothers, David and Ken,\nreach the goal in as few turns as possible.', {
-        fontFamily: 'system-ui, sans-serif',
         fontSize: '20px',
         color: '#e6e6ea',
         align: 'center',
@@ -248,7 +247,6 @@ export class TitleScene extends Phaser.Scene {
     // it. Size/position set in _layoutStatic.
     this._hint = this.add
       .text(0, 0, '🔊 Tap anywhere for sound', {
-        fontFamily: 'system-ui, sans-serif',
         color: '#c3c8cf',
       })
       .setOrigin(0, 1)
@@ -442,13 +440,13 @@ export class TitleScene extends Phaser.Scene {
    * @returns {Phaser.GameObjects.Text}
    */
   _nameLabel(text) {
-    // Always-on demo labels — a plain Text, not the in-game Tooltip box, but it
-    // borrows that token's font/size/colour/padding so the two read consistently.
-    // Its own look: a translucent black background (the demo shows through).
+    // Always-on demo labels — a plain Text, not the in-game Tooltip box, but they
+    // borrow the tooltip token's size/colour/padding so the two read consistently
+    // (the font is the global UI default). Own look: a translucent black
+    // background (the demo shows through).
     const tk = Config.ui.tooltip;
     return this.add
       .text(0, 0, text, {
-        fontFamily: 'system-ui, sans-serif',
         fontSize: tk.fontSize,
         color: tk.color,
         backgroundColor: '#000000cc',

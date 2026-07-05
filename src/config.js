@@ -4,6 +4,13 @@
  * Everything you'd realistically want to tweak while balancing the game
  * lives here, so feel can be adjusted without digging through game logic.
  */
+
+/** The one UI typeface. Exposed as `ui.font` and installed as the global default
+ *  font for every Text in main.js, so no style needs to set `fontFamily` (Phaser's
+ *  built-in default is Courier). Only genuine deviations (e.g. the title's serif)
+ *  pass their own. */
+const UI_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
 export const Config = {
   /**
    * Show developer-only tools (the Lab parameter panel and Test mode) in the
@@ -73,6 +80,7 @@ export const Config = {
       textDisabled: '#6b6b75',
       accentText: '#ffd479',
     },
+    font: UI_FONT, // the shared UI typeface — applied as a global default (see main.js), not per-style
     type: {
       title: { fontSize: '20px', color: '#ffffff', fontStyle: 'bold' },
       header: { fontSize: '13px', color: '#9aa0a6', fontStyle: 'bold' },
@@ -85,7 +93,6 @@ export const Config = {
     // with a couple of overrides, the title's always-on name labels. One place to
     // restyle. `depth.tooltip` sits above cards (31-34), below modals (41-42).
     tooltip: {
-      fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
       fontSize: '15px',
       color: '#f2f3f5', // refined off-white, softer than harsh pure #fff
       bg: 0x23232c, // = color.surface, so tips read as siblings of the cards

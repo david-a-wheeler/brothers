@@ -48,7 +48,6 @@ export class Tooltip {
 
     this.bg = scene.add.graphics();
     this.label = scene.add.text(0, 0, '', {
-      fontFamily: this._tk.fontFamily,
       fontSize: this._tk.fontSize,
       color: this._tk.color,
     });
