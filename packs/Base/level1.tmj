@@ -127,6 +127,16 @@
          "name":"wallRestitution",
          "type":"float",
          "value":0.6
+        },
+        {
+         "name":"name",
+         "type":"string",
+         "value":"Goal and teleporter"
+        },
+        {
+         "name":"intro",
+         "type":"string",
+         "value":"Slingshot the brothers into the goal. The teleporter will take you away from the goal."
         }],
  "renderorder":"right-down",
  "tiledversion":"1.12.2-2-geb83ddb9",

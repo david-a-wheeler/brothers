@@ -113,6 +113,16 @@
          "name":"wallRestitution",
          "type":"float",
          "value":0.6
+        },
+        {
+         "name":"name",
+         "type":"string",
+         "value":"Narrow pass"
+        },
+        {
+         "name":"intro",
+         "type":"string",
+         "value":"Get the brothers through the narrow pass to the goal."
         }],
  "renderorder":"right-down",
  "tiledversion":"1.12.2-2-geb83ddb9",

@@ -200,12 +200,12 @@
         {
          "name":"name",
          "type":"string",
-         "value":"The Bank Shot"
+         "value":"Bombs"
         },
         {
          "name":"intro",
          "type":"string",
-         "value":"Walls bounce. Use them.\n\nThe goal is tucked away — a straight shot won't reach it. Aim for a wall and let the rebound carry the brothers home."
+         "value":"Let's introduce bombs. They move. The arrows show the direction they'll start, and the arrows' spin shows how fast they'll start."
         }],
  "renderorder":"right-down",
  "tiledversion":"1.12.2-2-geb83ddb9",
