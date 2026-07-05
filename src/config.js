@@ -81,6 +81,16 @@ export const Config = {
       body: { fontSize: '15px', color: '#dddddd' },
     },
     motion: { dur: 150, ease: 'Sine.Out', rowStagger: 25 },
+    // Shared tooltip look, used by every tooltip surface (HUD, arena, menu) and,
+    // with a couple of overrides, the title's always-on name labels. One place to
+    // restyle. `depth.tooltip` sits above cards (31-34), below modals (41-42).
+    tooltip: {
+      fontSize: '15px',
+      color: '#ffffff',
+      backgroundColor: '#000000',
+      padding: { x: 8, y: 4 },
+    },
+    depth: { tooltip: 40 },
   },
 
   /**

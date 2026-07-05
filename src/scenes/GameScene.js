@@ -23,6 +23,7 @@ import * as diag from '../diag.js';
 import { Modal } from '../ui/Modal.js';
 import { Panel } from '../ui/Panel.js';
 import { Menu } from '../ui/Menu.js';
+import { Tooltip } from '../ui/Tooltip.js';
 import { chipButton } from '../ui/chipButton.js';
 
 /** Body text for the Help modal (plain text; the modal word-wraps it). */
@@ -110,6 +111,11 @@ export class GameScene extends Phaser.Scene {
 
     this._buildArena();
     this._buildFloorGrid();
+    // Shared tooltip service: one reused label for every surface (HUD, arena,
+    // menu). Built before the World so entities can attach in _enableInfo, and
+    // before _setupCameras so its label is in the UI-camera list. Call sites are
+    // migrated onto it surface by surface.
+    this.tip = new Tooltip(this);
     /** The world: owns every level entity (goals, teleporters, walls); see src/world. */
     this.world = new World(this, this.level);
 
@@ -441,7 +447,7 @@ export class GameScene extends Phaser.Scene {
       this.statusTooltip,
       this.menuButton,
       this.menuTooltip,
-      this.entityInfoText,
+      this.tip.label,
       this.bannerPanel,
       this.banner,
     ];
@@ -752,23 +758,10 @@ export class GameScene extends Phaser.Scene {
       .setDepth(11)
       .setVisible(false);
 
-    // Floating label naming whatever world entity the player hovers or presses
-    // (wording comes from Entity.infoText; see showEntityInfo). Anchored
-    // bottom-left so it floats above-right of the pointer.
-    this.entityInfoText = this.add
-      .text(0, 0, '', {
-        fontSize: '15px',
-        color: '#ffffff',
-        backgroundColor: '#000000',
-        padding: { x: 8, y: 4 },
-      })
-      .setOrigin(0, 1)
-      .setDepth(11)
-      .setVisible(false);
-    /** @type {import('../world/Entity.js').Entity|null} Entity whose info is showing. */
-    this._infoEntity = null;
-    /** Suppress entity-info labels (set while dragging the launcher, to keep the
-     *  aim uncluttered and the launcher's face visible). */
+    // The floating name label for hovered/pressed arena entities is the shared
+    // Tooltip service (this.tip); Entity._enableInfo attaches to it. This flag
+    // suppresses it while dragging the launcher/pin, to keep the aim uncluttered
+    // and the launcher's face visible (read by the entity attach's clip).
     this._infoSuppressed = false;
 
     // The tooltip always reveals on hover/press (even when reset is disabled);
@@ -1959,8 +1952,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.on('pointermove', (p) => {
-      // Keep an open entity-info label floating with the pointer, on-screen.
-      if (this._infoEntity) this._placeEntityInfo(p.x, p.y);
+      // (The arena name label follows the pointer via the Tooltip service's own
+      // pointermove listener — no need to reposition it here.)
       if (this._activeModal) {
         this._activeModal.onPointerMove(p); // drives its scroll drag, if any
         return;
@@ -2038,7 +2031,7 @@ export class GameScene extends Phaser.Scene {
         // The launcher's label was revealed on press (the only way to see it on
         // touch); now that we're aiming, hide and suppress it so the drag is clean.
         this._infoSuppressed = true;
-        this.hideEntityInfo(this._infoEntity);
+        this.tip.hide();
         this._refreshHud(); // "X's turn, aiming"
       }
       this.brothers.dragTo(dragX, dragY);
@@ -2140,7 +2133,7 @@ export class GameScene extends Phaser.Scene {
       if (moved < Config.pin.dragThreshold) return; // still might be a tap
       this._pinDragging = true;
       this._infoSuppressed = true; // keep the name label from flashing during the drag
-      this.hideEntityInfo(this._infoEntity);
+      this.tip.hide();
       this._refreshHud(); // -> "Moving X's pin"
     }
     const wp = this.cameras.main.getWorldPoint(p.x, p.y);
@@ -2243,29 +2236,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Show a world entity's info label (its name/class) near the pointer while the
-   * player hovers or presses it. The wording comes from the entity
-   * ({@link import('../world/Entity.js').Entity#infoText}), so it lives in one
-   * place. Called from `Entity._enableInfo`.
-   *
-   * @param {import('../world/Entity.js').Entity} entity
-   * @returns {void}
+   * @returns {boolean} Whether arena entity-info tooltips may show right now —
+   * not while a modal or the menu owns the screen, nor during an aim/pin drag
+   * (`_infoSuppressed`). Consulted by the entity attach's `clip` in
+   * `Entity._enableInfo`.
    */
-  showEntityInfo(entity) {
-    if (this._modalOpen || this._menuOpen || this._infoSuppressed) return; // suppressed / overlay owns the screen
-    const p = this.input.activePointer;
-    this._infoEntity = entity;
-    // Cap the width and word-wrap so a long name (e.g. "Teleport Target from
-    // Region 1 to 2 (Teleporter)") can't be wider than the screen — it uses more
-    // lines instead. _placeEntityInfo then keeps the whole box on-screen.
-    const maxW = Math.min(360, this.scale.width - 40);
-    this.entityInfoText.setWordWrapWidth(maxW, true).setText(entity.infoText()).setVisible(true);
-    this._placeEntityInfo(p.x, p.y);
-  }
-
-  /** Place the entity info label near the pointer, fully on-screen. */
-  _placeEntityInfo(px, py) {
-    this._placeFloatingLabel(this.entityInfoText, px, py);
+  get _infoAllowed() {
+    return !this._modalOpen && !this._menuOpen && !this._infoSuppressed;
   }
 
   /**
@@ -2292,19 +2269,6 @@ export class GameScene extends Phaser.Scene {
     x = Phaser.Math.Clamp(x, pad, Math.max(pad, W - pad - w));
     top = Phaser.Math.Clamp(top, pad, Math.max(pad, H - pad - h));
     t.setPosition(x, top + h); // origin (0,1): position is the box's bottom-left
-  }
-
-  /**
-   * Hide the entity info label — but only if `entity` is the one showing, so
-   * moving straight from one entity to an adjacent one doesn't flicker.
-   *
-   * @param {import('../world/Entity.js').Entity} entity
-   * @returns {void}
-   */
-  hideEntityInfo(entity) {
-    if (this._infoEntity !== entity) return;
-    this._infoEntity = null;
-    this.entityInfoText.setVisible(false);
   }
 
   /**

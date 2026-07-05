@@ -215,13 +215,13 @@ export class Entity {
     const hit = this.interactiveHitArea();
     if (hit) view.setInteractive(hit[0], hit[1]);
     else view.setInteractive();
-    view.on('pointerover', () => this.scene.showEntityInfo(this));
-    view.on('pointerdown', () => this.scene.showEntityInfo(this));
-    view.on('pointerout', () => this.scene.hideEntityInfo(this));
-    // A mouse still hovering after release keeps the label (pointerout hides it);
-    // a touch has no hover, so a lifted finger hides it here.
-    view.on('pointerup', (pointer) => {
-      if (pointer.wasTouch) this.scene.hideEntityInfo(this);
+    // A floating name label on hover/press, following the pointer. The shared
+    // Tooltip service owns placement, anti-flicker, and touch-hide; the clip
+    // suppresses it while a modal/menu owns the screen or an aim/pin drag is in
+    // progress (was the guard in the old showEntityInfo).
+    this.scene.tip.attach(view, () => this.infoText(), {
+      place: 'pointer',
+      clip: () => this.scene._infoAllowed,
     });
   }
 
