@@ -116,24 +116,37 @@ export function loadTiledLevel(map) {
   return level;
 }
 
-/**
- * A level's display name, or '' if unnamed. i18n-ready: today it returns the
- * single `name`; later it can resolve `name_<lang>` with a fallback to `name`.
- *
- * @param {Level} level @returns {string}
- */
-export function levelName(level) {
-  return level.name ?? '';
-}
+// --- i18n stub ------------------------------------------------------------
+// Preferred languages, most-preferred first. STUB: English only for now. When
+// real i18n lands, populate this from the user's locale/settings — and have
+// loadTiledLevel plumb `<param>_<lang>` map properties through — so nothing else
+// needs to change.
+const LANGS = ['en'];
 
 /**
- * A level's intro/briefing text, or '' if none. i18n-ready: today it returns the
- * single `intro`; later it can resolve `intro_<lang>` with a fallback to `intro`.
+ * Read a level parameter with i18n fallback: return the first localized
+ * `<name>_<lang>` that's set (in {@link LANGS} preference order), else the plain
+ * `<name>`. Returns whatever is set, or `undefined` if the level has no such
+ * param. General-purpose — use it for any localizable level field.
  *
- * @param {Level} level @returns {string}
+ * @param {Level} level @param {string} name @returns {*}
  */
+export function levelParam(level, name) {
+  for (const lang of LANGS) {
+    const v = level[`${name}_${lang}`];
+    if (v != null) return v;
+  }
+  return level[name];
+}
+
+/** A level's display name for the active language, or '' if unnamed. @param {Level} level @returns {string} */
+export function levelName(level) {
+  return levelParam(level, 'name') ?? '';
+}
+
+/** A level's intro/briefing text for the active language, or '' if none. @param {Level} level @returns {string} */
 export function levelIntro(level) {
-  return level.intro ?? '';
+  return levelParam(level, 'intro') ?? '';
 }
 
 /** Root directory holding every pack (one sub-directory per pack). */
