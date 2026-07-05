@@ -987,7 +987,7 @@ export class GameScene extends Phaser.Scene {
     ];
     this._labPanel = new Panel(this, {
       position: () => ({ x: 12, y: this._hudHeight + 10 }),
-      width: 250,
+      width: 280, // roomy enough that a param's tooltip wraps to ~2 tidy lines
       title: 'Lab tuning',
       build: (view) => this._buildLabBody(view),
     });
@@ -1004,20 +1004,13 @@ export class GameScene extends Phaser.Scene {
    * @returns {number}
    */
   _buildLabBody(view) {
-    const w = 250;
+    const w = 280;
     const rowH = 30;
     const n = this._devParams.length;
-    const helpY = 8 + n * rowH;
-    const moreTurnsY = helpY + 54;
+    const moreTurnsY = 8 + n * rowH + 20; // a small gap below the last row
     const resetY = moreTurnsY + 36;
     // A control ignores its tap when the press that ended on it was a scroll-drag.
     const dragged = () => this._labPanel.dragged;
-
-    // Shared explanation line, updated on hover/press of a parameter's controls.
-    this._devHelp = this.add
-      .text(10, helpY, '', { fontSize: '12px', color: '#cccccc', wordWrap: { width: w - 20 } })
-      .setDepth(21);
-    view.add(this._devHelp);
 
     this._devRows = this._devParams.map((param, i) => {
       const rowY = 8 + i * rowH;
@@ -1034,12 +1027,10 @@ export class GameScene extends Phaser.Scene {
         if (dragged()) return; // release ended a scroll-drag, not a tap
         this._promptParam(param);
       });
-      // Show this parameter's explanation while hovering or pressing its controls.
-      const showHelp = () => this._devHelp.setText(param.desc);
-      const hideHelp = () => this._devHelp.setText('');
+      // Explain the parameter on hover/press of any of its controls, via the
+      // shared tooltip (anchored below the control, wrapped to ~the panel width).
       for (const ctrl of [minus, value, plus]) {
-        ctrl.on('pointerover', showHelp).on('pointerout', hideHelp);
-        ctrl.on('pointerdown', showHelp).on('pointerup', hideHelp);
+        this.tip.attach(ctrl, param.desc, { place: 'anchor', maxWidth: w - 20 });
       }
       view.add([minus, value, plus]);
       return row;

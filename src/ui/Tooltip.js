@@ -1,5 +1,10 @@
 import { Config } from '../config.js';
 
+/** Px the hand/pointer cursor extends below its hotspot. A target-anchored tip
+ *  drops this far below the control's bottom edge, so the cursor can't cover it
+ *  no matter where in the control the pointer sits (or moves to) while it's up. */
+const CURSOR_CLEARANCE = 24;
+
 /**
  * One shared tooltip label for a scene, reused across every surface (HUD icons,
  * arena entities, menu rows). Replaces the ~8 per-anchor HUD `Text`s, the arena's
@@ -194,10 +199,13 @@ export class Tooltip {
 
   /**
    * Centre the label on the target's x, just below it — at `anchorY` if given (a
-   * fixed baseline, e.g. the HUD ribbon), else the target's own bottom edge. When
-   * anchored to the target's edge (no fixed baseline) and there's no room below,
-   * flip above the target so a row near the card/screen bottom still clears. Then
-   * clamp on-screen. (Was _placeHudTip, extended for menu rows.)
+   * fixed baseline, e.g. the HUD ribbon), else a cursor's-reach below the target's
+   * own bottom edge. That clearance is off the control's bottom (not the current
+   * pointer), because the tip is placed once and stays up while the pointer roams
+   * the control's hit area — so it must clear wherever the cursor could reach. If
+   * there's no room below, flip above (the cursor stays below the pointer, clear
+   * of a tip there). Then clamp on-screen. (Was _placeHudTip, extended for menu
+   * rows and Lab controls.)
    * @param {Phaser.GameObjects.GameObject} target
    */
   _placeAnchor(target) {
@@ -210,8 +218,13 @@ export class Tooltip {
     const h = this.label.height;
     const x = Phaser.Math.Clamp(b.centerX, half + pad, W - pad - half);
     const anchorY = typeof this._anchorY === 'function' ? this._anchorY() : this._anchorY;
-    let top = anchorY ?? b.bottom; // default: just below the target
-    if (anchorY == null && top + h > H - pad) top = b.top - h; // no room below → flip above
+    let top;
+    if (anchorY != null) {
+      top = anchorY; // fixed baseline (HUD, below the ribbon)
+    } else {
+      top = b.bottom + CURSOR_CLEARANCE; // below the control and any cursor over it
+      if (top + h > H - pad) top = b.top - h; // no room below → flip above (clear of the cursor)
+    }
     top = Phaser.Math.Clamp(top, pad, Math.max(pad, H - pad - h));
     this.label.setPosition(x, top);
   }
