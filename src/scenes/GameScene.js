@@ -326,7 +326,14 @@ export class GameScene extends Phaser.Scene {
     // Their tooltips are the shared service, positioned on reveal, not here.
     const iconRowY = L.textRows * L.textRow + rh / 2;
     const startX = cx - ((icons.length - 1) * L.gap) / 2;
-    icons.forEach((ic, i) => ic.setDisplaySize(L.iconSize, L.iconSize).setPosition(startX + i * L.gap, iconRowY));
+    icons.forEach((ic, i) => {
+      this.tweens.killTweensOf(ic); // drop any in-flight hover scale before re-sizing
+      ic.setDisplaySize(L.iconSize, L.iconSize).setPosition(startX + i * L.gap, iconRowY);
+      // Remember the layout-driven resting scale so the hover lift is relative to
+      // it (and aspect-correct), not an absolute factor.
+      ic.setData('baseSX', ic.scaleX);
+      ic.setData('baseSY', ic.scaleY);
+    });
 
     // Keep the attract glow on its target icon now that the icon has moved (the
     // ongoing pulse tween only animates scale/alpha, so position is ours to set).
@@ -739,9 +746,11 @@ export class GameScene extends Phaser.Scene {
       () => `Restart Level (${activePackName()} Level ${currentIndex() + 1})`
     );
     this.restartButton.on('pointerover', () => {
-      if (this._resetEnabled()) this.restartButton.setAlpha(1);
+      if (this._resetEnabled()) this._iconLift(this.restartButton);
     });
-    this.restartButton.on('pointerout', () => this._refreshResetButton());
+    this.restartButton.on('pointerout', () => {
+      this._iconRest(this.restartButton, this._resetEnabled() ? 0.8 : 0.3, true);
+    });
     this.restartButton.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
     this.restartButton.on('pointerup', () => {
       if (!this._resetEnabled()) return; // not lit: nothing to reset, no sound
@@ -782,8 +791,8 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0.8)
       .setInteractive({ useHandCursor: true });
     this._attachHudTip(this.menuButton, 'Open main menu');
-    this.menuButton.on('pointerover', () => this.menuButton.setAlpha(1));
-    this.menuButton.on('pointerout', () => this.menuButton.setAlpha(0.8));
+    this.menuButton.on('pointerover', () => this._iconLift(this.menuButton));
+    this.menuButton.on('pointerout', () => this._iconRest(this.menuButton, 0.8, true));
     this.menuButton.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
     this.menuButton.on('pointerup', () => {
       this._toggleMenu(); // open, or close if already showing (button is raised above the backdrop)
@@ -865,9 +874,9 @@ export class GameScene extends Phaser.Scene {
     // "(None)" when there's no such level in this direction.
     this._attachHudTip(icon, () => tooltipText + this._navTargetSuffix(dir));
     icon.on('pointerover', () => {
-      if (this._navEnabled(dir)) icon.setAlpha(1);
+      if (this._navEnabled(dir)) this._iconLift(icon);
     });
-    icon.on('pointerout', () => this._refreshNavButtons());
+    icon.on('pointerout', () => this._iconRest(icon, this._navEnabled(dir) ? 0.8 : 0.3, true));
     icon.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
     icon.on('pointerup', () => this._navClicked(dir));
     return icon;
@@ -910,8 +919,55 @@ export class GameScene extends Phaser.Scene {
 
   /** Dim (gray) the prev/next icons that aren't currently usable. */
   _refreshNavButtons() {
-    this.prevButton.setAlpha(this._navEnabled('prev') ? 0.8 : 0.3);
-    this.nextButton.setAlpha(this._navEnabled('next') ? 0.8 : 0.3);
+    this._iconRest(this.prevButton, this._navEnabled('prev') ? 0.8 : 0.3, false);
+    this._iconRest(this.nextButton, this._navEnabled('next') ? 0.8 : 0.3, false);
+  }
+
+  /**
+   * Hover-in feedback for a HUD icon: fade to full alpha and lift its scale a
+   * touch (`motion.hoverScale`) over the shared motion. The scale channel makes
+   * the focused state read clearly — alpha alone (0.8→1) is near its ceiling and
+   * too subtle. Relative to the icon's layout-driven resting scale (see layout).
+   *
+   * @param {Phaser.GameObjects.GameObject} icon @returns {void}
+   */
+  _iconLift(icon) {
+    this.tweens.killTweensOf(icon);
+    const f = Config.ui.motion.hoverScale;
+    this.tweens.add({
+      targets: icon,
+      alpha: 1,
+      scaleX: (icon.getData('baseSX') ?? icon.scaleX) * f,
+      scaleY: (icon.getData('baseSY') ?? icon.scaleY) * f,
+      duration: Config.ui.motion.dur,
+      ease: Config.ui.motion.ease,
+    });
+  }
+
+  /**
+   * Return a HUD icon to its resting look: `alpha` (0.8 lit / 0.3 dimmed) at the
+   * base scale, cancelling any in-flight tween first. `animate` eases it (a
+   * hover-out); otherwise it snaps — a state change shouldn't slide.
+   *
+   * @param {Phaser.GameObjects.GameObject} icon @param {number} alpha
+   * @param {boolean} animate @returns {void}
+   */
+  _iconRest(icon, alpha, animate) {
+    this.tweens.killTweensOf(icon);
+    const sx = icon.getData('baseSX') ?? icon.scaleX;
+    const sy = icon.getData('baseSY') ?? icon.scaleY;
+    if (animate) {
+      this.tweens.add({
+        targets: icon,
+        alpha,
+        scaleX: sx,
+        scaleY: sy,
+        duration: Config.ui.motion.dur,
+        ease: Config.ui.motion.ease,
+      });
+    } else {
+      icon.setAlpha(alpha).setScale(sx, sy);
+    }
   }
 
   /**
@@ -1169,7 +1225,7 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _refreshResetButton() {
-    this.restartButton.setAlpha(this._resetEnabled() ? 0.8 : 0.3);
+    this._iconRest(this.restartButton, this._resetEnabled() ? 0.8 : 0.3, false);
   }
 
   /**
@@ -1351,7 +1407,8 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _onMenuHidden() {
-    this.menuButton.setDepth(10).setAlpha(0.8);
+    this.menuButton.setDepth(10);
+    this._iconRest(this.menuButton, 0.8, false);
     this._menuRebuildPending = false;
     if (this._menuRebuildTimer) {
       this._menuRebuildTimer.remove();
@@ -1380,7 +1437,8 @@ export class GameScene extends Phaser.Scene {
     if (covered) {
       // Under the card now: normal depth, and clear any hover state so it can't
       // light up or flash its tooltip through the menu.
-      this.menuButton.setDepth(10).setAlpha(0.8);
+      this.menuButton.setDepth(10);
+      this._iconRest(this.menuButton, 0.8, false);
       this.tip.hide();
     } else {
       this.menuButton.setDepth(33); // above the depth-30 backdrop so it stays clickable

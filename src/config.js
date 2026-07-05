@@ -101,7 +101,7 @@ export const Config = {
       small: { fontSize: '16px', color: '#ffffff' }, // Lab value / panel title
       header: { fontSize: '13px', color: '#9aa0a6', fontStyle: 'bold' }, // section header
     },
-    motion: { dur: 150, ease: 'Sine.Out', rowStagger: 25 },
+    motion: { dur: 150, ease: 'Sine.Out', rowStagger: 25, hoverScale: 1.12 },
     // Shared tooltip look, used by every tooltip surface (HUD, arena, menu) and,
     // with a couple of overrides, the title's always-on name labels. One place to
     // restyle. `depth.tooltip` sits above cards (31-34), below modals (41-42).
