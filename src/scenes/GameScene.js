@@ -1404,6 +1404,54 @@ export class GameScene extends Phaser.Scene {
     Modal.info(this, title, body, onOk);
   }
 
+  /**
+   * The in-game "Report a problem" dialog: the diagnostics report in a modal
+   * consistent with the rest of the UI — the (scrollable) report text, a primary
+   * Copy, and OK. Copy uses the clipboard; if that's blocked (e.g. a non-secure
+   * context) it falls back to diag's DOM view, whose textarea can be selected and
+   * copied by hand.
+   *
+   * Crash resistance: diag's DOM report (the error banner, `#diag`, the copy
+   * fallback) stays the primary, Phaser-independent path — it works when the
+   * scene is broken. This modal is only for the healthy in-game path, and if even
+   * building it throws we drop to that DOM view.
+   *
+   * @returns {void}
+   */
+  _showReport() {
+    try {
+      const m = new Modal(this, {
+        title: 'Problem report',
+        subtitle: 'Copy report to clipboard and report',
+        body: diag.report(),
+        nowrap: true, // a log: left-aligned, scrolls horizontally for long lines
+        warn: false,
+        buttons: [
+          {
+            label: 'Copy',
+            bg: '#2e7d46',
+            onClick: async (btn) => {
+              const ok = await diag.copyReport();
+              if (!ok) {
+                m.hide(); // clipboard blocked: the DOM view lets them select + copy by hand
+                diag.showReport();
+              } else if (m.open) {
+                btn.setText('Copied');
+              }
+            },
+          },
+          { label: 'OK', bg: '#3a3a44', onClick: () => m.hide() },
+        ],
+      });
+      m.show();
+    } catch (e) {
+      // Log (into the very report we're about to show) without firing another
+      // banner over it, then fall back to the crash-proof DOM view.
+      diag.breadcrumb('report modal failed', e);
+      diag.showReport();
+    }
+  }
+
   // --- Menu / scoreboard --------------------------------------------------
 
   /**
@@ -1556,7 +1604,7 @@ export class GameScene extends Phaser.Scene {
       tip: 'Credits and the tools behind the game.',
     });
     y += this._menu.row(y, 'Report a problem', '›', {
-      onTap: () => diag.showReport(),
+      onTap: () => this._showReport(),
       tip: 'Copy a problem report to send to David.',
     });
 

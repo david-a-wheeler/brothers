@@ -161,9 +161,13 @@ export class Overlay {
    */
   onPointerDown(p) {
     const sv = this.scrollView;
-    if (sv && sv.scrollMax > 0) {
+    if (sv && (sv.scrollMax > 0 || sv.scrollXMax > 0)) {
       if (sv.overScrollbar(p)) {
         sv.beginThumbDrag(p);
+        return true;
+      }
+      if (sv.overHScrollbar(p)) {
+        sv.beginHThumbDrag(p);
         return true;
       }
       if (this._overDragArea(p)) {

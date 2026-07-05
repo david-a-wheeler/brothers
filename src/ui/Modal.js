@@ -15,8 +15,11 @@ import { Overlay } from './Overlay.js';
 export class Modal extends Overlay {
   /**
    * @param {Phaser.Scene} scene
-   * @param {{title:string, body?:string, warn?:boolean,
-   *   buttons:Array<{label:string, bg:string, onClick:()=>void}>}} spec
+   * @param {{title:string, subtitle?:string, body?:string, nowrap?:boolean, warn?:boolean,
+   *   buttons:Array<{label:string, bg:string, onClick:(btn:Phaser.GameObjects.Text)=>void}>}} spec
+   *   `subtitle` is a fixed line under the title (outside the scroll body).
+   *   `nowrap` makes the body a left-aligned log that scrolls horizontally instead
+   *   of wrapping.
    */
   constructor(scene, spec) {
     super(scene, { depth: 42 });
@@ -82,22 +85,24 @@ export class Modal extends Overlay {
 
   /** @override */
   _build(animate) {
-    const { title, body = '', buttons } = this.spec;
+    const { title, subtitle = '', body = '', buttons, nowrap = false } = this.spec;
     const U = Config.ui;
     const L = this.scene._layout;
     const add = this.scene.add;
     const cx = L.w / 2;
     const cy = L.h / 2;
     const pad = U.space.lg;
-    // Confirms stay narrow (a short question); a body-text modal (Help/About) may
-    // grow wider on a wide screen so it isn't a tall, narrow column — still capped
-    // so lines don't get uncomfortably long to read.
+    // Confirms stay narrow (a short question); a body-text modal (Help/About/the
+    // report) may grow wider on a wide screen so it isn't a tall, narrow column —
+    // still capped so prose lines don't get uncomfortably long to read.
     const pw = Math.min(body ? 640 : 440, L.w - 2 * L.pad);
     const innerW = pw - 2 * pad;
-    const closeReserve = 48; // keep the (centred) title clear of the top-right ×
+    const closeReserve = 48; // keep the (centred) title/subtitle clear of the top-right ×
 
-    // Build the text first so we can measure it and size the card to fit. The
-    // title wraps a little narrower so a long one can't tuck under the ×.
+    // Build the text first so we can measure it and size the card to fit. Title
+    // and the optional subtitle stay centred (wrapping a little narrower so a long
+    // one can't tuck under the ×). A `nowrap` body (e.g. a log) is left-aligned
+    // and scrolls horizontally; otherwise the body is centred prose that wraps.
     const titleTxt = add
       .text(cx, 0, title, {
         fontSize: '24px',
@@ -108,20 +113,28 @@ export class Modal extends Overlay {
       })
       .setOrigin(0.5, 0)
       .setDepth(42);
-    let bodyTxt = null;
-    if (body) {
-      bodyTxt = add
-        .text(cx, 0, body, { ...U.type.body, align: 'left', lineSpacing: 5, wordWrap: { width: innerW } })
+    let subtitleTxt = null;
+    if (subtitle) {
+      subtitleTxt = add
+        .text(cx, 0, subtitle, { ...U.type.body, color: U.color.textMuted, align: 'center', wordWrap: { width: innerW - closeReserve } })
         .setOrigin(0.5, 0)
         .setDepth(42);
+    }
+    let bodyTxt = null;
+    if (body) {
+      const style = nowrap
+        ? { ...U.type.body, align: 'left', lineSpacing: 5 }
+        : { ...U.type.body, align: 'left', lineSpacing: 5, wordWrap: { width: innerW } };
+      bodyTxt = add.text(0, 0, body, style).setOrigin(nowrap ? 0 : 0.5, 0).setDepth(42);
     }
 
     const btnH = 44;
     const maxPh = L.h - 2 * L.pad;
-    // The title and buttons are pinned; the body lives in a fixed region between
-    // them. If the body fits under the remaining height, the card shrinks to it
-    // (no scroll); otherwise the card caps at the screen and the body scrolls.
-    const chromeH = pad + titleTxt.height + (bodyTxt ? U.space.md : 0) + U.space.lg + btnH + pad;
+    const subBlock = subtitleTxt ? U.space.sm + subtitleTxt.height : 0;
+    // The title/subtitle and buttons are pinned; the body lives in a fixed region
+    // between them. If the body fits under the remaining height, the card shrinks
+    // to it (no scroll); otherwise the card caps at the screen and the body scrolls.
+    const chromeH = pad + titleTxt.height + subBlock + (bodyTxt ? U.space.md : 0) + U.space.lg + btnH + pad;
     const fullBodyH = bodyTxt ? bodyTxt.height : 0;
     const bodyViewH = bodyTxt ? Math.max(0, Math.min(fullBodyH, maxPh - chromeH)) : 0;
     const ph = chromeH + bodyViewH;
@@ -133,17 +146,19 @@ export class Modal extends Overlay {
 
     const top = cy - ph / 2 + pad;
     titleTxt.setPosition(cx, top);
+    if (subtitleTxt) subtitleTxt.setPosition(cx, top + titleTxt.height + U.space.sm);
     // Top-right × (cancel: on a Yes/No confirm it's the "No"/dismiss path).
     const close = this._closeButton(cx + pw / 2 - 20, cy - ph / 2 + 22, 42);
     this.parts = [backdrop, panel, titleTxt, close];
+    if (subtitleTxt) this.parts.push(subtitleTxt);
 
     if (bodyTxt) {
-      const bodyTop = top + titleTxt.height + U.space.md;
+      const bodyTop = top + titleTxt.height + subBlock + U.space.md;
       const innerLeft = cx - pw / 2 + pad;
-      // Local (container) coords: centred in the region, at its top.
-      bodyTxt.setPosition(innerW / 2, 0);
+      // Local (container) coords: top-left for a left-aligned log, else centred.
+      bodyTxt.setPosition(nowrap ? 0 : innerW / 2, 0);
       this.scrollView.add(bodyTxt);
-      this.scrollView.layout({ x: innerLeft, y: bodyTop, w: innerW, h: bodyViewH }, fullBodyH);
+      this.scrollView.layout({ x: innerLeft, y: bodyTop, w: innerW, h: bodyViewH }, fullBodyH, nowrap ? bodyTxt.width : innerW);
     } else {
       this.scrollView.layout({ x: 0, y: 0, w: 0, h: 0 }, 0); // nothing to scroll
     }
@@ -159,7 +174,7 @@ export class Modal extends Overlay {
    * Create the buttons and centre them as a row at `y`.
    *
    * @param {number} cx @param {number} y
-   * @param {Array<{label:string, bg:string, onClick:()=>void}>} buttons
+   * @param {Array<{label:string, bg:string, onClick:(btn:Phaser.GameObjects.Text)=>void}>} buttons
    * @returns {Phaser.GameObjects.Text[]}
    */
   _layoutButtons(cx, y, buttons) {
@@ -178,7 +193,9 @@ export class Modal extends Overlay {
    * A pill button: rounded text with a hover lift, a click sound, and a handler.
    *
    * @param {number} x @param {number} y @param {string} label
-   * @param {string} bg  CSS background colour. @param {() => void} onClick
+   * @param {string} bg  CSS background colour.
+   * @param {(btn:Phaser.GameObjects.Text)=>void} onClick  Receives the button, so
+   *   a handler that stays open (e.g. "Copy") can update its own label.
    * @returns {Phaser.GameObjects.Text}
    */
   _button(x, y, label, bg, onClick) {
@@ -191,7 +208,7 @@ export class Modal extends Overlay {
     btn.on('pointerout', () => btn.setAlpha(1));
     btn.on('pointerup', () => {
       sfx.tick();
-      onClick();
+      onClick(btn);
     });
     return btn;
   }

@@ -182,7 +182,7 @@ export function clear() {
  *
  * @returns {Promise<boolean>}
  */
-async function copyReport() {
+export async function copyReport() {
   const text = report();
   try {
     await navigator.clipboard.writeText(text);
