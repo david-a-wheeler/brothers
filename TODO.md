@@ -2,15 +2,6 @@
 
 Potential items to be done.
 
-## Bug: dragging overlay size when over button triggers button
-
-When dragging an overlay size at the bottom, *and* the pointer is over a button,
-the button's tooltip triggers, and if released, the button is pressed.
-During overlay resize (when the mouse cursor has changed to the resize shape),
-buttons/menu items shouldn't trigger their tooltips or actions. We *do* want the
-scrollbar to emerge/hide as the overlay resizes, but not the active items
-within it.
-
 ## Make camera assignment explicit (robustness)
 
 **Context.** `GameScene` runs two cameras: the world/main camera (zooms & pans with

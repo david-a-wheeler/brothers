@@ -50,6 +50,10 @@ export class Overlay {
     this._relayout = null;
     /** True while we've overridden the canvas cursor (title/resize hover). */
     this._cursorSet = false;
+    /** Full-screen input shield that captures the pointer during a resize /
+     *  window-drag, so nothing underneath hovers, highlights, or changes the
+     *  cursor (see {@link _grabPointer}). @type {?Phaser.GameObjects.Rectangle} */
+    this._shield = null;
   }
 
   /**
@@ -79,6 +83,7 @@ export class Overlay {
   /** Close and destroy the overlay. */
   hide() {
     if (!this.open) return;
+    this._releasePointer(); // in case it's hidden mid-drag
     if (this._cursorSet) {
       this.scene.input.setDefaultCursor('default'); // don't leave a move/resize cursor behind
       this._cursorSet = false;
@@ -250,6 +255,7 @@ export class Overlay {
     if (this._windowDragging || this._resizing) {
       this._windowDragging = false;
       this._resizing = false;
+      this._releasePointer();
       return true;
     }
     const sv = this.scrollView;
@@ -272,6 +278,8 @@ export class Overlay {
   /**
    * @returns {boolean} true if the just-ended pointer gesture was a scroll drag,
    *   so a control under the finger can ignore the tap (see {@link ScrollView.dragged}).
+   *   (A resize / window-drag needs no such guard: its shield captures the pointer
+   *   so controls never see the gesture — see {@link _grabPointer}.)
    */
   get dragged() {
     return this.scrollView ? this.scrollView.dragged : false;
@@ -306,6 +314,7 @@ export class Overlay {
     this._windowDragging = true;
     this._grabX = p.x - this._windowRect.x;
     this._grabY = p.y - this._windowRect.y;
+    this._grabPointer('move');
   }
 
   /** Move the overlay so the grab point follows the pointer, clamped on-screen. */
@@ -358,6 +367,7 @@ export class Overlay {
   _beginResize(p) {
     this._resizing = true;
     this._resizeGrab = this._windowRect.y + this._windowRect.h - p.y;
+    this._grabPointer('ns-resize');
   }
 
   /**
@@ -373,6 +383,36 @@ export class Overlay {
     if (newH === r.h) return;
     r.h = newH;
     this._relayout?.(newH);
+  }
+
+  // --- pointer capture (during a resize / window-drag) --------------------
+
+  /**
+   * Grab the pointer for the duration of a drag: a transparent, full-screen
+   * interactive shield on top of everything, so the controls underneath get no
+   * hover, highlight, tap, or cursor change — the gesture stays in one mode
+   * regardless of what the pointer passes over. `cursor` holds the drag cursor
+   * (e.g. `ns-resize`) since the shield is now the topmost object. The gesture
+   * itself is driven by the scene's pointer-move routing, which the shield
+   * doesn't intercept.
+   *
+   * @param {string} cursor @returns {void}
+   */
+  _grabPointer(cursor) {
+    if (this._shield) return;
+    const { width, height } = this.scene.scale;
+    this._shield = this.scene.add
+      .rectangle(0, 0, width, height, 0x000000, 0) // invisible, but hit-tested
+      .setOrigin(0, 0)
+      .setDepth(9999) // above everything, incl. modals
+      .setInteractive({ cursor });
+    this.scene.cameras.main.ignore(this._shield); // UI camera only
+  }
+
+  /** Release the drag shield. @returns {void} */
+  _releasePointer() {
+    this._shield?.destroy();
+    this._shield = null;
   }
 
   /**

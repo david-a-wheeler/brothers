@@ -1901,7 +1901,10 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    this.input.on('pointerup', (p) => {
+    // A release *outside* the canvas fires `pointerupoutside`, not `pointerup`, so
+    // handle both — otherwise a gesture (an overlay resize/drag, an aim, a pin, a
+    // pan) sticks if the pointer leaves the window before the button is released.
+    const onPointerUp = (p) => {
       if (this._activeModal) {
         this._activeModal.onPointerUp(p); // ends its scroll drag, if any
         return;
@@ -1939,7 +1942,9 @@ export class GameScene extends Phaser.Scene {
       // Hazards stay inert (and show their preview arrows) until the shot connects
       // — see _kickoff, fired from the first snap in the collision router.
       this._refreshHud();
-    });
+    };
+    this.input.on('pointerup', onPointerUp);
+    this.input.on('pointerupoutside', onPointerUp);
 
     // Phaser supplies dragX/dragY already offset for where the launcher was
     // grabbed, so the ball tracks the pointer without snapping its centre under
