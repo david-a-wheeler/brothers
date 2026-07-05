@@ -315,19 +315,12 @@ export class GameScene extends Phaser.Scene {
       this.nextButton,
       this.statusIcon,
     ];
-    const tips = [
-      this.menuTooltip,
-      this.prevTooltip,
-      this.restartTooltip,
-      this.nextTooltip,
-      this.statusTooltip,
-    ];
     // Icons sit on a full-height row below any compact text rows (in wide mode
     // there are none, so the icons share the single row with the edge text).
+    // Their tooltips are placed on reveal (see _placeHudTip), not here.
     const iconRowY = L.textRows * L.textRow + rh / 2;
     const startX = cx - ((icons.length - 1) * L.gap) / 2;
     icons.forEach((ic, i) => ic.setDisplaySize(L.iconSize, L.iconSize).setPosition(startX + i * L.gap, iconRowY));
-    tips.forEach((tp, i) => tp.setPosition(startX + i * L.gap, L.hudHeight + 6));
 
     // Keep the attract glow on its target icon now that the icon has moved (the
     // ongoing pulse tween only animates scale/alpha, so position is ours to set).
@@ -371,20 +364,32 @@ export class GameScene extends Phaser.Scene {
     const L = this._layout;
     const gap = Config.hud.statGap; // spacing between the three stats
     const stats = [this.packText, this.bestText, this.leftText];
-    const tips = [this.packTooltip, this.bestTooltip, this.leftTooltip];
     const y =
       L.mode === 'narrow' ? L.textRow * 1.5 : L.mode === 'compact' ? L.textRow / 2 : L.rowHeight / 2;
     const total = stats.reduce((s, e) => s + e.width, 0) + gap * (stats.length - 1);
     // Right edge of the group: the HUD edge (wide/compact) or centred (narrow).
+    // Each stat's tooltip is placed on reveal (see _placeHudTip), not here.
     let x = L.mode === 'narrow' ? L.w / 2 + total / 2 : L.w - L.pad;
     for (let i = stats.length - 1; i >= 0; i--) {
       stats[i].setOrigin(1, 0.5).setPosition(x, y);
-      const center = x - stats[i].width / 2;
-      const half = tips[i].width / 2;
-      const tx = Phaser.Math.Clamp(center, half + L.pad, L.w - L.pad - half);
-      tips[i].setPosition(tx, L.hudHeight + 6);
       x -= stats[i].width + gap;
     }
+  }
+
+  /**
+   * Reveal a HUD tooltip centred on `anchorX`, just below the ribbon. Word-wraps
+   * it to the screen width so it never runs off the edge (long labels on a narrow
+   * phone), then clamps its position on-screen. Shared by every HUD tooltip (the
+   * turn text, the right-hand stats, and the icons).
+   *
+   * @param {Phaser.GameObjects.Text} tip @param {number} anchorX @returns {void}
+   */
+  _placeHudTip(tip, anchorX) {
+    const L = this._layout;
+    tip.setWordWrapWidth(L.w - 2 * L.pad, true); // wrap to fit the screen
+    const half = tip.width / 2;
+    const x = Phaser.Math.Clamp(anchorX, half + L.pad, L.w - L.pad - half);
+    tip.setPosition(x, L.hudHeight + 6).setVisible(true);
   }
 
   /**
@@ -706,13 +711,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(11)
       .setVisible(false);
-    const revealTurnTip = () => {
-      const cx = this.turnText.getCenter().x;
-      const half = this.turnTooltip.width / 2;
-      const L = this._layout;
-      const x = Phaser.Math.Clamp(cx, half + L.pad, L.w - L.pad - half);
-      this.turnTooltip.setPosition(x, L.hudHeight + 6).setVisible(true);
-    };
+    const revealTurnTip = () => this._placeHudTip(this.turnTooltip, this.turnText.getCenter().x);
     const hideTurnTip = () => this.turnTooltip.setVisible(false);
     this.turnText.on('pointerover', revealTurnTip);
     this.turnText.on('pointerout', hideTurnTip);
@@ -777,9 +776,8 @@ export class GameScene extends Phaser.Scene {
     // label names the current pack + level, set fresh on reveal since both can
     // change as the player navigates.
     const showTip = () => {
-      this.restartTooltip
-        .setText(`Restart Level (${activePackName()} Level ${currentIndex() + 1})`)
-        .setVisible(true);
+      this.restartTooltip.setText(`Restart Level (${activePackName()} Level ${currentIndex() + 1})`);
+      this._placeHudTip(this.restartTooltip, this.restartButton.x);
     };
     const hideTip = () => this.restartTooltip.setVisible(false);
     this.restartButton.on('pointerover', () => {
@@ -839,11 +837,12 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(11)
       .setVisible(false);
-    this.statusIcon.on('pointerover', () => this.statusTooltip.setVisible(true));
+    const showStatusTip = () => this._placeHudTip(this.statusTooltip, this.statusIcon.x);
+    this.statusIcon.on('pointerover', showStatusTip);
     this.statusIcon.on('pointerout', () => this.statusTooltip.setVisible(false));
     this.statusIcon.on('pointerdown', (_p, _x, _y, e) => {
       e?.stopPropagation();
-      this.statusTooltip.setVisible(true);
+      showStatusTip();
     });
     this.statusIcon.on('pointerup', () => this.statusTooltip.setVisible(false));
 
@@ -865,9 +864,10 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(11)
       .setVisible(false);
+    const showMenuTip = () => this._placeHudTip(this.menuTooltip, this.menuButton.x);
     this.menuButton.on('pointerover', () => {
       this.menuButton.setAlpha(1);
-      this.menuTooltip.setVisible(true);
+      showMenuTip();
     });
     this.menuButton.on('pointerout', () => {
       this.menuButton.setAlpha(0.8);
@@ -875,7 +875,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.menuButton.on('pointerdown', (_p, _x, _y, e) => {
       e?.stopPropagation();
-      this.menuTooltip.setVisible(true);
+      showMenuTip();
     });
     this.menuButton.on('pointerup', () => {
       this.menuTooltip.setVisible(false);
@@ -947,7 +947,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(11)
       .setVisible(false);
-    const reveal = () => tip.setVisible(true);
+    const reveal = () => this._placeHudTip(tip, stat.getCenter().x);
     const hide = () => tip.setVisible(false);
     stat.on('pointerover', reveal);
     stat.on('pointerout', hide);
@@ -988,7 +988,10 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
     // Name the target level on reveal (it changes as the player navigates), or
     // "(None)" when there's no such level in this direction.
-    const reveal = () => tip.setText(tooltipText + this._navTargetSuffix(dir)).setVisible(true);
+    const reveal = () => {
+      tip.setText(tooltipText + this._navTargetSuffix(dir));
+      this._placeHudTip(tip, icon.x);
+    };
     icon.on('pointerover', () => {
       if (this._navEnabled(dir)) icon.setAlpha(1);
       reveal();
