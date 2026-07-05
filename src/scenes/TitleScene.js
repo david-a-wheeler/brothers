@@ -442,13 +442,17 @@ export class TitleScene extends Phaser.Scene {
    * @returns {Phaser.GameObjects.Text}
    */
   _nameLabel(text) {
+    // Always-on demo labels — a plain Text, not the in-game Tooltip box, but it
+    // borrows that token's font/size/colour/padding so the two read consistently.
+    // Its own look: a translucent black background (the demo shows through).
+    const tk = Config.ui.tooltip;
     return this.add
       .text(0, 0, text, {
         fontFamily: 'system-ui, sans-serif',
-        fontSize: '15px',
-        color: '#ffffff',
+        fontSize: tk.fontSize,
+        color: tk.color,
         backgroundColor: '#000000cc',
-        padding: { x: 6, y: 3 },
+        padding: tk.padding,
       })
       .setOrigin(0.5, 0)
       .setDepth(9);

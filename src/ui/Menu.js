@@ -25,11 +25,10 @@ export class Menu extends Overlay {
    * @param {{
    *   render: () => (void|Promise<void>),
    *   onBack: () => void,
-   *   placeLabel: (label: Phaser.GameObjects.Text, x: number, y: number) => void,
    *   onLayout?: () => void,
    * }} opts  `render` draws the current view; `onBack` handles the Back button;
-   *   `placeLabel` positions the tooltip near the pointer; `onLayout` runs after
-   *   each (re)build (e.g. to restack the menu button against the card).
+   *   `onLayout` runs after each (re)build (e.g. to restack the menu button
+   *   against the card). Tooltips use the scene's shared Tooltip service.
    */
   constructor(scene, opts) {
     super(scene, { modal: true, depth: 32 });
@@ -63,14 +62,10 @@ export class Menu extends Overlay {
     this._title = add.text(cx0 + 16, cy0 + 16, '', U.type.title).setDepth(32);
     const close = this._closeButton(cx0 + cw - 20, cy0 + 22, 32);
 
-    // Shared hover tooltip (above the content, below modals).
-    this._tip = add
-      .text(0, 0, '', { fontSize: '14px', color: '#ffffff', backgroundColor: '#000000', padding: { x: 8, y: 5 } })
-      .setOrigin(0, 1)
-      .setDepth(34)
-      .setVisible(false);
-
-    this.parts = [backdrop, card, this._title, close, this._tip];
+    // Hover tooltips use the scene's shared Tooltip service (this.scene.tip); see
+    // attachTooltip. Its label is scene-owned and persists across open/close, so
+    // it isn't part of this card's `parts`.
+    this.parts = [backdrop, card, this._title, close];
     this.attachTooltip(close, 'Close the menu.');
 
     this._headerBottom = cy0 + 46;
@@ -325,32 +320,21 @@ export class Menu extends Overlay {
   // --- tooltip ------------------------------------------------------------
 
   /**
-   * Attach a hover/press tooltip (shared `_tip`) to an interactive object.
+   * Attach a hover/press tooltip to an interactive object via the scene's shared
+   * Tooltip service. Anchored to the target (just below the row it describes, or
+   * above near the card bottom) rather than following the pointer, so it never
+   * covers the very row you're reading. Wrapped to ~the card width. The `clip`
+   * reproduces the old guard: masks clip rendering but not input, so a scrolled-off
+   * row's hit area can leak outside the card — only show while over the card.
    *
    * @param {Phaser.GameObjects.GameObject} target @param {string} text @returns {void}
    */
   attachTooltip(target, text) {
-    const show = () => this._showTip(text);
-    const hide = () => this._hideTip();
-    target.on('pointerover', show).on('pointerdown', show);
-    target.on('pointerout', hide).on('pointerup', hide);
-  }
-
-  /** Show the shared tooltip near the pointer, word-wrapped and on-screen. */
-  _showTip(text) {
-    if (!this._tip) return;
-    const p = this.scene.input.activePointer;
-    // Masks don't clip input, so a scrolled-off row's hit area can leak outside
-    // the card; only show a tooltip when the pointer is actually over the card.
-    if (!this._overCard(p)) return;
-    const maxW = Math.min(320, this.scene.scale.width - 40);
-    this._tip.setWordWrapWidth(maxW, true).setText(text).setVisible(true);
-    this._opts.placeLabel(this._tip, p.x, p.y);
-  }
-
-  /** Hide the shared tooltip. */
-  _hideTip() {
-    if (this._tip) this._tip.setVisible(false);
+    this.scene.tip.attach(target, text, {
+      place: 'anchor',
+      maxWidth: this.card.w,
+      clip: (p) => this._overCard(p),
+    });
   }
 
   // --- input geometry (Overlay hooks) -------------------------------------
