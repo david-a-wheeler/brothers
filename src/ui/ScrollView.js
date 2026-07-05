@@ -42,7 +42,7 @@ export class ScrollView {
     this.scrollbar = scene.add.rectangle(0, 0, 4, 20, 0xffffff, 0.45).setOrigin(0.5).setDepth(scrollbarDepth).setVisible(false);
     this.hscrollbar = scene.add.rectangle(0, 0, 20, 4, 0xffffff, 0.45).setOrigin(0.5).setDepth(scrollbarDepth).setVisible(false);
 
-    scene.cameras.main.ignore([this.container, this.scrollbar, this.hscrollbar]); // HUD camera only
+    scene.assignToUI([this.container, this.scrollbar, this.hscrollbar]);
 
     // The mask is an off-display-list graphics, so the scene's shutdown won't
     // auto-destroy it (unlike the container/scrollbars). Destroy on shutdown too,
@@ -119,7 +119,7 @@ export class ScrollView {
     this.scrollX = Phaser.Math.Clamp(this.scrollX, 0, this.scrollXMax);
     this._maskGfx.clear().fillStyle(0xffffff, 1).fillRect(region.x, region.y, region.w, region.h);
     this.container.setPosition(region.x - this.scrollX, region.y - this.scroll);
-    this.scene.cameras.main.ignore(this.container); // re-walk: newly added children too
+    this.scene.assignToUI(this.container); // re-walk: newly added children too
     this._updateBars();
     this._gateInput();
   }

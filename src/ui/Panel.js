@@ -82,7 +82,7 @@ export class Panel extends Overlay {
       this.scrollView.relayout({ x: rg.x, y: rg.y, w: rg.w, h: cardH - o.headerH });
     };
 
-    this.scene.cameras.main.ignore(this.parts); // HUD camera only
+    this.scene.assignToUI(this.parts);
     this._fadeIn(animate);
   }
 }

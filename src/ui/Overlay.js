@@ -406,7 +406,7 @@ export class Overlay {
       .setOrigin(0, 0)
       .setDepth(9999) // above everything, incl. modals
       .setInteractive({ cursor });
-    this.scene.cameras.main.ignore(this._shield); // UI camera only
+    this.scene.assignToUI(this._shield);
   }
 
   /** Release the drag shield. @returns {void} */

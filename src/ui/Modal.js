@@ -187,7 +187,7 @@ export class Modal extends Overlay {
       };
     }
 
-    this.scene.cameras.main.ignore(this.parts); // HUD camera only
+    this.scene.assignToUI(this.parts);
     this._fadeIn(animate);
   }
 

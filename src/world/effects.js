@@ -29,7 +29,7 @@ export function ensurePortalSpark(scene) {
  */
 export function spawnRing(scene, x, y, radius, color) {
   const ring = scene.add.circle(x, y, radius).setStrokeStyle(3, color, 0.9).setDepth(5);
-  scene.uiCamera?.ignore(ring); // world effect: keep it off the fixed HUD camera
+  scene.assignToWorld?.(ring); // world effect: keep it off the fixed HUD camera
   scene.tweens.add({
     targets: ring,
     scale: Config.anim.ring.growScale,
@@ -122,7 +122,7 @@ export function directionArrow(scene, { x, y, angleDeg, speed, offset }) {
     .container(x, y, [shaft, head])
     .setRotation(Phaser.Math.DegToRad(angleDeg))
     .setDepth(5); // above world objects; translucency still reveals them
-  scene.uiCamera?.ignore(arrow); // world-space cue, never on the fixed HUD camera
+  scene.assignToWorld?.(arrow); // world-space cue, never on the fixed HUD camera
 
   // scaleY 1 -> -1 under Sine.InOut + yoyo traces a cosine, so the blade appears
   // to rotate steadily about the shaft axis (passing edge-on at scaleY 0, then

@@ -456,11 +456,38 @@ export class GameScene extends Phaser.Scene {
       this.bannerPanel,
       this.banner,
     ];
-    this.cameras.main.ignore(this.hudObjects);
-    // The UI camera shows only the HUD: ignore every other display object.
-    this.uiCamera.ignore(this.children.list.filter((o) => !this.hudObjects.includes(o)));
+    // Split what exists now: the HUD to the UI camera, everything else (the world)
+    // to the world camera. Objects created *later* assign themselves explicitly
+    // (assignToUI / assignToWorld), so this snapshot only has to cover setup time.
+    this.assignToUI(this.hudObjects);
+    this.assignToWorld(this.children.list.filter((o) => !this.hudObjects.includes(o)));
 
     this._layoutCameras(true); // initial viewport/zoom (start fully zoomed out)
+  }
+
+  /**
+   * Assign a display object (or array) to the fixed UI camera only — the world
+   * camera ignores it, so it stays in screen space and never zooms/scrolls with
+   * the arena. Use for HUD, overlays, tooltips: anything drawn in UI space.
+   *
+   * @param {Phaser.GameObjects.GameObject|Phaser.GameObjects.GameObject[]} obj
+   * @returns {void}
+   */
+  assignToUI(obj) {
+    this.cameras.main.ignore(obj);
+  }
+
+  /**
+   * Assign a display object (or array) to the world camera only — the UI camera
+   * ignores it, so a world-space thing created after camera setup (e.g. an effect)
+   * doesn't also draw on the fixed HUD camera. Shared world code calls this as
+   * `scene.assignToWorld?.(obj)`, a no-op on scenes with no UI camera (the title).
+   *
+   * @param {Phaser.GameObjects.GameObject|Phaser.GameObjects.GameObject[]} obj
+   * @returns {void}
+   */
+  assignToWorld(obj) {
+    this.uiCamera.ignore(obj);
   }
 
   /**

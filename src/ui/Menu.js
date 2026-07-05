@@ -96,7 +96,7 @@ export class Menu extends Overlay {
     this.attachTooltip(this._backBtn, 'Go back.');
     this.parts.push(this._backBtn);
 
-    this.scene.cameras.main.ignore(this.parts); // HUD camera only
+    this.scene.assignToUI(this.parts);
     this._opts.onLayout?.();
     this._fadeIn(animate);
     this._opts.render(); // draw the current view into the (persistent) scroll body
