@@ -188,14 +188,16 @@ export class Menu extends Overlay {
     const parts = [bg];
     if (current) parts.push(add.rectangle(0, localY, 3, rowH - 6, U.color.accent, 1).setOrigin(0, 0));
     parts.push(
-      add.text(14, midY, label, { fontSize, color: enabled ? U.color.text : U.color.textDisabled }).setOrigin(0, 0.5)
+      add
+        .text(14, midY, label, { ...U.type.row, fontSize, color: enabled ? U.color.text : U.color.textDisabled })
+        .setOrigin(0, 0.5)
     );
     if (value) {
       parts.push(
         // Top/bottom padding gives the text canvas room: Phaser under-measures
         // emoji height (✓/★/🔒), so without it the glyph's top is clipped.
         add
-          .text(w - 12, midY, value, { fontSize, color: valueColor, padding: { top: 6, bottom: 6 } })
+          .text(w - 12, midY, value, { ...U.type.value, fontSize, color: valueColor, padding: { top: 6, bottom: 6 } })
           .setOrigin(1, 0.5)
       );
     }
@@ -253,7 +255,9 @@ export class Menu extends Overlay {
     const base = danger ? (enabled ? U.color.danger : U.color.dangerOff) : 0x3a3a44;
     const hover = danger ? U.color.dangerHover : 0x50505a;
     const rect = add.rectangle(cx, midY, Math.min(240, this._listW), h, base, 1).setOrigin(0.5);
-    const txt = add.text(cx, midY, label, { fontSize: '15px', color: enabled ? '#ffffff' : '#777' }).setOrigin(0.5);
+    const txt = add
+      .text(cx, midY, label, { ...U.type.toggle, color: enabled ? U.color.text : U.color.textDisabled })
+      .setOrigin(0.5);
     this.scrollView.add([rect, txt]);
     const tappable = enabled && onTap;
     if (tappable || tip) rect.setInteractive(tappable ? { useHandCursor: true } : {});
@@ -283,10 +287,10 @@ export class Menu extends Overlay {
     const midY = localY + (rowH - 6) / 2;
     const cell = (x0, { label, on, tip, onTap }) => {
       const bg = add.rectangle(x0, localY, half - 3, rowH - 6, U.color.row, U.color.rowAlpha).setOrigin(0, 0);
-      const lbl = add.text(x0 + 12, midY, label, { fontSize: '16px', color: U.color.text }).setOrigin(0, 0.5);
+      const lbl = add.text(x0 + 12, midY, label, U.type.control).setOrigin(0, 0.5);
       const val = add
         .text(x0 + half - 3 - 12, midY, on ? 'On' : 'Off', {
-          fontSize: '16px',
+          ...U.type.control,
           color: on ? U.color.accentText : U.color.textMuted,
         })
         .setOrigin(1, 0.5);

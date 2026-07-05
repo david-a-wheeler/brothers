@@ -1,3 +1,4 @@
+import { Config } from '../config.js';
 import { sfx } from '../Sfx.js';
 
 /**
@@ -15,7 +16,7 @@ import { sfx } from '../Sfx.js';
  */
 export function chipButton(scene, x, y, label, onClick, { bg = '#444444', bgHover = '#666666', guard = null } = {}) {
   const btn = scene.add
-    .text(x, y, label, { fontSize: '16px', color: '#ffffff', backgroundColor: bg, padding: { x: 8, y: 2 } })
+    .text(x, y, label, { ...Config.ui.type.control, backgroundColor: bg, padding: { x: 8, y: 2 } })
     .setOrigin(0.5, 0.5)
     .setDepth(21)
     .setInteractive({ useHandCursor: true });

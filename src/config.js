@@ -81,12 +81,22 @@ export const Config = {
       accentText: '#ffd479',
     },
     font: UI_FONT, // the shared UI typeface — applied as a global default (see main.js), not per-style
+    // Text roles: one place for every UI text size/colour/weight. Spread a role
+    // into a style and override only what varies (e.g. a per-state colour). The
+    // font is global (see main.js), so it's not repeated here.
     type: {
-      title: { fontSize: '20px', color: '#ffffff', fontStyle: 'bold' },
-      header: { fontSize: '13px', color: '#9aa0a6', fontStyle: 'bold' },
-      row: { fontSize: '17px', color: '#ffffff' },
-      value: { fontSize: '17px', color: '#9aa0a6' },
-      body: { fontSize: '15px', color: '#dddddd' },
+      banner: { fontSize: '52px', color: '#ffffff', fontStyle: 'bold' }, // end-of-level banner
+      heading: { fontSize: '24px', color: '#ffffff', fontStyle: 'bold' }, // modal title
+      title: { fontSize: '20px', color: '#ffffff', fontStyle: 'bold' }, // card/menu title
+      button: { fontSize: '20px', color: '#ffffff' }, // modal button label
+      stat: { fontSize: '18px', color: '#dddddd' }, // HUD right-hand stats
+      row: { fontSize: '17px', color: '#ffffff' }, // list row label
+      value: { fontSize: '17px', color: '#9aa0a6' }, // list row value
+      control: { fontSize: '16px', color: '#ffffff' }, // chip button / two-up cell
+      toggle: { fontSize: '15px', color: '#ffffff' }, // menu toggle label
+      body: { fontSize: '15px', color: '#dddddd' }, // prose
+      small: { fontSize: '14px', color: '#ffffff' }, // Lab value / panel title
+      header: { fontSize: '13px', color: '#9aa0a6', fontStyle: 'bold' }, // section header
     },
     motion: { dur: 150, ease: 'Sine.Out', rowStagger: 25 },
     // Shared tooltip look, used by every tooltip surface (HUD, arena, menu) and,

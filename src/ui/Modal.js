@@ -105,9 +105,7 @@ export class Modal extends Overlay {
     // and scrolls horizontally; otherwise the body is centred prose that wraps.
     const titleTxt = add
       .text(cx, 0, title, {
-        fontSize: '24px',
-        color: U.color.text,
-        fontStyle: 'bold',
+        ...U.type.heading,
         align: 'center',
         wordWrap: { width: innerW - closeReserve },
       })
@@ -223,7 +221,7 @@ export class Modal extends Overlay {
    */
   _button(x, y, label, bg, onClick) {
     const btn = this.scene.add
-      .text(x, y, label, { fontSize: '20px', color: '#ffffff', backgroundColor: bg, padding: { x: 24, y: 8 } })
+      .text(x, y, label, { ...Config.ui.type.button, backgroundColor: bg, padding: { x: 24, y: 8 } })
       .setOrigin(0.5)
       .setDepth(42)
       .setInteractive({ useHandCursor: true });

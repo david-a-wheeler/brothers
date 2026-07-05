@@ -1,3 +1,4 @@
+import { Config } from '../config.js';
 import { Overlay } from './Overlay.js';
 
 /**
@@ -51,7 +52,9 @@ export class Panel extends Overlay {
     // title, and a red × (raised above the menu band so it stays clickable when
     // the menu that toggled this panel is still up over it).
     const bg = add.rectangle(x, y, w, 100, 0x000000, 0.72).setOrigin(0, 0).setDepth(o.bgDepth);
-    const title = add.text(x + 10, y + 8, o.title, { fontSize: '14px', color: '#ffd479' }).setDepth(o.titleDepth);
+    const title = add
+      .text(x + 10, y + 8, o.title, { ...Config.ui.type.small, color: Config.ui.color.accentText })
+      .setDepth(o.titleDepth);
     const close = this._closeButton(x + w - 20, y + 14, o.closeDepth);
     this.parts = [bg, title, close];
 

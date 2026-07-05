@@ -817,11 +817,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(9)
       .setVisible(false);
     this.banner = this.add
-      .text(Config.view.width / 2, Config.view.height / 2, '', {
-        fontSize: '52px',
-        fontStyle: 'bold',
-        color: '#ffffff',
-      })
+      .text(Config.view.width / 2, Config.view.height / 2, '', Config.ui.type.banner)
       .setOrigin(0.5)
       .setDepth(10)
       .setShadow(2, 3, '#000000', 6, true, true)
@@ -839,7 +835,7 @@ export class GameScene extends Phaser.Scene {
    */
   _buildHudStat(tooltipText) {
     const stat = this.add
-      .text(0, 0, '', { fontSize: '18px', color: '#dddddd' })
+      .text(0, 0, '', Config.ui.type.stat)
       .setOrigin(1, 0.5)
       .setDepth(10)
       .setInteractive();
@@ -1018,7 +1014,7 @@ export class GameScene extends Phaser.Scene {
       const plus = chipButton(this, w - 24, rowY, '+', () => this._adjustParam(param, 1), { guard: dragged });
       // Click the value to type one directly (prompt works desktop + mobile).
       const value = this.add
-        .text(44, rowY, '', { fontSize: '14px', color: '#ffffff' })
+        .text(44, rowY, '', Config.ui.type.small)
         .setOrigin(0, 0.5)
         .setDepth(21);
       const row = { param, value };
