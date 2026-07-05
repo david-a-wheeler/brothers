@@ -196,6 +196,16 @@
          "name":"wallRestitution",
          "type":"float",
          "value":0.6
+        },
+        {
+         "name":"name",
+         "type":"string",
+         "value":"The Bank Shot"
+        },
+        {
+         "name":"intro",
+         "type":"string",
+         "value":"Walls bounce. Use them.\n\nThe goal is tucked away — a straight shot won't reach it. Aim for a wall and let the rebound carry the brothers home."
         }],
  "renderorder":"right-down",
  "tiledversion":"1.12.2-2-geb83ddb9",

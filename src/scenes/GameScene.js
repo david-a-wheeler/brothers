@@ -15,7 +15,10 @@ import {
   listPacks,
   loadPackManifest,
   loadPack,
+  levelName,
+  levelIntro,
 } from '../levels.js';
+import { introSeen, markIntroSeen, clearIntroSeen } from '../intros.js';
 import * as scores from '../scores.js';
 import { World } from '../world/World.js';
 import { setSkipTitle } from '../prefs.js';
@@ -201,6 +204,7 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(0, () => this._onResize());
     this._refreshHud();
     diag.breadcrumb('game: create', currentLevelKey());
+    this._maybeShowIntro(); // first look at this level? show its intro (once)
   }
 
   /**
@@ -1348,6 +1352,37 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Modal/heading title for the current level: always the pack + level number,
+   * plus the level's name if it has one (e.g. "Base Level 3 — The Gauntlet").
+   *
+   * @returns {string}
+   */
+  _levelTitle() {
+    const base = `${activePackName()} Level ${currentIndex() + 1}`;
+    const name = levelName(this.level);
+    return name ? `${base} — ${name}` : base;
+  }
+
+  /**
+   * On first arrival at a level, show its intro (if it has one and the player
+   * hasn't OK'd it yet). Called at the end of {@link create}, so it also skips on
+   * a restart (the flag persists). @returns {void}
+   */
+  _maybeShowIntro() {
+    if (levelIntro(this.level) && !introSeen(currentLevelKey())) this._showLevelIntro();
+  }
+
+  /**
+   * Show the current level's intro in an info modal; OK marks it seen (only then,
+   * so quitting mid-intro re-shows it next time). Used both on first arrival and
+   * from the menu's "See level intro". @returns {void}
+   */
+  _showLevelIntro() {
+    const key = currentLevelKey();
+    this._showMessage(this._levelTitle(), levelIntro(this.level), () => markIntroSeen(key));
+  }
+
+  /**
    * The in-game "Report a problem" dialog: the diagnostics report in a modal
    * consistent with the rest of the UI — the (scrollable) report text, a primary
    * Copy, and OK. Copy uses the clipboard; if that's blocked (e.g. a non-secure
@@ -1531,6 +1566,20 @@ export class GameScene extends Phaser.Scene {
       onTap: () => this._showMessage('How to play', HELP_TEXT),
       tip: 'How to play, and how scoring works.',
     });
+    const hasIntro = !!levelIntro(this.level);
+    y += this._menu.row(y, 'See level intro', '›', {
+      enabled: hasIntro,
+      // Re-show the intro: clear its seen flag (so quitting mid-read re-shows it),
+      // close the menu, then open it.
+      onTap: hasIntro
+        ? () => {
+            clearIntroSeen(currentLevelKey());
+            this._closeMenu();
+            this._showLevelIntro();
+          }
+        : null,
+      tip: hasIntro ? "Re-read this level's intro." : 'This level has no intro.',
+    });
     y += this._menu.row(y, 'Packs Available', '›', {
       onTap: () => this._showPacksAvailable(),
       tip: 'Browse all packs and their scores; open one to jump between levels.',
@@ -1647,6 +1696,16 @@ export class GameScene extends Phaser.Scene {
       valueColor: U.color.text,
       tip: isCurrent ? "The name of the pack you're currently playing" : 'The name of this pack',
     });
+    // The loaded level lives in this pack (always so from the main menu): name it.
+    if (isCurrent) {
+      const n = currentIndex() + 1;
+      const nm = levelName(this.level);
+      y += this._menu.row(y, 'Current level', nm ? `${nm} (${n})` : String(n), {
+        ...compact,
+        valueColor: U.color.text,
+        tip: nm ? `You're on "${nm}" — level ${n} of this pack.` : `You're on level ${n} of this pack.`,
+      });
+    }
     y += this._menu.row(y, 'Levels', String(count), { ...compact, tip: 'Number of levels in this pack.' });
     y += this._menu.row(y, 'Completed', String(completed), {
       ...compact,

@@ -37,6 +37,8 @@ const DEFAULTS = {
 /**
  * @typedef {Object} Level
  * @property {{width:number, height:number}} arena
+ * @property {string} name  Optional display name ('' if unnamed); see {@link levelName}.
+ * @property {string} intro  Optional intro/briefing text ('' if none); see {@link levelIntro}.
  * @property {number} moves
  * @property {number} wallRestitution
  * @property {boolean} pinEnabled  Whether the anchor's aiming pin can be moved.
@@ -77,6 +79,8 @@ export function loadTiledLevel(map) {
   /** @type {Level} */
   const level = {
     arena,
+    name: mapProps.name ?? '',
+    intro: mapProps.intro ?? '',
     moves: mapProps.moves ?? DEFAULTS.moves,
     wallRestitution: mapProps.wallRestitution ?? DEFAULTS.wallRestitution,
     pinEnabled: mapProps.pinEnabled ?? DEFAULTS.pinEnabled,
@@ -110,6 +114,26 @@ export function loadTiledLevel(map) {
   }
 
   return level;
+}
+
+/**
+ * A level's display name, or '' if unnamed. i18n-ready: today it returns the
+ * single `name`; later it can resolve `name_<lang>` with a fallback to `name`.
+ *
+ * @param {Level} level @returns {string}
+ */
+export function levelName(level) {
+  return level.name ?? '';
+}
+
+/**
+ * A level's intro/briefing text, or '' if none. i18n-ready: today it returns the
+ * single `intro`; later it can resolve `intro_<lang>` with a fallback to `intro`.
+ *
+ * @param {Level} level @returns {string}
+ */
+export function levelIntro(level) {
+  return level.intro ?? '';
 }
 
 /** Root directory holding every pack (one sub-directory per pack). */
