@@ -22,14 +22,39 @@ const DEMO_GLYPHS = [
  * geometry never collapses — David always draws back the correct direction — it
  * just shrinks uniformly on a narrow screen.
  */
-const DEMO_PULL = 170; // how far left David draws back from his rest spot
-const DEMO_TRAVEL = 280; // Ken's rest spot to the goal
-const DEMO_ARC = 90; // how high David rises during the pull-back
+const DEMO_PULL = 170; // how far left the launcher draws back from its rest spot
+const DEMO_TRAVEL = 280; // the anchor's rest spot to the goal
+const DEMO_ARC = 90; // how high the launcher rises during the pull-back
+
+/**
+ * Timing (ms) for one demo cycle, shared by BOTH turns (David-launches-Ken and
+ * Ken-launches-David run the same {@link TitleScene._demoSteps} with the roles
+ * swapped). Pulling the phase durations out here means a pacing tweak applies to
+ * both turns at once — change a number, and both brothers' turns retime together.
+ */
+const DEMO_TIMING = {
+  openHold: 5000, // hold the opening pose so it can be read
+  pullBack: 3200, // draw back along the arc
+  stretchHold: 500, // beat at full stretch
+  release: 360, // sling straight into the anchor
+  impact: 160, // collision flash
+  travel: 1300, // the band carries the pair to the goal
+  winHold: 5000, // bask in the win
+  fade: 600, // fade the demo out
+  blank: 2000, // blank beat before the next turn begins
+};
 
 /**
  * The intro / title screen: an arced "Brothers" wordmark with a gold shimmer,
  * the premise, a looping scripted demo of a shot reaching the goal, and a Play
  * button — over looping music.
+ *
+ * The demo mirrors the real game's turn-taking: each loop the brothers swap
+ * roles, so one turn David launches Ken into the goal and the next Ken launches
+ * David. Rather than script two animations, we script it *once* against abstract
+ * `launcher`/`anchor` roles ({@link _assignRoles}) and re-point those at David or
+ * Ken each cycle ({@link _startDemo}) — the faces are already role-relative, so
+ * the same steps read correctly whoever is slinging.
  *
  * Reuse over reinvention: the demo's David, Ken, and Goal are the *real* world
  * entities ({@link David}/{@link Ken}/{@link Goal}), created in visual-only mode
@@ -363,7 +388,7 @@ export class TitleScene extends Phaser.Scene {
 
     /** Elastic band, drawn between the pair each frame (shared look with the game). */
     this.band = this.add.graphics().setDepth(4);
-    /** Pulsing "this one moves" halo on the selected brother (David). */
+    /** Pulsing "this one moves" halo on the current launcher (David starts). */
     this.glow = pulsingGlow(this, 0, 0, this.david.go.radius + 8);
 
     // Always-on name labels (the premise says "tooltips permanently enabled"). The
@@ -380,14 +405,14 @@ export class TitleScene extends Phaser.Scene {
       { txt: kenLbl, of: this.ken, drop },
       { txt: goalLbl, of: this.goal, drop },
     ];
-    // When Ken settles into the goal, the Ken and Goal labels line up horizontally.
-    // The goal's label already sits (goalR - kenR) lower; it needs to drop enough
-    // further that its top clears the bottom of Ken's label. That extra depends on
-    // Ken's label height, which changes with the legibility counter-scale, so it's
-    // (re)computed in _layoutDemo — remember what it's measured against here.
-    this._kenLabel = kenLbl;
-    this._goalLabel = goalLbl;
-    this._goalClearance = this.goal.radius - Config.ball.radius;
+    // When a brother settles into the goal, his label and the goal's line up
+    // horizontally, so the goal's label must drop enough that its top clears the
+    // bottom of that brother's label. WHICH brother reaches the goal alternates
+    // each turn (it's the anchor), and David is larger than Ken — so he sits (and
+    // labels) lower — so this drop is recomputed per turn / per resize from the
+    // current anchor by {@link _updateGoalDrop}. `_labelScale` is the legibility
+    // counter-scale it measures against (set in _layoutDemo).
+    this._labelScale = 1;
     this._goalExtraDrop = 0;
 
     // Everything that fades out during the blank between loops.
@@ -416,6 +441,42 @@ export class TitleScene extends Phaser.Scene {
         ...this._labels.map((l) => l.txt),
       ].filter(Boolean)
     );
+
+    // The first turn is David-launches-Ken (matching the game's usual opener).
+    // `_swapped` flips after each cycle (see _runStep) to alternate turns.
+    this._swapped = false;
+    this._assignRoles();
+  }
+
+  /**
+   * Point the `launcher`/`anchor` roles at David and Ken for the current turn.
+   * Everything the demo animates is written against these roles, not the brothers
+   * directly, so alternating `_swapped` swaps who slings and who ends in the goal
+   * without duplicating a line of the animation.
+   *
+   * @returns {void}
+   */
+  _assignRoles() {
+    this.launcher = this._swapped ? this.ken : this.david;
+    this.anchor = this._swapped ? this.david : this.ken;
+  }
+
+  /**
+   * Recompute how far the goal's name label drops so its top clears the bottom of
+   * the label belonging to the brother settling into the goal (the anchor). Ken is
+   * the baseline size; David is larger, so when he's the anchor his body and label
+   * sit lower and the goal label must drop further. Called per turn (roles just
+   * changed) and per resize (the counter-scale just changed).
+   *
+   * @returns {void}
+   */
+  _updateGoalDrop() {
+    const c = this._labelScale;
+    const anchorLabel = this._labels.find((l) => l.of === this.anchor).txt;
+    // The goal already sits (goalR - anchorR) below where the anchor's label rides;
+    // add whatever extra is needed for the anchor label's (scaled) height + a gap.
+    const clearance = this.goal.radius - this.anchor.go.radius;
+    this._goalExtraDrop = Math.max(0, anchorLabel.height * c + 6 - clearance);
   }
 
   /**
@@ -458,21 +519,22 @@ export class TitleScene extends Phaser.Scene {
 
   /**
    * The demo's key positions, in the stage container's FIXED local coordinates
-   * (not screen-relative): David at the origin, Ken a rest-length to the right,
-   * the goal a fixed travel beyond, David's draw-back to the left. {@link
+   * (not screen-relative), keyed by ROLE so they hold whichever brother is
+   * slinging: the launcher at the origin, the anchor a rest-length to the right,
+   * the goal a fixed travel beyond, the launcher's draw-back to the left. {@link
    * _layoutDemo} scales/positions the container so this always fits — the layout
-   * itself never collapses, so David can't sling the wrong way.
+   * itself never collapses, so the launcher can't sling the wrong way.
    *
-   * @returns {{demoY:number, davidX:number, kenX:number, goalX:number, pullX:number, arcY:number}}
+   * @returns {{demoY:number, launcherX:number, anchorX:number, goalX:number, pullX:number, arcY:number}}
    */
   _computeGeo() {
     const gap = Config.tether.restLength; // the usual starting distance between them
-    const davidX = 0;
-    const kenX = davidX + gap; // David is furthest left
-    const goalX = kenX + DEMO_TRAVEL;
-    const pullX = davidX - DEMO_PULL;
+    const launcherX = 0;
+    const anchorX = launcherX + gap; // the launcher is furthest left
+    const goalX = anchorX + DEMO_TRAVEL;
+    const pullX = launcherX - DEMO_PULL;
     const demoY = 0;
-    return { demoY, davidX, kenX, goalX, pullX, arcY: demoY - DEMO_ARC };
+    return { demoY, launcherX, anchorX, goalX, pullX, arcY: demoY - DEMO_ARC };
   }
 
   /**
@@ -487,15 +549,17 @@ export class TitleScene extends Phaser.Scene {
     const W = this.scale.width;
     const H = this.scale.height;
     const g = this._computeGeo();
-    const davidR = this.david.go.radius;
+    // David is the larger brother, so bounding the launcher's extent by his radius
+    // fits EITHER turn's launcher (a Ken-launches turn only ever needs less room).
+    const launchR = this.david.go.radius;
     const goalR = this.goal.radius;
 
-    // Bounding box of everything the animation touches (local units): David's
-    // draw-back on the left, the goal on the right, David's arc peak on top, and
-    // room under the goal for its name label at the bottom.
-    const left = g.pullX - davidR;
+    // Bounding box of everything the animation touches (local units): the
+    // launcher's draw-back on the left, the goal on the right, the arc peak on top,
+    // and room under the goal for its name label at the bottom.
+    const left = g.pullX - launchR;
     const right = g.goalX + goalR;
-    const top = g.arcY - davidR;
+    const top = g.arcY - launchR;
     const bottom = goalR + Config.ball.radius + 56; // goal + label drop + a line
     const natW = right - left;
     const natH = bottom - top;
@@ -525,9 +589,11 @@ export class TitleScene extends Phaser.Scene {
     const c = Phaser.Math.Clamp(LABEL_FLOOR_PX / (LABEL_NATIVE_PX * s), 1, LABEL_MAX_COMP);
     for (const l of this._labels) l.txt.setScale(c);
 
-    // The enlarged Ken label is taller in the container's local units (height * c),
-    // so widen the goal label's extra drop to keep it clear when the two line up.
-    this._goalExtraDrop = Math.max(0, this._kenLabel.height * c + 6 - this._goalClearance);
+    // The counter-scale just changed the anchor label's on-container height, so
+    // re-derive the goal label's drop against the current anchor (see
+    // _updateGoalDrop). Remember the scale it's measured at for the per-turn recompute.
+    this._labelScale = c;
+    this._updateGoalDrop();
   }
 
   /**
@@ -570,14 +636,16 @@ export class TitleScene extends Phaser.Scene {
    * @returns {void}
    */
   _resetDemo(geo) {
-    this.david.go.setPosition(geo.davidX, geo.demoY);
-    this.ken.go.setPosition(geo.kenX, geo.demoY);
+    // Place by role: the launcher on the left, the anchor a rest-length to its
+    // right. Which brother that is was just set for this turn by _assignRoles.
+    this.launcher.go.setPosition(geo.launcherX, geo.demoY);
+    this.anchor.go.setPosition(geo.anchorX, geo.demoY);
     this._placeGoal(geo.goalX, geo.demoY);
 
-    this.david.setFace(FACES.idle.launcher);
-    this.ken.setFace(FACES.idle.anchor);
-    this.david.update(); // glue face + glasses to the new spot at once
-    this.ken.update();
+    this.launcher.setFace(FACES.idle.launcher);
+    this.anchor.setFace(FACES.idle.anchor);
+    this.launcher.update(); // glue face + feature to the new spot at once
+    this.anchor.update();
 
     for (const o of this._faders) o.setAlpha(1);
     this.band.setAlpha(1);
@@ -585,8 +653,8 @@ export class TitleScene extends Phaser.Scene {
     this.tweens.killTweensOf(this.goal.gfx);
     this.goal.gfx.setScale(1);
 
-    this.glow.radius = this.david.go.radius + 8;
-    this.glow.setPosition(this.david.go.x, this.david.go.y).setVisible(true);
+    this.glow.radius = this.launcher.go.radius + 8;
+    this.glow.setPosition(this.launcher.go.x, this.launcher.go.y).setVisible(true);
     this.glow.getData('pulse')?.resume();
   }
 
@@ -615,6 +683,8 @@ export class TitleScene extends Phaser.Scene {
    * @returns {void}
    */
   _startDemo() {
+    this._assignRoles(); // David or Ken into launcher/anchor for THIS turn
+    this._updateGoalDrop(); // goal label drop for whoever now ends in the goal
     const geo = this._computeGeo();
     this._resetDemo(geo);
     this._runStep(this._demoSteps(geo), 0);
@@ -630,7 +700,10 @@ export class TitleScene extends Phaser.Scene {
    */
   _runStep(steps, i) {
     if (i >= steps.length) {
-      this._blankTimer = this.time.delayedCall(2000, () => this._startDemo());
+      // Turn-taking: swap who launches before the next cycle, so the loop alternates
+      // David-launches-Ken and Ken-launches-David (see _assignRoles).
+      this._swapped = !this._swapped;
+      this._blankTimer = this.time.delayedCall(DEMO_TIMING.blank, () => this._startDemo());
       return;
     }
     const s = steps[i];
@@ -659,81 +732,83 @@ export class TitleScene extends Phaser.Scene {
   _demoSteps(geo) {
     const qbez = (a, c, b, t) => (1 - t) * (1 - t) * a + 2 * (1 - t) * t * c + t * t * b;
     const lerp = Phaser.Math.Linear;
-    const ctrlX = (geo.davidX + geo.pullX) / 2;
+    const ctrlX = (geo.launcherX + geo.pullX) / 2;
     const gap = Config.tether.restLength; // final resting separation (rest length)
-    // Centre-to-centre distance at which the two circles just touch. David stops
-    // here on impact and the pair never closes nearer than this while travelling
-    // (gap > contact, so the linearly-interpolated separation stays >= contact).
-    const contact = this.david.go.radius + this.ken.go.radius;
+    // Centre-to-centre distance at which the two circles just touch. The launcher
+    // stops here on impact and the pair never closes nearer than this while
+    // travelling (gap > contact, so the interpolated separation stays >= contact).
+    // Uses both current radii, so it's correct whichever brother is slinging.
+    const contact = this.launcher.go.radius + this.anchor.go.radius;
     return [
       // Hold on the opening pose so the player can read it.
-      { duration: 5000 },
-      // Pull back, arcing up then down to Ken's height (shows up/down + left).
+      { duration: DEMO_TIMING.openHold },
+      // Pull back, arcing up then down to the anchor's height (shows up/down + left).
       {
-        duration: 3200,
+        duration: DEMO_TIMING.pullBack,
         ease: 'Sine.InOut',
         onStart: () => {
-          this.david.setFace(FACES.drag.launcher);
-          this.ken.setFace(FACES.drag.anchor);
+          this.launcher.setFace(FACES.drag.launcher);
+          this.anchor.setFace(FACES.drag.anchor);
           if (this._soundOn && !this._audioPaused) sfx.startBand();
         },
         onUpdate: (t) => {
-          this.david.go.setPosition(
-            qbez(geo.davidX, ctrlX, geo.pullX, t),
+          this.launcher.go.setPosition(
+            qbez(geo.launcherX, ctrlX, geo.pullX, t),
             qbez(geo.demoY, geo.arcY, geo.demoY, t)
           );
           if (this._soundOn && !this._audioPaused) sfx.updateBand(t);
         },
       },
       // Beat at full stretch.
-      { duration: 500 },
-      // Release: straight (horizontal) into Ken.
+      { duration: DEMO_TIMING.stretchHold },
+      // Release: straight (horizontal) into the anchor.
       {
-        duration: 360,
+        duration: DEMO_TIMING.release,
         ease: 'Quad.In',
         onStart: () => {
           sfx.stopBand();
-          this.david.setFace(FACES.flight.launcher);
-          this.ken.setFace(FACES.flight.anchor);
+          this.launcher.setFace(FACES.flight.launcher);
+          this.anchor.setFace(FACES.flight.anchor);
           this.glow.setVisible(false);
           this.glow.getData('pulse')?.pause();
         },
-        // Fly in from the left and stop the instant he touches Ken (never over him).
-        onUpdate: (t) => this.david.go.setPosition(lerp(geo.pullX, geo.kenX - contact, t), geo.demoY),
+        // Fly in from the left, stopping the instant it touches the anchor (never over it).
+        onUpdate: (t) =>
+          this.launcher.go.setPosition(lerp(geo.pullX, geo.anchorX - contact, t), geo.demoY),
       },
       // Impact flash.
       {
-        duration: 160,
+        duration: DEMO_TIMING.impact,
         onStart: () => {
-          this.david.setFace(FACES.collision);
-          this.ken.setFace(FACES.collision);
+          this.launcher.setFace(FACES.collision);
+          this.anchor.setFace(FACES.collision);
         },
       },
       // The elastic band carries the pair to the goal, settling `gap` apart.
       {
-        duration: 1300,
+        duration: DEMO_TIMING.travel,
         ease: 'Quad.Out',
         onStart: () => {
-          this.david.setFace(FACES.flight.launcher);
-          this.ken.setFace(FACES.flight.anchor);
+          this.launcher.setFace(FACES.flight.launcher);
+          this.anchor.setFace(FACES.flight.anchor);
         },
-        // Ken leads to the goal; David trails from the contact point out to the
-        // rest length, so their separation only ever grows (contact -> gap).
+        // The anchor leads into the goal; the launcher trails from the contact point
+        // out to the rest length, so their separation only ever grows (contact -> gap).
         onUpdate: (t) => {
-          this.ken.go.setPosition(lerp(geo.kenX, geo.goalX, t), geo.demoY);
-          this.david.go.setPosition(lerp(geo.kenX - contact, geo.goalX - gap, t), geo.demoY);
+          this.anchor.go.setPosition(lerp(geo.anchorX, geo.goalX, t), geo.demoY);
+          this.launcher.go.setPosition(lerp(geo.anchorX - contact, geo.goalX - gap, t), geo.demoY);
         },
         onComplete: () => {
           this._celebrateGoal(); // win pop, but NO win sound (music owns the audio)
-          this.david.setFace(FACES.win);
-          this.ken.setFace(FACES.win);
+          this.launcher.setFace(FACES.win);
+          this.anchor.setFace(FACES.win);
         },
       },
       // Bask in the win.
-      { duration: 5000 },
+      { duration: DEMO_TIMING.winHold },
       // Fade the whole demo out.
       {
-        duration: 600,
+        duration: DEMO_TIMING.fade,
         onUpdate: (t) => {
           const a = 1 - t;
           for (const o of this._faders) o.setAlpha(a);
@@ -902,11 +977,13 @@ export class TitleScene extends Phaser.Scene {
   /** @returns {void} */
   update() {
     if (!this._ready) return;
-    // Glue each brother's face + feature to its (tweened) body position.
+    // Glue each brother's face + feature to its (tweened) body position (both,
+    // regardless of role) and draw the band between them (order-independent).
     this.david.update();
     this.ken.update();
     drawBand(this.band, this.david.go.x, this.david.go.y, this.ken.go.x, this.ken.go.y);
-    if (this.glow.visible) this.glow.setPosition(this.david.go.x, this.david.go.y);
+    // The glow marks the mover, so it tracks whichever brother is the launcher.
+    if (this.glow.visible) this.glow.setPosition(this.launcher.go.x, this.launcher.go.y);
 
     // Keep the name labels sitting just under their (possibly moving) entities,
     // plus each label's `drop` (see _buildDemo) to clear the glow / goal rings.
