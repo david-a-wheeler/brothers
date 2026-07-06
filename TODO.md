@@ -18,3 +18,13 @@ Friction. Areas.
 Could be normal or sticky (sticky is dark and won't come off).
 Makes enterer muddy.
 If muddy, on settle wiggles left and right to get rid of mud.
+
+## Move band completely below or above
+
+The title page only considers drawing order, not layer, so
+it can't easily draw the same way where the band is between
+the ball and face.
+
+Simplification: Let's just have band *below* the ball if they're
+centered (standard pin), else the band is *above* the ball.
+Then they can be easiliy consistent.
