@@ -184,6 +184,10 @@ export class Overlay {
    * @returns {boolean} true if this overlay owns the press (scene must not pan).
    */
   onPointerDown(p) {
+    // Every press is a fresh gesture: clear any stale scroll-drag state so a tap
+    // isn't swallowed by a `dragged` left over from a prior scroll. (Below only
+    // re-establishes it on scrollable views, so a non-scrollable one never would.)
+    this.scrollView?.resetDrag();
     // A press on the title bar drags the whole overlay; on the bottom edge,
     // resizes it (like a window).
     if (this._overTitleBar(p)) {

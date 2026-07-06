@@ -289,6 +289,18 @@ export class ScrollView {
     this._mode = null;
   }
 
+  /**
+   * Clear all drag state — mode *and* the sticky {@link dragged} flag. Called at
+   * the start of every press so a fresh gesture can't inherit a stale `dragged`
+   * (which would swallow a tap) or a leftover mode (which would make mouse moves
+   * spuriously scroll). A real drag re-establishes both via {@link beginBodyDrag}.
+   * @returns {void}
+   */
+  resetDrag() {
+    this._mode = null;
+    this.dragged = false;
+  }
+
   /** Scroll from a mouse wheel (`dy` in screen px) — vertical. */
   wheel(dy) {
     this.scrollBy(dy);
