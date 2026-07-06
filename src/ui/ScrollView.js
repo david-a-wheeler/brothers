@@ -52,14 +52,14 @@ export class ScrollView {
 
     // Drag state. `_mode` is 'body' (content pans with the finger, inverted, in
     // both axes), 'thumb' (vertical thumb tracks the finger), or 'hthumb'
-    // (horizontal thumb); `dragged` reports whether the just-ended gesture passed
-    // the tap-vs-drag threshold so a control can ignore the tap.
+    // (horizontal thumb). Whether a gesture was a tap or a drag is no longer
+    // tracked here — the owning Overlay computes it from the press/release
+    // distance (see {@link Overlay.movedFromPress}).
     this._mode = null;
     this._lastX = 0;
     this._lastY = 0;
     this._downX = 0;
     this._downY = 0;
-    this.dragged = false;
   }
 
   /** Display objects the owner keeps for camera-ignore / teardown bookkeeping. */
@@ -253,7 +253,6 @@ export class ScrollView {
     this._mode = mode;
     this._lastX = this._downX = p.x;
     this._lastY = this._downY = p.y;
-    this.dragged = false;
   }
 
   /** @returns {boolean} true while a body/thumb drag is in progress. */
@@ -262,15 +261,13 @@ export class ScrollView {
   }
 
   /**
-   * Continue the active drag. Past a small threshold it counts as a scroll (see
-   * {@link dragged}); a thumb drag moves WITH the finger, a body drag inverts and
-   * pans both axes.
+   * Continue the active drag: a thumb drag moves WITH the finger, a body drag
+   * inverts and pans both axes.
    *
    * @param {Phaser.Input.Pointer} p @returns {void}
    */
   drag(p) {
     if (!this._mode) return;
-    if (Math.abs(p.x - this._downX) > 5 || Math.abs(p.y - this._downY) > 5) this.dragged = true;
     if (this._mode === 'thumb') {
       const range = this._region.h - (this._thumbH || 0);
       if (range > 0) this.scrollBy(((p.y - this._lastY) * this.scrollMax) / range);
@@ -284,21 +281,14 @@ export class ScrollView {
     this._lastY = p.y;
   }
 
-  /** End the active drag (the {@link dragged} result stays until the next drag). */
-  endDrag() {
-    this._mode = null;
-  }
-
   /**
-   * Clear all drag state — mode *and* the sticky {@link dragged} flag. Called at
-   * the start of every press so a fresh gesture can't inherit a stale `dragged`
-   * (which would swallow a tap) or a leftover mode (which would make mouse moves
-   * spuriously scroll). A real drag re-establishes both via {@link beginBodyDrag}.
+   * Clear the active drag mode. Called both when a drag ends and at the start of
+   * every fresh press, so a leftover `_mode` can't make later mouse moves
+   * spuriously scroll. A real drag re-establishes it via {@link beginBodyDrag}.
    * @returns {void}
    */
-  resetDrag() {
+  endDrag() {
     this._mode = null;
-    this.dragged = false;
   }
 
   /** Scroll from a mouse wheel (`dy` in screen px) — vertical. */

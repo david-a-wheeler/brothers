@@ -2,6 +2,7 @@ import { Config } from '../config.js';
 import { sfx } from '../Sfx.js';
 import { Overlay } from './Overlay.js';
 import { chipButton } from './chipButton.js';
+import * as diag from '../diag.js';
 
 /**
  * The menu / scoreboard overlay: a modal card (backdrop + rounded panel) with a
@@ -314,8 +315,12 @@ export class Menu extends Overlay {
    * @param {Phaser.GameObjects.GameObject} obj @param {() => void} onTap @returns {void}
    */
   wireTap(obj, onTap) {
-    obj.on('pointerup', () => {
-      if (this.dragged) return; // release ended a scroll-drag, not a tap
+    obj.on('pointerup', (pointer) => {
+      if (this.movedFromPress(pointer)) {
+        diag.trace('input', `${this.role} row tap suppressed (drag)`);
+        return; // release ended a scroll-drag, not a tap
+      }
+      diag.trace('input', `${this.role} row tap`);
       sfx.tick();
       onTap();
     });

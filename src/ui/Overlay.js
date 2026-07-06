@@ -1,6 +1,11 @@
 import { Config } from '../config.js';
 import { ScrollView } from './ScrollView.js';
 import { chipButton } from './chipButton.js';
+import * as diag from '../diag.js';
+
+/** Press-to-release distance (screen px) beyond which a gesture is a drag, not a
+ *  tap. Matches the old ScrollView scroll threshold. */
+const DRAG_THRESHOLD = 5;
 
 /**
  * Base class for on-screen overlays (modals, the menu, the modeless Lab panel).
@@ -54,6 +59,10 @@ export class Overlay {
      *  window-drag, so nothing underneath hovers, highlights, or changes the
      *  cursor (see {@link _grabPointer}). @type {?Phaser.GameObjects.Rectangle} */
     this._shield = null;
+    /** Screen position of the most recent press, so a release can tell a tap
+     *  from a drag by distance (see {@link movedFromPress}). */
+    this._pressX = 0;
+    this._pressY = 0;
   }
 
   /**
@@ -184,10 +193,14 @@ export class Overlay {
    * @returns {boolean} true if this overlay owns the press (scene must not pan).
    */
   onPointerDown(p) {
-    // Every press is a fresh gesture: clear any stale scroll-drag state so a tap
-    // isn't swallowed by a `dragged` left over from a prior scroll. (Below only
-    // re-establishes it on scrollable views, so a non-scrollable one never would.)
-    this.scrollView?.resetDrag();
+    diag.trace('input', `${this.role} down`, { x: Math.round(p.x), y: Math.round(p.y) });
+    // Remember where this gesture began so the matching release can tell a tap
+    // from a drag by distance (see {@link movedFromPress}).
+    this._pressX = p.x;
+    this._pressY = p.y;
+    // A fresh press clears any leftover drag mode, so a stuck `_mode` can't make
+    // later mouse moves spuriously scroll. A real drag re-establishes it below.
+    this.scrollView?.endDrag();
     // A press on the title bar drags the whole overlay; on the bottom edge,
     // resizes it (like a window).
     if (this._overTitleBar(p)) {
@@ -256,6 +269,9 @@ export class Overlay {
 
   /** @param {Phaser.Input.Pointer} p @returns {boolean} true if owned. */
   onPointerUp(p) {
+    diag.trace('input', `${this.role} up`, {
+      resizing: this._resizing, windowDrag: this._windowDragging, scrolling: !!this.scrollView?.dragging,
+    });
     if (this._windowDragging || this._resizing) {
       this._windowDragging = false;
       this._resizing = false;
@@ -280,13 +296,16 @@ export class Overlay {
   }
 
   /**
-   * @returns {boolean} true if the just-ended pointer gesture was a scroll drag,
-   *   so a control under the finger can ignore the tap (see {@link ScrollView.dragged}).
+   * @param {Phaser.Input.Pointer} p the pointer at release.
+   * @returns {boolean} true if the pointer moved far enough from where the press
+   *   began that this gesture was a drag, not a tap — so a control under the
+   *   finger should ignore the release. Stateless: computed from the press/release
+   *   distance, never a sticky flag, so it can't go stale between gestures.
    *   (A resize / window-drag needs no such guard: its shield captures the pointer
    *   so controls never see the gesture — see {@link _grabPointer}.)
    */
-  get dragged() {
-    return this.scrollView ? this.scrollView.dragged : false;
+  movedFromPress(p) {
+    return Math.hypot(p.x - this._pressX, p.y - this._pressY) > DRAG_THRESHOLD;
   }
 
   /** Region that starts a body drag. Default: the scroll viewport. Override. */
@@ -404,6 +423,7 @@ export class Overlay {
    */
   _grabPointer(cursor) {
     if (this._shield) return;
+    diag.trace('input', `${this.role} shield up`, { cursor });
     const { width, height } = this.scene.scale;
     this._shield = this.scene.add
       .rectangle(0, 0, width, height, 0x000000, 0) // invisible, but hit-tested
@@ -415,6 +435,7 @@ export class Overlay {
 
   /** Release the drag shield. @returns {void} */
   _releasePointer() {
+    if (this._shield) diag.trace('input', `${this.role} shield down`);
     this._shield?.destroy();
     this._shield = null;
   }

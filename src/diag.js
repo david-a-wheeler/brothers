@@ -20,11 +20,18 @@
  */
 
 const LS_KEY = 'brothers:diag';
+const DEBUG_KEY = 'brothers:debug'; // persisted console-trace toggle
 const MAX_ENTRIES = 60; // rolling breadcrumb/error log length
 const MAX_DETAIL = 2000; // per-entry detail cap (chars) so storage stays small
+const MAX_TRACE = 120; // rolling verbose-trace ring (in-memory flight recorder)
 
 /** @type {Array<{t:string, kind:string, message:string, detail?:string, count?:number}>} */
 let log = [];
+/** @type {Array<{t:string, category:string, message:string, detail?:string}>} Verbose
+ *  trace ring (in-memory only; included in {@link report} as a flight recorder). */
+let traceLog = [];
+/** When true, {@link trace} also mirrors to the console (`?debug` / setDebug). */
+let debugEnabled = false;
 let installed = false;
 /** @type {HTMLElement|null} The one-at-a-time error banner. */
 let banner = null;
@@ -108,6 +115,56 @@ export function breadcrumb(message, detail) {
   add('info', String(message), detail && detailOf(detail));
 }
 
+/** Compact stringify for trace context, capped. @param {*} v @returns {string} */
+function traceStr(v) {
+  let s;
+  try {
+    s = typeof v === 'string' ? v : JSON.stringify(v);
+  } catch {
+    s = String(v);
+  }
+  return s && s.length > MAX_DETAIL ? s.slice(0, MAX_DETAIL) + '…' : s;
+}
+
+/**
+ * Verbose gesture/state trace. Always kept in a small in-memory ring, so recent
+ * events land in the problem report as a flight recorder — invaluable for the
+ * "an expected action silently didn't happen" class of bug (no error to catch).
+ * Also mirrored to the console when debug is on (open with `?debug`, or call
+ * `__diag.setDebug(true)`). Cheap and safe to sprinkle on *discrete* events —
+ * input, navigation, suppressed guards — but NOT per-frame (it's not for the loop).
+ *
+ * @param {string} category  Short area tag, e.g. 'input'.
+ * @param {string} message
+ * @param {*} [data]  Small structured context (positions, flags, …).
+ * @returns {void}
+ */
+export function trace(category, message, data) {
+  traceLog.push({
+    t: new Date().toISOString(),
+    category: String(category),
+    message: String(message),
+    detail: data === undefined ? undefined : traceStr(data),
+  });
+  if (traceLog.length > MAX_TRACE) traceLog.shift();
+  if (debugEnabled) console.debug(`[trace:${category}] ${message}`, data === undefined ? '' : data);
+}
+
+/** Turn the console trace mirror on/off (persisted across reloads). @param {boolean} on @returns {void} */
+export function setDebug(on) {
+  debugEnabled = !!on;
+  try {
+    localStorage.setItem(DEBUG_KEY, debugEnabled ? 'true' : 'false');
+  } catch {
+    // Storage unavailable: honour it for this session only.
+  }
+}
+
+/** @returns {boolean} Whether console trace-mirroring is on. */
+export function isDebug() {
+  return debugEnabled;
+}
+
 /**
  * Record an error and surface the report banner.
  *
@@ -167,7 +224,14 @@ export function report() {
     const head = `[${e.t}] ${e.kind.toUpperCase()}${times} ${e.message}`;
     return e.detail ? `${head}\n    ${e.detail.replace(/\n/g, '\n    ')}` : head;
   });
-  return `${env}\n\n--- log (most recent last) ---\n${lines.join('\n') || '(no events recorded)'}`;
+  const traceLines = traceLog.map((e) => {
+    const head = `[${e.t}] ${e.category} ${e.message}`;
+    return e.detail ? `${head}  ${e.detail}` : head;
+  });
+  return (
+    `${env}\n\n--- log (most recent last) ---\n${lines.join('\n') || '(no events recorded)'}` +
+    `\n\n--- trace (recent last) ---\n${traceLines.join('\n') || '(none)'}`
+  );
 }
 
 /** Clear the stored log. @returns {void} */
@@ -286,6 +350,15 @@ export function install() {
   installed = true;
   loadPersisted();
 
+  // Console trace mirror is on if the URL asks (`?debug` / `#debug`) or it was
+  // toggled on before. The trace ring records regardless, so a report is always
+  // a flight recorder — this flag only controls the live console echo.
+  try {
+    debugEnabled = /\bdebug\b/i.test(location.search + location.hash) || localStorage.getItem(DEBUG_KEY) === 'true';
+  } catch {
+    debugEnabled = false;
+  }
+
   window.addEventListener('error', (ev) => {
     // Use the human-readable message as the label; ev.error is null for
     // cross-origin "Script error.", so fall back to the location fields.
@@ -296,6 +369,6 @@ export function install() {
   });
 
   // Expose for console use and open the report if the URL asks for it.
-  window.__diag = { report, show: showReport, clear };
+  window.__diag = { report, show: showReport, clear, setDebug, isDebug, trace };
   if (String(location.hash).toLowerCase().includes('diag')) showReport();
 }

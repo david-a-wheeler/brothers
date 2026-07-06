@@ -1092,13 +1092,14 @@ export class GameScene extends Phaser.Scene {
     const n = this._devParams.length;
     const moreTurnsY = 8 + n * rowH + 20; // a small gap below the last row
     const resetY = moreTurnsY + 36;
-    // A control ignores its tap when the press that ended on it was a scroll-drag.
-    const dragged = () => this._labPanel.dragged;
+    // A control ignores its tap when the press that ended on it moved far enough
+    // to be a scroll-drag (computed from the press/release distance).
+    const moved = (p) => this._labPanel.movedFromPress(p);
 
     this._devRows = this._devParams.map((param, i) => {
       const rowY = 8 + i * rowH;
-      const minus = chipButton(this, 24, rowY, '-', () => this._adjustParam(param, -1), { guard: dragged });
-      const plus = chipButton(this, w - 24, rowY, '+', () => this._adjustParam(param, 1), { guard: dragged });
+      const minus = chipButton(this, 24, rowY, '-', () => this._adjustParam(param, -1), { guard: moved });
+      const plus = chipButton(this, w - 24, rowY, '+', () => this._adjustParam(param, 1), { guard: moved });
       // Click the value to type one directly (prompt works desktop + mobile).
       const value = this.add
         .text(44, rowY, '', Config.ui.type.small)
@@ -1106,8 +1107,8 @@ export class GameScene extends Phaser.Scene {
         .setDepth(21);
       const row = { param, value };
       this._setDevRowText(row); // set text before setInteractive so the hit area fits
-      value.setInteractive({ useHandCursor: true }).on('pointerup', () => {
-        if (dragged()) return; // release ended a scroll-drag, not a tap
+      value.setInteractive({ useHandCursor: true }).on('pointerup', (pointer) => {
+        if (moved(pointer)) return; // release ended a scroll-drag, not a tap
         this._promptParam(param);
       });
       // Explain the parameter on hover/press of any of its controls, via the
@@ -1121,8 +1122,8 @@ export class GameScene extends Phaser.Scene {
 
     // "More turns" lets us keep experimenting past a win/loss (see _moreTurns).
     view.add([
-      chipButton(this, w / 2, moreTurnsY, 'More turns', () => this._moreTurns(), { guard: dragged }),
-      chipButton(this, w / 2, resetY, 'Reset parameters', () => this._resetParams(), { guard: dragged }),
+      chipButton(this, w / 2, moreTurnsY, 'More turns', () => this._moreTurns(), { guard: moved }),
+      chipButton(this, w / 2, resetY, 'Reset parameters', () => this._resetParams(), { guard: moved }),
     ]);
 
     return resetY + 26; // full height of the scrollable body
