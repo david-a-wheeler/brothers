@@ -10,15 +10,6 @@ For prev/next, remove the parens.
 
 ???
 
-## Title screen: Show Ken hitting David alternative times
-
-## Mud
-
-Friction. Areas.
-Could be normal or sticky (sticky is dark and won't come off).
-Makes enterer muddy.
-If muddy, on settle wiggles left and right to get rid of mud.
-
 ## Move band completely below or above
 
 The title page only considers drawing order, not layer, so
