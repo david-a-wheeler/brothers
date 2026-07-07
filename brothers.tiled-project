@@ -270,6 +270,72 @@
                 "property",
                 "object"
             ]
+        },
+        {
+            "color": "#ff6b4423",
+            "drawFill": true,
+            "id": 10,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "A mud area (draw it as a rectangle, ellipse, or polygon - concave is fine; a circle is an ellipse with equal width/height). A brother whose CENTRE passes through it gets muddy: extra air-friction that drags it and makes it settle sooner, carried on the brother even after it leaves the puddle. viscosity is that friction, added on top of the base (0.025); the heaviest mud a brother has picked up wins. inViscosity is extra friction only WHILE inside (a deep bog; 0 = none). numberTurns is how many EXTRA turns normal mud lingers before the brother shakes it off during the end-of-turn shimmy: 0 = gone after the first shimmy, 1 = two shimmies, 2 (default) = three, etc. sticky makes the mud permanent and dark (the same as an infinite numberTurns) - it never shakes off and only a Cleaner with cleanSticky removes it. Place any number, but do NOT overlap a Mud with a Cleaner (undefined)."
+                },
+                {
+                    "name": "viscosity",
+                    "type": "float",
+                    "value": 0.08
+                },
+                {
+                    "name": "inViscosity",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "numberTurns",
+                    "type": "int",
+                    "value": 2
+                },
+                {
+                    "name": "sticky",
+                    "type": "bool",
+                    "value": false
+                }
+            ],
+            "name": "Mud",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object"
+            ]
+        },
+        {
+            "color": "#ff3aa0d8",
+            "drawFill": true,
+            "id": 11,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "A cleaner area / water (draw it as a rectangle, ellipse, or polygon). A brother whose CENTRE enters it is rinsed of normal (non-sticky) mud on the spot; sticky mud is removed too ONLY if cleanSticky is set. viscosity is a small drag that applies ONLY while the brother is inside and never lingers after it leaves (it lives on the area, not the brother). Place any number, but do NOT overlap a Cleaner with a Mud (undefined)."
+                },
+                {
+                    "name": "viscosity",
+                    "type": "float",
+                    "value": 0.01
+                },
+                {
+                    "name": "cleanSticky",
+                    "type": "bool",
+                    "value": false
+                }
+            ],
+            "name": "Cleaner",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object"
+            ]
         }
     ]
 }

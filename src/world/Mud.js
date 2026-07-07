@@ -10,8 +10,10 @@ import { Region } from './Region.js';
  * Reads these level-model fields (all defaulted from `Config.mud`):
  * - `viscosity`   — friction picked up on entry (persistent).
  * - `inViscosity` — extra friction only while inside (a "bog"; 0 = none).
+ * - `numberTurns` — extra turns the (non-sticky) mud lingers on the brother
+ *   before it shakes off at settle (0 = gone after the first shimmy).
  * - `sticky`      — sticky mud is dark and only comes off in a `cleanSticky`
- *   {@link import('./Cleaner.js').Cleaner}, never at settle.
+ *   {@link import('./Cleaner.js').Cleaner}, never at settle (≈ infinite turns).
  *
  * See mud-plan.md.
  */
@@ -25,6 +27,7 @@ export class Mud extends Region {
     this.viscosity = def.viscosity ?? Config.mud.viscosity;
     this._inViscosity = def.inViscosity ?? Config.mud.inViscosity;
     this.sticky = def.sticky ?? false;
+    this.numberTurns = def.numberTurns ?? Config.mud.numberTurns;
   }
 
   /** While-inside extra drag; the Region base registers/drops it on enter/exit. */
@@ -34,7 +37,7 @@ export class Mud extends Region {
 
   /** Persistent pickup — into the sticky or loose bucket per {@link sticky}. */
   _entered(b) {
-    b._pickUpMud(this.viscosity, this.sticky);
+    b._pickUpMud(this.viscosity, this.sticky, this.numberTurns);
   }
 
   _buildView(scene, def) {

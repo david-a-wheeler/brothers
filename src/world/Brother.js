@@ -95,8 +95,10 @@ export class Brother extends Entity {
     // `cleanSticky` Cleaner. Effective mud friction is the max of the two.
     /** Persistent friction from sticky mud (permanent until washed). */
     this.mudStickyViscosity = 0;
-    /** Persistent friction from normal mud (cleared at settle or by a Cleaner). */
+    /** Persistent friction from normal mud (shed once its turns run out, or washed). */
     this.mudLooseViscosity = 0;
+    /** Extra settles the loose mud lingers before it shakes off (sticky ignores this). */
+    this.mudTurnsLeft = 0;
     /** Regions currently imparting a *while-inside* drag (a bog, the water). */
     this._activeRegions = new Set();
     /** Mud-shed shimmy: horizontal offset (px) of the face/feature/splat over the ball. */
@@ -282,7 +284,7 @@ export class Brother extends Entity {
    * Recompute and store this brother's air-friction from its mud state and the
    * regions currently containing it. The single write path for `frictionAir`,
    * called only on change events (region enter/exit via {@link addRegion}/{@link
-   * removeRegion} + a Region's recompute, and {@link shedMud}) — never per frame,
+   * removeRegion} + a Region's recompute, and {@link shedMudTurn}) — never per frame,
    * because nothing else moves the value between those events.
    *
    * @returns {void}
@@ -297,25 +299,35 @@ export class Brother extends Entity {
 
   /**
    * Pick up mud into the sticky or loose bucket, keeping the heavier of what's
-   * there and the new value (a lighter puddle can't reduce a heavier one). State
-   * only — the calling {@link import('./Region.js').Region} recomputes friction.
+   * there and the new value (a lighter puddle can't reduce a heavier one). For
+   * non-sticky mud, also keep the longest lingering time (`numberTurns` extra
+   * settles before it sheds — see {@link shedMudTurn}); sticky mud never counts
+   * down, so it ignores `numberTurns`. State only — the calling {@link
+   * import('./Region.js').Region} recomputes friction.
    *
-   * @param {number} viscosity @param {boolean} sticky @returns {void}
+   * @param {number} viscosity @param {boolean} sticky @param {number} numberTurns
+   * @returns {void}
    */
-  _pickUpMud(viscosity, sticky) {
-    if (sticky) this.mudStickyViscosity = Math.max(this.mudStickyViscosity, viscosity);
-    else this.mudLooseViscosity = Math.max(this.mudLooseViscosity, viscosity);
+  _pickUpMud(viscosity, sticky, numberTurns) {
+    if (sticky) {
+      this.mudStickyViscosity = Math.max(this.mudStickyViscosity, viscosity);
+    } else {
+      this.mudLooseViscosity = Math.max(this.mudLooseViscosity, viscosity);
+      this.mudTurnsLeft = Math.max(this.mudTurnsLeft, numberTurns);
+    }
     this._refreshMudLook();
   }
 
   /**
-   * Wash mud off (a Cleaner entered): loose mud always, sticky only when the
-   * Cleaner cleans sticky. State only — the Region recomputes friction.
+   * Wash mud off (a Cleaner entered): loose mud always (and its lingering timer),
+   * sticky only when the Cleaner cleans sticky. State only — the Region recomputes
+   * friction.
    *
    * @param {boolean} includeSticky @returns {void}
    */
   _wash(includeSticky) {
     this.mudLooseViscosity = 0;
+    this.mudTurnsLeft = 0;
     if (includeSticky) this.mudStickyViscosity = 0;
     this._refreshMudLook();
   }
@@ -331,14 +343,23 @@ export class Brother extends Entity {
   }
 
   /**
-   * Shed normal (loose) mud at settle; sticky mud stays. Self-contained (settle,
-   * not a region, drives it), so it recomputes friction itself. The shimmy that
-   * accompanies it is played by {@link import('../Brothers.js').Brothers}.
+   * One settle's worth of mud shedding, run at the end of the shimmy. Loose mud
+   * lingers for `mudTurnsLeft` more settles: while that's positive, count it down
+   * and keep the mud (the brother shimmies but the mud stays); once it hits zero,
+   * wash the loose mud off. Sticky mud is never shed here — only a `cleanSticky`
+   * Cleaner removes it. Self-contained (settle, not a region, drives it), so it
+   * recomputes friction itself. The shimmy is played by
+   * {@link import('../Brothers.js').Brothers#shimmyMud}.
    *
    * @returns {void}
    */
-  shedMud() {
+  shedMudTurn() {
+    if (this.mudLooseViscosity > 0 && this.mudTurnsLeft > 0) {
+      this.mudTurnsLeft -= 1; // still muddy: keep the loose mud one more turn
+      return;
+    }
     this.mudLooseViscosity = 0;
+    this.mudTurnsLeft = 0;
     this._refreshMudLook();
     this._recomputeFriction();
   }

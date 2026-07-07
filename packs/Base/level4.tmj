@@ -157,7 +157,7 @@
         {
          "name":"intro",
          "type":"string",
-         "value":"Mud slows you down. Normal mud wipes off when you stop; sticky mud (the dark patch) clings until you rinse it in the Ultra Cleaner. Plain water rinses normal mud but not sticky. No bombs here — experiment!"
+         "value":"Mud slows you down. Normal mud takes a few turns to shake off; sticky mud (the dark patch) clings for good until you rinse it in the Ultra Cleaner. Plain water washes normal mud off at once, but not sticky. No bombs here — experiment!"
         }],
  "renderorder":"right-down",
  "tiledversion":"1.12.2-2-geb83ddb9",

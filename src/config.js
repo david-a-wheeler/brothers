@@ -225,6 +225,7 @@ export const Config = {
   mud: {
     viscosity: 0.08, // persistent friction picked up on entry (base frictionAir is 0.025)
     inViscosity: 0, // extra friction only WHILE inside (0 = none; opt-in per area, e.g. a bog)
+    numberTurns: 2, // extra turns normal mud lingers before it shakes off at settle (0 = sheds after the first shimmy; sticky = infinite)
     color: 0x6b4423, // normal mud fill (brown)
     stickyColor: 0x2a1a0e, // sticky mud fill (near-black brown)
     overlayAlpha: 0.85, // strength of the muddy-brother splat overlay

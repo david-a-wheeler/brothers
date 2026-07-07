@@ -28,15 +28,19 @@ its own first.
   `inViscosity` that applies only while the brother is *in* it and is dropped
   when it leaves (e.g. a deep bog that's heavy to cross but leaves the same mud
   on you as a shallow one). Default 0 — most puddles won't use it.
-- **Normal vs sticky.** *Sticky* mud is dark and **never comes off** on its own.
-  *Normal* mud comes off at the next settle — the brother **wiggles left/right**
-  at rest to shed it.
+- **Lingering (`numberTurns`).** *Normal* mud clings for `numberTurns` **extra
+  turns** before the brother shakes it off — the brother **wiggles left/right** at
+  rest each turn it's muddy, and the mud only comes off once its turns run out.
+  `0` = gone after the first shimmy; `1` = two shimmies; default `2` = three.
+  *Sticky* mud is dark and **never comes off** on its own (≈ infinite
+  `numberTurns`).
 - **Sticky is durable, loose is transient.** Sticky and non-sticky ("loose")
   pickup viscosity are tracked **separately** on the brother, because they have
-  different lifetimes: loose mud disappears after one turn (shed on settle);
-  sticky mud persists across turns. Loose mud can never reduce or remove sticky
-  mud — that's "once sticky, other mud doesn't change it." A *second* sticky
-  puddle **can** raise the sticky level (both categories combine by `max`).
+  different lifetimes: loose mud shakes off after its `numberTurns` run out (a
+  countdown reset upward on each pickup); sticky mud persists until washed. Loose
+  mud can never reduce or remove sticky mud — that's "once sticky, other mud
+  doesn't change it." A *second* sticky puddle **can** raise the sticky level (all
+  three — sticky viscosity, loose viscosity, loose turns — combine by `max`).
 
 **Cleaner areas** (Tiled class `Cleaner`, looks like water):
 
@@ -238,10 +242,11 @@ export class Mud extends Region {
     super(scene, def);
     this.viscosity = def.viscosity ?? Config.mud.viscosity;        // persistent pickup
     this._inViscosity = def.inViscosity ?? Config.mud.inViscosity; // extra WHILE inside
+    this.numberTurns = def.numberTurns ?? Config.mud.numberTurns;  // extra turns it lingers
     this.sticky = def.sticky ?? false;
   }
   get inViscosity() { return this._inViscosity; }         // Region drops it on exit
-  _entered(b) { b._pickUpMud(this.viscosity, this.sticky); } // persistent, survives exit
+  _entered(b) { b._pickUpMud(this.viscosity, this.sticky, this.numberTurns); } // persistent
   _buildView(scene, def) { /* filled shape; Config.mud.color vs stickyColor */ }
 }
 ```
@@ -277,7 +282,8 @@ copied onto the brother), it genuinely can't perpetuate: the brother only holds
 ```js
 // persistent (survive leaving a mud area):
 this.mudStickyViscosity = 0; // sticky mud; permanent until washed (max over pickups)
-this.mudLooseViscosity  = 0; // normal mud; cleared on settle or wash (max over pickups)
+this.mudLooseViscosity  = 0; // normal mud; shed once its turns run out, or washed
+this.mudTurnsLeft       = 0; // extra settles loose mud lingers (max over pickups)
 // transient region membership (drag applies only while inside):
 this._activeRegions = new Set(); // regions with inViscosity currently containing me
 // shed animation:
@@ -305,13 +311,18 @@ practice; `max` is just robustness.)
 ### State mutators + membership (called by `Region._enter/_exit`, which recompute)
 
 ```js
-_pickUpMud(v, sticky) {                        // Mud enter (persistent)
-  if (sticky) this.mudStickyViscosity = Math.max(this.mudStickyViscosity, v);
-  else        this.mudLooseViscosity  = Math.max(this.mudLooseViscosity, v);
+_pickUpMud(v, sticky, numberTurns) {           // Mud enter (persistent)
+  if (sticky) {
+    this.mudStickyViscosity = Math.max(this.mudStickyViscosity, v);
+  } else {
+    this.mudLooseViscosity = Math.max(this.mudLooseViscosity, v);
+    this.mudTurnsLeft = Math.max(this.mudTurnsLeft, numberTurns); // lingering timer
+  }
   this._refreshMudLook();
 }
 _wash(includeSticky) {                         // Cleaner enter: loose always; sticky opt-in
   this.mudLooseViscosity = 0;
+  this.mudTurnsLeft = 0;
   if (includeSticky) this.mudStickyViscosity = 0;
   this._refreshMudLook();
 }
@@ -321,11 +332,17 @@ removeRegion(r) { this._activeRegions.delete(r); }
 
 `_pickUpMud` / `_wash` intentionally **don't** recompute — `Region._enter/_exit`
 do a single recompute after adjusting both state and membership. The one
-self-contained one is `shedMud`, driven from settle rather than a region:
+self-contained one is `shedMudTurn`, driven from settle rather than a region: it
+counts the lingering timer down and only sheds the loose mud once it expires.
 
 ```js
-shedMud() {                                    // settle: normal mud only; sticky stays
+shedMudTurn() {                                // one settle's shed step (sticky untouched)
+  if (this.mudLooseViscosity > 0 && this.mudTurnsLeft > 0) {
+    this.mudTurnsLeft -= 1;                     // still muddy: keep it one more turn
+    return;
+  }
   this.mudLooseViscosity = 0;
+  this.mudTurnsLeft = 0;
   this._refreshMudLook();
   this._recomputeFriction();
 }
@@ -333,7 +350,7 @@ shedMud() {                                    // settle: normal mud only; stick
 
 **No per-frame friction write and no scene-side commit** — `body.frictionAir` is
 touched only by `_recomputeFriction`, reached solely from region enter/exit and
-`shedMud`.
+`shedMudTurn`.
 
 ### Visual (muddy look)
 
@@ -368,9 +385,11 @@ the whole face group left/right while the ball stays put.
 Every turn, at settle, **both brothers are checked** and **any muddy one** (loose
 *or* sticky) shimmies to try to shake the mud off — and the shimmy must come
 **before** the win/lose animation. So the turn decision is *deferred* until the
-shimmy finishes. The mud only comes off *after* the shimmy: loose mud sheds,
-sticky mud stays — so a loose-muddy brother ends up clean, while a sticky one
-keeps its dark splat and shimmies again next turn.
+shimmy finishes. What the shimmy sheds is decided at its end
+({@link Brother#shedMudTurn}): loose mud lingers for its remaining `numberTurns`
+(counted down each settle) and only comes off once they run out; sticky mud never
+sheds here — so a brother keeps shimmying (and stays muddy) every turn until its
+loose timer expires, and a sticky one shimmies forever until washed.
 
 Settle is detected in the update loop (`src/scenes/GameScene.js:2436`), which
 calls `_resolveTurn` **every frame** while `status === 'PLAYING' && phase ===
@@ -422,7 +441,7 @@ shimmyMud(onDone) {
       onUpdate: () => { b._mudShimmyX = amplitude * Math.sin(p.t * Math.PI * 2 * cycles); },
       onComplete: () => {
         b._mudShimmyX = 0;
-        b.shedMud();                     // shake off now: loose goes, sticky stays → look updates
+        b.shedMudTurn();                 // count down / shed loose now (sticky stays) → look may update
         b.setFace(prevFace);
         if (--pending === 0) onDone();   // decide the turn after all shimmies done
       },
@@ -440,10 +459,11 @@ Design points:
   or `swapRoles`) runs from `onDone`, i.e. after the shimmy — so a win pop always
   follows the shake. If neither brother is muddy, `onDone` fires the same tick and
   behaviour is unchanged.
-- **Shed AFTER the shimmy.** `shedMud` is called in the tween's `onComplete`, not
-  up front, so the look changes at the *end* of the shake (loose flies off; sticky
-  stays). Friction is still correct in time for the next launch, which can't start
-  until `onDone` → `_decideTurn` hands off the turn.
+- **Shed AFTER the shimmy.** `shedMudTurn` is called in the tween's `onComplete`,
+  not up front, so any look change happens at the *end* of the shake (once the
+  timer expires, loose flies off; sticky stays; while it's still lingering, the
+  shimmy plays but nothing changes). Friction is still correct in time for the next
+  launch, which can't start until `onDone` → `_decideTurn` hands off the turn.
 - **Face is a named constant** (`MUD_SHED_FACE`) — one line to change. It restores
   the prior face on complete; `_decideTurn` (win/lose/next) then sets the outcome
   face the same tick, so there's no visible clash.
@@ -462,6 +482,7 @@ Add next to `ball` / `bomb` / `settle` (around `src/config.js:163`):
 mud: {
   viscosity: 0.08,        // default persistent pickup (base frictionAir is 0.025)
   inViscosity: 0,         // default extra drag WHILE inside (0 = none; opt-in per area)
+  numberTurns: 2,         // default extra turns normal mud lingers before it sheds
   color: 0x6b4423,        // normal mud fill (brown)
   stickyColor: 0x2a1a0e,  // sticky mud fill (near-black brown)
   overlayAlpha: 0.85,     // muddy-brother splat strength
@@ -486,7 +507,8 @@ long glide; `0.08` a clear grab, `0.15`+ heavy sludge; cleaner stays tiny.
 - Draw a **rectangle, ellipse, or polygon** object; set its **Class** to `Mud` or
   `Cleaner`. Concave polygons are fine.
 - Mud properties: `viscosity` (float; omit → `Config.mud.viscosity`),
-  `inViscosity` (float, extra while inside; omit → 0), `sticky` (bool; omit →
+  `inViscosity` (float, extra while inside; omit → 0), `numberTurns` (int, extra
+  turns it lingers; omit → `Config.mud.numberTurns` = 2), `sticky` (bool; omit →
   false), optional `name` (hover label).
 - Cleaner properties: `viscosity` (float; omit → `Config.cleaner.viscosity`),
   `cleanSticky` (bool; omit → false — off means it leaves sticky mud stuck),
@@ -522,10 +544,10 @@ long glide; `0.08` a clear grab, `0.15`+ heavy sludge; cleaner stays tiny.
 5. **`src/world/Cleaner.js`** *(new)* — `_entered → _wash`, `inViscosity =
    viscosity`, watery fill (§5).
 6. **`src/world/registry.js`** — add `Mud`, `Cleaner` to `CLASSES`.
-7. **`src/world/Brother.js`** — sticky/loose viscosity + `_activeRegions` +
-   `_mudShimmyX` state; `_pickUpMud`, `_wash`, `addRegion`, `removeRegion`,
-   `shedMud`, `_recomputeFriction`, `isMuddy`/`isSticky`; `mudView` +
-   `_updateMudView`/`_refreshMudLook`; `_mudShimmyX` into `update()` (§6).
+7. **`src/world/Brother.js`** — sticky/loose viscosity + `mudTurnsLeft` +
+   `_activeRegions` + `_mudShimmyX` state; `_pickUpMud`, `_wash`, `addRegion`,
+   `removeRegion`, `shedMudTurn`, `_recomputeFriction`, `isMuddy`/`isSticky`;
+   `mudView` + `_updateMudView`/`_refreshMudLook`; `_mudShimmyX` into `update()` (§6).
 8. **`src/Brothers.js`** — `MUD_SHED_FACE` constant + `shimmyMud(onDone)` (§7).
 9. **`src/scenes/GameScene.js`** — split `_resolveTurn` into a guarded shell
    (`phase = 'RESOLVING'`, then `shimmyMud(() => this._decideTurn())`) and

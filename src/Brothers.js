@@ -572,13 +572,13 @@ export class Brothers {
    * At settle, EVERY muddy brother — loose or sticky — shimmies to try to shake
    * the mud off, then `onDone` fires once all shimmies finish (so the caller can
    * run the win/lose animation *after* the shimmy). Both brothers are checked
-   * every turn: any that {@link Brother#isMuddy} shimmies. The mud only comes off
-   * *after* the shimmy (loose mud sheds; sticky mud stays — see
-   * {@link Brother#shedMud}), so the ball's look updates at the end of the shake:
-   * a loose-muddy brother comes clean, a sticky one keeps its dark splat and
-   * shimmies again next turn. If neither brother is muddy, `onDone` fires
-   * immediately (synchronously), so a mud-free turn resolves exactly as before.
-   * See mud-plan.md.
+   * every turn: any that {@link Brother#isMuddy} shimmies. What the shimmy sheds
+   * is decided at its end by {@link Brother#shedMudTurn}: loose mud lingers for
+   * its remaining turns (so it may take several shimmies before it comes off),
+   * and sticky mud never sheds here — so the ball's look updates only when mud
+   * actually leaves. If neither brother is muddy, `onDone` fires immediately
+   * (synchronously), so a mud-free turn resolves exactly as before. See
+   * mud-plan.md.
    *
    * @param {() => void} onDone
    * @returns {void}
@@ -608,7 +608,7 @@ export class Brothers {
         },
         onComplete: () => {
           b._mudShimmyX = 0;
-          b.shedMud(); // NOW the mud shakes off: loose goes, sticky stays → look updates
+          b.shedMudTurn(); // count down / shed loose mud now (sticky stays) → look may update
           b.setFace(prevFace);
           if (--pending === 0) onDone(); // decide the turn once all shimmies finish
         },
