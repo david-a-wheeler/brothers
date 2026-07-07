@@ -67,7 +67,7 @@
                 {
                  "height":125,
                  "id":5,
-                 "name":"Water (rinses mud)",
+                 "name":"Normal Cleaner",
                  "opacity":1,
                  "rotation":0,
                  "type":"Cleaner",
@@ -102,7 +102,7 @@
                 {
                  "height":170,
                  "id":7,
-                 "name":"Ultra Cleaner (removes sticky)",
+                 "name":"Ultra Cleaner",
                  "opacity":1,
                  "properties":[
                         {

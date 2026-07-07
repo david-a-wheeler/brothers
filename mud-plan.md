@@ -215,6 +215,10 @@ export class Region extends Entity {
   _exited(_b) {}    // subclass: persistent state change on exit (rarely needed)
   _buildView(_s, _d) { return null; }
   interactiveView() { return this.view; }
+  // A Graphics has no intrinsic size, so hand the info-label wiring an explicit
+  // hit area — reuse the shape + Contains (world coords; the fill sits at the
+  // origin, so pointer-local == world). Without this, hover tooltips never fire.
+  interactiveHitArea() { return [this._shape, this._containsFn]; }
 }
 ```
 
@@ -277,7 +281,7 @@ this.mudLooseViscosity  = 0; // normal mud; cleared on settle or wash (max over 
 // transient region membership (drag applies only while inside):
 this._activeRegions = new Set(); // regions with inViscosity currently containing me
 // shed animation:
-this._mudWiggle = 0;             // radians, applied in update()
+this._mudShimmyX = 0;            // horizontal offset (px) of the face/feature/splat
 ```
 
 Derived: `get isMuddy(){ return this.mudStickyViscosity > 0 || this.mudLooseViscosity > 0; }`
@@ -338,28 +342,35 @@ the facial feature. `_refreshMudLook()` shows/hides + tints it: dark
 (`Config.mud.stickyColor`) if `isSticky`, else brown (`Config.mud.color`), hidden
 if not `isMuddy`. `_updateMudView()` glues it to `this.go`.
 
-Wire the shed tilt into `update()` (`src/world/Brother.js:178`):
+Wire the shed shimmy into `update()` (`src/world/Brother.js:178`) as a horizontal
+offset of the face/feature/splat over the (stationary) body:
 
 ```js
 update() {
   this._contain();
-  this.face.setPosition(this.go.x, this.go.y);
-  this.face.rotation = this._mudWiggle;   // was: = 0  (wiggle drives it, else 0)
+  const sx = this._mudShimmyX;              // 0 except during the shed shimmy
+  this.face.setPosition(this.go.x + sx, this.go.y);
+  this.face.rotation = 0;
   this._updateFeature();
-  this._updateMudView();
+  if (this.feature && sx) this.feature.x += sx; // glasses/beard slide along too
+  this._updateMudView();                    // splat offset by sx
 }
 ```
 
-`_mudWiggle` (not a direct `face.rotation` write) because `update()` re-zeroes
-rotation each frame — the shed tween animates `_mudWiggle` and `update()` applies
-it.
+The shimmy is an *offset* the shed tween drives (not a body move), applied each
+frame after `_updateFeature` repositions the feature to the body — so it slides
+the whole face group left/right while the ball stays put.
 
 ---
 
-## 7. Settle: shed first, then decide the turn
+## 7. Settle: shimmy, then decide the turn
 
-"On settle, wiggle the mud off" — and the wiggle must come **before** the win/lose
-animation. That means the turn decision is *deferred* until the shimmy finishes.
+Every turn, at settle, **both brothers are checked** and **any muddy one** (loose
+*or* sticky) shimmies to try to shake the mud off — and the shimmy must come
+**before** the win/lose animation. So the turn decision is *deferred* until the
+shimmy finishes. The mud only comes off *after* the shimmy: loose mud sheds,
+sticky mud stays — so a loose-muddy brother ends up clean, while a sticky one
+keeps its dark splat and shimmies again next turn.
 
 Settle is detected in the update loop (`src/scenes/GameScene.js:2436`), which
 calls `_resolveTurn` **every frame** while `status === 'PLAYING' && phase ===
@@ -371,10 +382,9 @@ calls `_resolveTurn` **every frame** while `status === 'PLAYING' && phase ===
 _resolveTurn() {
   this._frameBrothers();
   this.phase = 'RESOLVING';                 // park the MOVING settle-check (re-entry guard)
-  // Wiggle loose mud off first; decide the turn only once the shimmy finishes
-  // (or immediately if there was nothing to shed) — so the win/lose animation
-  // follows the wiggle.
-  this.brothers.shedLooseMud(() => this._decideTurn());
+  // Any muddy brother shimmies first; decide the turn only once the shimmies
+  // finish (or immediately if none) — so the win/lose animation follows.
+  this.brothers.shimmyMud(() => this._decideTurn());
 }
 
 // _decideTurn holds the former _resolveTurn body: firstReached → win/celebrate/
@@ -388,30 +398,33 @@ check can't re-fire regardless). Add `RESOLVING` to the phase state notes at
 
 ```js
 // src/Brothers.js
-const MUD_SHED_FACE = FACES.dizzy; // ← single knob: the face shown mid-wiggle
+const MUD_SHED_FACE = FACES.dizzy; // ← single knob: the face shown mid-shimmy
 
 /**
- * Wiggle loose mud off any muddy brother, then call `onDone` once all wiggles
- * finish. If nothing is muddy, call `onDone` immediately (synchronously), so the
- * no-mud path resolves exactly as before.
+ * Every muddy brother (loose OR sticky) shimmies, then `onDone` fires once all
+ * finish. The mud shakes off only AT THE END of the shimmy (loose sheds, sticky
+ * stays), so the look updates after the shake. If none is muddy, `onDone` fires
+ * immediately (synchronously), so a mud-free turn resolves exactly as before.
  */
-shedLooseMud(onDone) {
-  const muddy = [this.david, this.ken].filter((b) => b.mudLooseViscosity > 0);
+shimmyMud(onDone) {
+  const muddy = [this.david, this.ken].filter((b) => b.isMuddy);
   if (!muddy.length) { onDone(); return; }
   let pending = muddy.length;
-  const w = Config.mud.wiggle; // { angleDeg, duration, repeats }
+  const { amplitude, cycles, duration } = Config.mud.wiggle;
   for (const b of muddy) {
     const prevFace = b.face.text;
-    b.shedMud();                       // clear state now → friction correct immediately
     b.setFace(MUD_SHED_FACE);
-    this.scene.tweens.killTweensOf(b); // never stack wiggles
+    // Slide the face left/right over the ball `cycles` times. A sine keeps it
+    // centred at start/end (no pop); only the visuals move, not the body.
+    const p = { t: 0 };
     this.scene.tweens.add({
-      targets: b, _mudWiggle: Phaser.Math.DegToRad(w.angleDeg),
-      duration: w.duration, yoyo: true, repeat: w.repeats, ease: 'Sine.InOut',
+      targets: p, t: 1, duration, ease: 'Linear',
+      onUpdate: () => { b._mudShimmyX = amplitude * Math.sin(p.t * Math.PI * 2 * cycles); },
       onComplete: () => {
-        b._mudWiggle = 0;
+        b._mudShimmyX = 0;
+        b.shedMud();                     // shake off now: loose goes, sticky stays → look updates
         b.setFace(prevFace);
-        if (--pending === 0) onDone(); // decide the turn after all wiggles done
+        if (--pending === 0) onDone();   // decide the turn after all shimmies done
       },
     });
   }
@@ -420,21 +433,24 @@ shedLooseMud(onDone) {
 
 Design points:
 
+- **Every turn, both brothers:** the check is `b.isMuddy` (loose OR sticky), so a
+  sticky brother shimmies on *every* settle (and keeps its mud), not just the turn
+  it picked it up. A clean brother isn't muddy, so it doesn't shimmy.
 - **Sequence is guaranteed:** the whole decision (score, `celebrate`, `_endGame`,
-  or `swapRoles`) runs from `onDone`, i.e. after the wiggle — so a win pop always
-  follows the shimmy. Sticky-only brothers have no loose mud, so they don't wiggle
-  (their dark look stays); if neither brother is loose-muddy, `onDone` fires the
-  same tick and behaviour is unchanged.
+  or `swapRoles`) runs from `onDone`, i.e. after the shimmy — so a win pop always
+  follows the shake. If neither brother is muddy, `onDone` fires the same tick and
+  behaviour is unchanged.
+- **Shed AFTER the shimmy.** `shedMud` is called in the tween's `onComplete`, not
+  up front, so the look changes at the *end* of the shake (loose flies off; sticky
+  stays). Friction is still correct in time for the next launch, which can't start
+  until `onDone` → `_decideTurn` hands off the turn.
 - **Face is a named constant** (`MUD_SHED_FACE`) — one line to change. It restores
   the prior face on complete; `_decideTurn` (win/lose/next) then sets the outcome
   face the same tick, so there's no visible clash.
-- **Shed state up front, animate for show** — clearing `mudLooseViscosity`
-  immediately keeps friction correct even if the next launch comes fast; the tween
-  is pure cosmetics.
-- **Don't move the physics body.** The "left/right" shimmy is a *rotation* of the
-  visuals (`_mudWiggle` → face/feature/splat), never a translate of `go` (the body
-  circle is rotationally symmetric, so rotating it is invisible while the
-  face/feature/splat read as a shake).
+- **Don't move the physics body.** The "left/right" shimmy is a horizontal
+  *translation of the visuals* (`_mudShimmyX` → face/feature/splat), never a move
+  of `go` — the ball stays put while the face group slides on top of it, reading
+  as a quick shake to fling the mud off.
 
 ---
 
@@ -450,7 +466,7 @@ mud: {
   stickyColor: 0x2a1a0e,  // sticky mud fill (near-black brown)
   overlayAlpha: 0.85,     // muddy-brother splat strength
   depth: 0,               // below brothers (depth 3) & walls; above background
-  wiggle: { angleDeg: 12, duration: 90, repeats: 5 }, // shed shimmy
+  wiggle: { amplitude: 9, cycles: 2, duration: 400 }, // shed shimmy: px each way, oscillations, ms
 },
 cleaner: {
   viscosity: 0.01,        // very small transient drag while in the water
@@ -499,19 +515,20 @@ long glide; `0.08` a clear grab, `0.15`+ heavy sludge; cleaner stays tiny.
 2. **`src/config.js`** — add `mud` and `cleaner` blocks (§8).
 3. **`src/world/Region.js`** *(new)* — shape build, `contains`, edge-triggered
    `update`, `inViscosity` getter, `_enter`/`_exit` (membership + recompute),
-   `_entered`/`_exited`/`_buildView` hooks, `bounds` (§3).
+   `_entered`/`_exited`/`_buildView` hooks, `bounds`, and `interactiveView` +
+   `interactiveHitArea` (the Graphics needs an explicit hit area for hover) (§3).
 4. **`src/world/Mud.js`** *(new)* — `_entered → _pickUpMud`, `inViscosity` getter,
    brown/dark fill (§4).
 5. **`src/world/Cleaner.js`** *(new)* — `_entered → _wash`, `inViscosity =
    viscosity`, watery fill (§5).
 6. **`src/world/registry.js`** — add `Mud`, `Cleaner` to `CLASSES`.
 7. **`src/world/Brother.js`** — sticky/loose viscosity + `_activeRegions` +
-   `_mudWiggle` state; `_pickUpMud`, `_wash`, `addRegion`, `removeRegion`,
+   `_mudShimmyX` state; `_pickUpMud`, `_wash`, `addRegion`, `removeRegion`,
    `shedMud`, `_recomputeFriction`, `isMuddy`/`isSticky`; `mudView` +
-   `_updateMudView`/`_refreshMudLook`; `_mudWiggle` into `update()` (§6).
-8. **`src/Brothers.js`** — `MUD_SHED_FACE` constant + `shedLooseMud(onDone)` (§7).
+   `_updateMudView`/`_refreshMudLook`; `_mudShimmyX` into `update()` (§6).
+8. **`src/Brothers.js`** — `MUD_SHED_FACE` constant + `shimmyMud(onDone)` (§7).
 9. **`src/scenes/GameScene.js`** — split `_resolveTurn` into a guarded shell
-   (`phase = 'RESOLVING'`, then `shedLooseMud(() => this._decideTurn())`) and
+   (`phase = 'RESOLVING'`, then `shimmyMud(() => this._decideTurn())`) and
    `_decideTurn` (former body); note `RESOLVING` at `:60` (§7).
 10. **Test level** — a normal `Mud`, a sticky `Mud`, an `inViscosity` bog, and a
     `Cleaner` in a pack level; verify pickup, max, sticky persistence + raise,

@@ -99,8 +99,8 @@ export class Brother extends Entity {
     this.mudLooseViscosity = 0;
     /** Regions currently imparting a *while-inside* drag (a bog, the water). */
     this._activeRegions = new Set();
-    /** Shed-shimmy angle (radians), applied to the visuals in {@link update}. */
-    this._mudWiggle = 0;
+    /** Mud-shed shimmy: horizontal offset (px) of the face/feature/splat over the ball. */
+    this._mudShimmyX = 0;
     /** Mud splat drawn over the body (under the face); redrawn in {@link _refreshMudLook}. */
     this.mudView = scene.add.graphics().setDepth(4);
   }
@@ -193,9 +193,13 @@ export class Brother extends Entity {
    */
   update() {
     this._contain();
-    this.face.setPosition(this.go.x, this.go.y);
-    this.face.rotation = this._mudWiggle; // normally 0; the shed shimmy drives it
+    // The mud-shed shimmy slides the face/feature/splat left and right ON TOP of
+    // the ball (the body itself stays put); _mudShimmyX is 0 the rest of the time.
+    const sx = this._mudShimmyX;
+    this.face.setPosition(this.go.x + sx, this.go.y);
+    this.face.rotation = 0;
     this._updateFeature();
+    if (this.feature && sx) this.feature.x += sx; // slide the glasses/beard along too
     this._updateMudView();
   }
 
@@ -364,10 +368,9 @@ export class Brother extends Entity {
     for (const [dx, dy, br] of blobs) g.fillCircle(dx * r, dy * r, br * r);
   }
 
-  /** Glue the mud splat to the body and tilt it with the shed shimmy. @returns {void} */
+  /** Glue the mud splat to the body, offset by the shed shimmy. @returns {void} */
   _updateMudView() {
-    this.mudView.setPosition(this.go.x, this.go.y);
-    this.mudView.rotation = this._mudWiggle;
+    this.mudView.setPosition(this.go.x + this._mudShimmyX, this.go.y);
   }
 
   // --- Subclass surface (David/Ken override these) ------------------------

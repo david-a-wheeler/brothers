@@ -229,8 +229,10 @@ export const Config = {
     stickyColor: 0x2a1a0e, // sticky mud fill (near-black brown)
     overlayAlpha: 0.85, // strength of the muddy-brother splat overlay
     depth: 0, // below the brothers (depth 3) and walls; above the background
-    // The end-of-turn shimmy that sheds normal (non-sticky) mud.
-    wiggle: { angleDeg: 12, duration: 90, repeats: 5 },
+    // The end-of-turn shimmy that sheds normal (non-sticky) mud: the face slides
+    // left/right over the ball `amplitude` px each way, `cycles` full oscillations,
+    // across `duration` ms total. Brief and quick.
+    wiggle: { amplitude: 9, cycles: 2, duration: 400 },
   },
 
   /**

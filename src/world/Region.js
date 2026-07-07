@@ -205,4 +205,17 @@ export class Region extends Entity {
   interactiveView() {
     return this.view;
   }
+
+  /**
+   * A Graphics has no intrinsic size, so give it an explicit hit area matching the
+   * region's shape (Goal does the same for its Container). We reuse the very
+   * shape + `Contains` used for brother detection: the fill Graphics sits at the
+   * origin and is drawn in world coordinates, so the pointer's local coords equal
+   * world coords and the same test answers the hover hit-test exactly.
+   *
+   * @returns {[object, Function]}
+   */
+  interactiveHitArea() {
+    return [this._shape, this._containsFn];
+  }
 }

@@ -8,7 +8,7 @@ import { drawBand, pulsingGlow } from './world/effects.js';
 
 /**
  * The face a brother wears while wiggling mud off at settle (see
- * {@link Brothers#shedLooseMud}). One knob — change it to restyle the shed.
+ * {@link Brothers#shimmyMud}). One knob — change it to restyle the shed.
  */
 const MUD_SHED_FACE = FACES.dizzy;
 
@@ -569,41 +569,48 @@ export class Brothers {
   }
 
   /**
-   * At settle, shed loose (non-sticky) mud from any muddy brother with a
-   * left/right wiggle, then invoke `onDone` once every wiggle has finished — so a
-   * caller can sequence the win/lose animation *after* the shimmy. If no brother
-   * is loose-muddy, `onDone` fires immediately (synchronously), so the common
-   * mud-free turn resolves exactly as before. Sticky mud is not shed here (it
-   * only comes off in a `cleanSticky` Cleaner), so a sticky-only brother keeps its
-   * dark look and doesn't wiggle. See mud-plan.md.
+   * At settle, EVERY muddy brother — loose or sticky — shimmies to try to shake
+   * the mud off, then `onDone` fires once all shimmies finish (so the caller can
+   * run the win/lose animation *after* the shimmy). Both brothers are checked
+   * every turn: any that {@link Brother#isMuddy} shimmies. The mud only comes off
+   * *after* the shimmy (loose mud sheds; sticky mud stays — see
+   * {@link Brother#shedMud}), so the ball's look updates at the end of the shake:
+   * a loose-muddy brother comes clean, a sticky one keeps its dark splat and
+   * shimmies again next turn. If neither brother is muddy, `onDone` fires
+   * immediately (synchronously), so a mud-free turn resolves exactly as before.
+   * See mud-plan.md.
    *
    * @param {() => void} onDone
    * @returns {void}
    */
-  shedLooseMud(onDone) {
-    const muddy = [this.david, this.ken].filter((b) => b.mudLooseViscosity > 0);
+  shimmyMud(onDone) {
+    const muddy = [this.david, this.ken].filter((b) => b.isMuddy);
     if (!muddy.length) {
       onDone();
       return;
     }
     let pending = muddy.length;
-    const w = Config.mud.wiggle;
+    const { amplitude, cycles, duration } = Config.mud.wiggle;
     for (const b of muddy) {
       const prevFace = b.face.text;
-      b.shedMud(); // clear the mud now, so friction is already correct next launch
       b.setFace(MUD_SHED_FACE);
-      this.scene.tweens.killTweensOf(b); // never stack wiggles on the same brother
+      // A quick left/right slide of the face on top of the ball, `cycles` times.
+      // A sine drives it, so it starts and ends centred (no pop); the body stays
+      // put — only the face/feature/splat move (see Brother.update / _mudShimmyX).
+      const p = { t: 0 };
       this.scene.tweens.add({
-        targets: b,
-        _mudWiggle: Phaser.Math.DegToRad(w.angleDeg),
-        duration: w.duration,
-        yoyo: true,
-        repeat: w.repeats,
-        ease: 'Sine.InOut',
+        targets: p,
+        t: 1,
+        duration,
+        ease: 'Linear',
+        onUpdate: () => {
+          b._mudShimmyX = amplitude * Math.sin(p.t * Math.PI * 2 * cycles);
+        },
         onComplete: () => {
-          b._mudWiggle = 0;
+          b._mudShimmyX = 0;
+          b.shedMud(); // NOW the mud shakes off: loose goes, sticky stays → look updates
           b.setFace(prevFace);
-          if (--pending === 0) onDone(); // decide the turn once all wiggles finish
+          if (--pending === 0) onDone(); // decide the turn once all shimmies finish
         },
       });
     }

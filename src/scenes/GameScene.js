@@ -2488,10 +2488,10 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Called once both balls have settled (every frame while MOVING, until the
-   * phase leaves MOVING). Shed loose mud with a wiggle FIRST, then decide the
+   * phase leaves MOVING). Any muddy brother shimmies FIRST, then we decide the
    * turn ({@link _decideTurn}) — so a win/lose animation follows the shimmy. The
    * `RESOLVING` phase both parks the settle check (so this can't re-fire during
-   * the wiggle) and is left by `_decideTurn`. With no mud, `shedLooseMud` calls
+   * the shimmy) and is left by `_decideTurn`. With no mud, `shimmyMud` calls
    * back synchronously and this resolves in one tick, exactly as before.
    *
    * @returns {void}
@@ -2499,7 +2499,7 @@ export class GameScene extends Phaser.Scene {
   _resolveTurn() {
     this._frameBrothers(); // gently zoom/pan so both balls are fully framed at rest
     this.phase = 'RESOLVING'; // re-entry guard + "not MOVING" for the settle check
-    this.brothers.shedLooseMud(() => this._decideTurn());
+    this.brothers.shimmyMud(() => this._decideTurn());
   }
 
   /**
