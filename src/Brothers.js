@@ -7,6 +7,12 @@ import { Wall } from './world/Wall.js';
 import { drawBand, pulsingGlow } from './world/effects.js';
 
 /**
+ * The face a brother wears while wiggling mud off at settle (see
+ * {@link Brothers#shedLooseMud}). One knob — change it to restyle the shed.
+ */
+const MUD_SHED_FACE = FACES.dizzy;
+
+/**
  * Coordinates the David/Ken pair. The two brothers are {@link Brother} entities
  * that the {@link World} builds from the level's `david`/`ken` objects and that
  * own their own bodies and views; this class finds them and drives everything
@@ -560,6 +566,47 @@ export class Brothers {
       this.david.go.body.speed < speedThreshold && this.ken.go.body.speed < speedThreshold;
     this._settleFrames = slow ? this._settleFrames + 1 : 0;
     return this._settleFrames >= frames;
+  }
+
+  /**
+   * At settle, shed loose (non-sticky) mud from any muddy brother with a
+   * left/right wiggle, then invoke `onDone` once every wiggle has finished — so a
+   * caller can sequence the win/lose animation *after* the shimmy. If no brother
+   * is loose-muddy, `onDone` fires immediately (synchronously), so the common
+   * mud-free turn resolves exactly as before. Sticky mud is not shed here (it
+   * only comes off in a `cleanSticky` Cleaner), so a sticky-only brother keeps its
+   * dark look and doesn't wiggle. See mud-plan.md.
+   *
+   * @param {() => void} onDone
+   * @returns {void}
+   */
+  shedLooseMud(onDone) {
+    const muddy = [this.david, this.ken].filter((b) => b.mudLooseViscosity > 0);
+    if (!muddy.length) {
+      onDone();
+      return;
+    }
+    let pending = muddy.length;
+    const w = Config.mud.wiggle;
+    for (const b of muddy) {
+      const prevFace = b.face.text;
+      b.shedMud(); // clear the mud now, so friction is already correct next launch
+      b.setFace(MUD_SHED_FACE);
+      this.scene.tweens.killTweensOf(b); // never stack wiggles on the same brother
+      this.scene.tweens.add({
+        targets: b,
+        _mudWiggle: Phaser.Math.DegToRad(w.angleDeg),
+        duration: w.duration,
+        yoyo: true,
+        repeat: w.repeats,
+        ease: 'Sine.InOut',
+        onComplete: () => {
+          b._mudWiggle = 0;
+          b.setFace(prevFace);
+          if (--pending === 0) onDone(); // decide the turn once all wiggles finish
+        },
+      });
+    }
   }
 
   /**

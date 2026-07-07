@@ -58,9 +58,12 @@ const ABOUT_TEXT =
  * `phase` — the turn phase, only meaningful while PLAYING:
  * - AIMING: waiting for the player to drag/release the launcher.
  * - MOVING: balls are in flight; we watch for them to settle.
+ * - RESOLVING: settled; playing the mud-shed wiggle before the turn is decided
+ *   (a brief MOVING→AIMING detour — see {@link GameScene#_resolveTurn}). It also
+ *   guards against the settle check re-firing every frame during the wiggle.
  *
  * @typedef {'READY'|'PLAYING'|'ENDED'} LevelStatus
- * @typedef {'AIMING'|'MOVING'} TurnPhase
+ * @typedef {'AIMING'|'MOVING'|'RESOLVING'} TurnPhase
  */
 
 /**
@@ -2484,12 +2487,28 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Called once both balls have settled. Decide win / lose / next turn.
+   * Called once both balls have settled (every frame while MOVING, until the
+   * phase leaves MOVING). Shed loose mud with a wiggle FIRST, then decide the
+   * turn ({@link _decideTurn}) — so a win/lose animation follows the shimmy. The
+   * `RESOLVING` phase both parks the settle check (so this can't re-fire during
+   * the wiggle) and is left by `_decideTurn`. With no mud, `shedLooseMud` calls
+   * back synchronously and this resolves in one tick, exactly as before.
    *
    * @returns {void}
    */
   _resolveTurn() {
     this._frameBrothers(); // gently zoom/pan so both balls are fully framed at rest
+    this.phase = 'RESOLVING'; // re-entry guard + "not MOVING" for the settle check
+    this.brothers.shedLooseMud(() => this._decideTurn());
+  }
+
+  /**
+   * Decide the settled turn: win, loss, or hand off to the next turn. Split from
+   * {@link _resolveTurn} so it runs only after the mud-shed wiggle has finished.
+   *
+   * @returns {void}
+   */
+  _decideTurn() {
     const reached = this.world.firstReached(this.brothers);
     if (reached) {
       // Record best score (most turns left) if we beat it.

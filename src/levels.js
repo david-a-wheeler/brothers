@@ -96,9 +96,9 @@ export function loadTiledLevel(map) {
 
   // The loader is fully type-agnostic: every classed object — brothers, goals,
   // teleporters, walls — is recorded generically for the world layer to
-  // interpret. Rect objects (e.g. walls) are converted from Tiled's top-left to
-  // centre coordinates; points have zero size so their centre is just their
-  // x,y. Unclassed objects are skipped.
+  // interpret. Its geometry is normalised to a centre-based descriptor by
+  // {@link normalizeShape} (so rects/ellipses/polygons all report a centre +
+  // AABB + shape kind). Unclassed objects are skipped.
   for (const o of objects) {
     const cls = o.class ?? o.type ?? '';
     if (!cls) continue;
@@ -106,14 +106,81 @@ export function loadTiledLevel(map) {
       ...propsToObject(o.properties), // custom props (radius, retain, target, radiusMult, …)
       kind: cls,
       name: o.name || '',
-      x: o.x + (o.width || 0) / 2,
-      y: o.y + (o.height || 0) / 2,
-      width: o.width || 0,
-      height: o.height || 0,
+      ...normalizeShape(o),
     });
   }
 
   return level;
+}
+
+/**
+ * Normalise one Tiled object's geometry to a centre-based, shape-tagged
+ * descriptor, so the world layer can treat every object uniformly (its `x,y` is
+ * always the shape's AABB centre, matching how Matter and every entity place
+ * bodies). This is the ONLY place that knows Tiled's per-shape coordinate quirks.
+ *
+ * Tiled stores geometry three different ways, all handled here:
+ * - **rectangle / ellipse / point** — `x,y` is the top-left of a `width×height`
+ *   box (a point has zero size), so the centre is `x + w/2, y + h/2`. The shape
+ *   is read from Tiled's flags (`ellipse` / `point`); an ellipse with equal
+ *   width/height is reported as a `circle` (a rounder look + a cheap distance
+ *   test downstream).
+ * - **polygon / polyline** — `x,y` is an arbitrary *origin* (NOT a centre) and
+ *   the vertices are relative to it, with no width/height. We compute the AABB
+ *   from `origin + each vertex`, report its centre as `x,y` and its size as
+ *   `width,height`, and return the vertices **relative to that centre** (so a
+ *   consumer builds the shape hanging off `x,y` like any other entity).
+ *
+ * Tiled `rotation` is intentionally ignored (bake a tilt into polygon vertices
+ * instead). Unknown/degenerate input falls back to a zero-size `rect` at the
+ * object's `x,y`, keeping the loader tolerant.
+ *
+ * @param {Object} o  A Tiled object.
+ * @returns {{shape:string, x:number, y:number, width:number, height:number, points?:{x:number,y:number}[]}}
+ */
+export function normalizeShape(o) {
+  const verts = o.polygon || o.polyline;
+  if (Array.isArray(verts) && verts.length) {
+    // Polygon/polyline: derive the AABB from the origin-relative vertices.
+    const ox = o.x || 0;
+    const oy = o.y || 0;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const v of verts) {
+      const px = ox + v.x;
+      const py = oy + v.y;
+      if (px < minX) minX = px;
+      if (px > maxX) maxX = px;
+      if (py < minY) minY = py;
+      if (py > maxY) maxY = py;
+    }
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    return {
+      shape: o.polygon ? 'polygon' : 'polyline',
+      x: cx,
+      y: cy,
+      width: maxX - minX,
+      height: maxY - minY,
+      // Vertices relative to the AABB centre, so the shape hangs off (x,y).
+      points: verts.map((v) => ({ x: ox + v.x - cx, y: oy + v.y - cy })),
+    };
+  }
+
+  const width = o.width || 0;
+  const height = o.height || 0;
+  let shape = 'rect';
+  if (o.point) shape = 'point';
+  else if (o.ellipse) shape = width === height ? 'circle' : 'ellipse';
+  return {
+    shape,
+    x: o.x + width / 2,
+    y: o.y + height / 2,
+    width,
+    height,
+  };
 }
 
 // --- i18n stub ------------------------------------------------------------

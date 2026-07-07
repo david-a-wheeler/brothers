@@ -215,6 +215,37 @@ export const Config = {
   },
 
   /**
+   * Mud areas (world class `Mud`): shaped regions that make a brother passing
+   * through them muddy. Muddiness is extra `frictionAir` carried on the brother,
+   * so a muddy brother drags and settles sooner; it persists after leaving the
+   * puddle until shed (a settle-time wiggle) or washed (a `Cleaner`). See
+   * mud-plan.md. `viscosity` is a level-overridable per-area default; the rest
+   * are look/feel.
+   */
+  mud: {
+    viscosity: 0.08, // persistent friction picked up on entry (base frictionAir is 0.025)
+    inViscosity: 0, // extra friction only WHILE inside (0 = none; opt-in per area, e.g. a bog)
+    color: 0x6b4423, // normal mud fill (brown)
+    stickyColor: 0x2a1a0e, // sticky mud fill (near-black brown)
+    overlayAlpha: 0.85, // strength of the muddy-brother splat overlay
+    depth: 0, // below the brothers (depth 3) and walls; above the background
+    // The end-of-turn shimmy that sheds normal (non-sticky) mud.
+    wiggle: { angleDeg: 12, duration: 90, repeats: 5 },
+  },
+
+  /**
+   * Cleaner areas (world class `Cleaner`, looks like water): entering one washes
+   * a brother's loose mud off (and sticky mud too if the area sets `cleanSticky`).
+   * Its own `viscosity` is a small drag that applies only WHILE inside and never
+   * perpetuates (held on the area, not the brother). See mud-plan.md.
+   */
+  cleaner: {
+    viscosity: 0.01, // very small transient drag while in the water
+    color: 0x3aa0d8, // watery blue (drawn translucent)
+    depth: 0,
+  },
+
+  /**
    * Physics stepping. We advance Matter in a fixed number of small sub-steps
    * per frame so fast bodies can't tunnel through thin (and, later, moving)
    * obstacles: Matter has no continuous collision, so a body that moves farther
