@@ -1,4 +1,4 @@
-import { Config } from '../config.js';
+import { Config, Depth } from '../config.js';
 import { FACES } from '../faces.js';
 import { Brother } from './Brother.js';
 
@@ -41,7 +41,7 @@ export class David extends Brother {
    * @returns {Phaser.GameObjects.Graphics}
    */
   _createFeature() {
-    const g = this.scene.add.graphics().setDepth(7);
+    const g = this.scene.add.graphics().setDepth(Depth.feature);
     // Thin, slightly translucent frames so the eyes/eyebrows read through them
     // (the lenses are open, but heavy black rims still hid his expression).
     g.lineStyle(1, 0x000000, 0.7);

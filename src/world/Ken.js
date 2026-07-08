@@ -1,3 +1,4 @@
+import { Depth } from '../config.js';
 import { Brother } from './Brother.js';
 
 /**
@@ -24,7 +25,7 @@ export class Ken extends Brother {
    * @returns {Phaser.GameObjects.Graphics}
    */
   _createFeature() {
-    const g = this.scene.add.graphics().setDepth(7);
+    const g = this.scene.add.graphics().setDepth(Depth.feature);
     g.fillStyle(0x000000, 0.85); // near-solid black: strong contrast on red, but not harsh
     // A thin crescent centred on his face: the curved bottom follows the face
     // edge (so it always connects), and the top edge dips down in the middle so

@@ -10,22 +10,6 @@ For prev/next, remove the parens.
 
 ???
 
-## Move band completely below or above
-
-The title page only considers drawing order, not the layer,
-because of how the containment system works.
-It can't easily draw the same way the "main game" does,
-where the elastic band is between the ball and face.
-
-Here's a proposed change to eliminate that inconsistency:
-let's just have band be drawn *below* the ball if they're
-both pinned to the center (the standard pin),
-and if a pin is off-center, draw the balls (including faces), put
-the band on top of that, and the pins on the very top.
-Then they can be easily consistent; the balls draw themselves, and
-the "Brothers" construct draws the band and pin either completely above
-or completely below.
-
 ## Level graduation requirement of pack count
 
 A level may *optionally* include a "minimum pack score to graduate

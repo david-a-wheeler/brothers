@@ -1,4 +1,4 @@
-import { Config } from '../config.js';
+import { Config, Depth } from '../config.js';
 import { Entity } from './Entity.js';
 
 /**
@@ -36,7 +36,7 @@ export class Brother extends Entity {
 
     const base = Config.ball;
     /** The circle game object + (unless `def.physics === false`) its Matter body. */
-    this.go = scene.add.circle(def.x, def.y, base.radius, this._fillColor).setDepth(3);
+    this.go = scene.add.circle(def.x, def.y, base.radius, this._fillColor).setDepth(Depth.ball);
     // A level entity gets a physics body; a visual-only brother (the title-screen
     // demo passes `physics: false`) skips it, so it can be tweened directly and
     // parented freely. Every body-touching path below guards on `this.go.body`.
@@ -59,7 +59,7 @@ export class Brother extends Entity {
     this.face = scene.add
       .text(def.x, def.y, '🙂', { fontSize: '34px' })
       .setOrigin(0.5)
-      .setDepth(6);
+      .setDepth(Depth.face);
 
     /** Subclass facial feature (glasses/beard), positioned each frame. */
     this.feature = this._createFeature();
@@ -104,7 +104,7 @@ export class Brother extends Entity {
     /** Mud-shed shimmy: horizontal offset (px) of the face/feature/splat over the ball. */
     this._mudShimmyX = 0;
     /** Mud splat drawn over the body (under the face); redrawn in {@link _refreshMudLook}. */
-    this.mudView = scene.add.graphics().setDepth(4);
+    this.mudView = scene.add.graphics().setDepth(Depth.mud);
   }
 
   /** @returns {number} Absolute world x of the pin (centre + offset). */

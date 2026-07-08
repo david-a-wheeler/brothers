@@ -1,4 +1,4 @@
-import { Config } from './config.js';
+import { Config, Depth } from './config.js';
 import { FACES } from './faces.js';
 import { sfx } from './Sfx.js';
 import { David } from './world/David.js';
@@ -49,15 +49,16 @@ export class Brothers {
     this.anchor = this.ken;
 
     /**
-     * The elastic band, drawn fresh each frame (see {@link update}). Its depth
-     * is toggled in {@link update}: normally 4 (under the faces, so the faces
-     * read), but raised above the faces/features when a pin is placed so the
-     * off-centre tether stays legible.
+     * The elastic band, drawn fresh each frame (see {@link update}). Its depth is
+     * toggled in {@link update}: {@link Depth.bandBelow} when the brothers are
+     * centred (behind the balls, a slingshot look — and matching the title demo),
+     * or {@link Depth.bandAbove} when a pin is placed (over the whole brother, so
+     * the off-centre attachment stays legible).
      */
-    this.band = scene.add.graphics().setDepth(4);
+    this.band = scene.add.graphics().setDepth(Depth.bandBelow);
 
-    /** The pin dot(s), drawn each frame above the band (see {@link update}). */
-    this.pins = scene.add.graphics().setDepth(9);
+    /** The pin dot(s), drawn each frame above the (lifted) band (see {@link update}). */
+    this.pins = scene.add.graphics().setDepth(Depth.pin);
 
     /** Pulsing halo ring marking whichever ball can currently be moved. */
     this._glow = this._createGlow();
@@ -148,7 +149,7 @@ export class Brothers {
       this.launcher.go.x,
       this.launcher.go.y,
       Config.ball.radius + 8
-    );
+    ).setDepth(Depth.glow);
     /** Looping expand-and-fade pulse. Paused while the ring is hidden. */
     this._glowTween = ring.getData('pulse');
     return ring;
@@ -164,7 +165,7 @@ export class Brothers {
    */
   _createRefusalX() {
     const d = Config.ball.radius * 0.8;
-    const g = this.scene.add.graphics().setDepth(20).setVisible(false);
+    const g = this.scene.add.graphics().setDepth(Depth.refusal).setVisible(false);
     g.lineStyle(5, 0xff2b2b, 1);
     g.beginPath();
     g.moveTo(-d, -d);
@@ -251,10 +252,12 @@ export class Brothers {
 
     // Draw the tether to each brother's PIN (the launcher's is always centre, so
     // this one path covers both the normal centre-to-centre band and a pinned,
-    // off-centre one). When a pin is placed, lift the band above the faces (and
-    // draw the pin dot above that) so the off-centre attach stays legible.
+    // off-centre one). Centred, the band sits BELOW the balls (behind the bodies —
+    // a slingshot look that matches the title demo); when a pin is placed, lift it
+    // ABOVE the whole brother (with the pin dot above that) so the off-centre
+    // attach stays legible.
     const pinned = this.david.pinPlaced || this.ken.pinPlaced;
-    this.band.setDepth(pinned ? 8 : 4);
+    this.band.setDepth(pinned ? Depth.bandAbove : Depth.bandBelow);
     drawBand(this.band, this.david.pinX, this.david.pinY, this.ken.pinX, this.ken.pinY);
     this._drawPins();
   }

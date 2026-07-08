@@ -11,6 +11,32 @@
  *  pass their own. */
 const UI_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
+/**
+ * The arena's draw-order layers, low (behind) to high (in front). Kept in one
+ * place so the brothers' parts and the tether stay in a known stack — in
+ * particular the elastic band's rule: **below the balls when centred** (a
+ * slingshot look, behind the bodies) and **above the whole brother when a pin is
+ * placed** (so the off-centre attachment reads). Referenced by {@link
+ * import('./Brothers.js').Brothers}, {@link import('./world/Brother.js').Brother},
+ * David/Ken, and the Mud/Cleaner region fills.
+ *
+ * The title-screen demo does NOT use these: its actors live in a Container, which
+ * draws in child-insertion order and ignores per-object depth, so it mirrors this
+ * stack by the order it adds children (band before the balls = band behind them).
+ */
+export const Depth = {
+  region: 0, // Mud/Cleaner area fills; walls sit here too (Phaser's default 0)
+  bandBelow: 2, // tether when centred: behind the balls
+  ball: 3, // a brother's body
+  mud: 4, // mud splat on a muddy brother (over the body, under the face)
+  glow: 5, // the "this one moves" ring on the launcher
+  face: 6, // a brother's emoji face
+  feature: 7, // David's glasses / Ken's beard, over the face
+  bandAbove: 8, // tether when a pin is placed: over the whole brother
+  pin: 9, // the pin dot(s), above the lifted band
+  refusal: 20, // the "can't launch here" X, on top of everything
+};
+
 export const Config = {
   /**
    * Show developer-only tools (the Lab parameter panel and Test mode) in the
@@ -229,7 +255,7 @@ export const Config = {
     color: 0x6b4423, // normal mud fill (brown)
     stickyColor: 0x2a1a0e, // sticky mud fill (near-black brown)
     overlayAlpha: 0.85, // strength of the muddy-brother splat overlay
-    depth: 0, // below the brothers (depth 3) and walls; above the background
+    depth: Depth.region, // the region layer: below the brothers, above the background
     // The end-of-turn shimmy that sheds normal (non-sticky) mud: the face slides
     // left/right over the ball `amplitude` px each way, `cycles` full oscillations,
     // across `duration` ms total. Brief and quick.
@@ -245,7 +271,7 @@ export const Config = {
   cleaner: {
     viscosity: 0.01, // very small transient drag while in the water
     color: 0x3aa0d8, // watery blue (drawn translucent)
-    depth: 0,
+    depth: Depth.region,
   },
 
   /**
