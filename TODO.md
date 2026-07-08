@@ -31,13 +31,6 @@ Is there a logical way to split it into smaller files?
 Maybe HUD, menus/overlays, and the game arena?
 Identify options for re-architecting, with pros and cons for each.
 
-## Demo different shapes in level 4
-
-Level 4 has 2 Mud instances and 2 Cleaner instances,
-but they're all rectangles.
-Change them to several different shapes, so we can test our sensor
-shape algorithm for detecting if a brother is on them.
-
 ## Mud, Cleaners, and Bombs
 
 Brothers can move, but so can Bombs.

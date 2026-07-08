@@ -47,6 +47,7 @@
                  "y":150
                 },
                 {
+                 "ellipse":true,
                  "height":130,
                  "id":4,
                  "name":"Normal Mud",
@@ -65,22 +66,30 @@
                  "y":570
                 },
                 {
-                 "height":125,
+                 "ellipse":true,
+                 "height":140,
                  "id":5,
                  "name":"Normal Cleaner",
                  "opacity":1,
                  "rotation":0,
                  "type":"Cleaner",
                  "visible":true,
-                 "width":150,
-                 "x":560,
-                 "y":575
+                 "width":140,
+                 "x":565,
+                 "y":567
                 },
                 {
-                 "height":150,
+                 "height":0,
                  "id":6,
                  "name":"Sticky Mud",
                  "opacity":1,
+                 "polygon":[
+                        { "x":0, "y":0 },
+                        { "x":110, "y":90 },
+                        { "x":220, "y":0 },
+                        { "x":220, "y":50 },
+                        { "x":110, "y":140 },
+                        { "x":0, "y":50 }],
                  "properties":[
                         {
                          "name":"sticky",
@@ -95,15 +104,22 @@
                  "rotation":0,
                  "type":"Mud",
                  "visible":true,
-                 "width":220,
+                 "width":0,
                  "x":470,
-                 "y":300
+                 "y":305
                 },
                 {
-                 "height":170,
+                 "height":0,
                  "id":7,
                  "name":"Ultra Cleaner",
                  "opacity":1,
+                 "polygon":[
+                        { "x":85, "y":0 },
+                        { "x":43, "y":74 },
+                        { "x":-43, "y":74 },
+                        { "x":-85, "y":0 },
+                        { "x":-43, "y":-74 },
+                        { "x":43, "y":-74 }],
                  "properties":[
                         {
                          "name":"cleanSticky",
@@ -113,9 +129,9 @@
                  "rotation":0,
                  "type":"Cleaner",
                  "visible":true,
-                 "width":170,
-                 "x":120,
-                 "y":230
+                 "width":0,
+                 "x":205,
+                 "y":315
                 },
                 {
                  "height":260,
