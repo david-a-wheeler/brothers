@@ -2276,10 +2276,23 @@ export class GameScene extends Phaser.Scene {
   _zoomBy(factor, screenX, screenY) {
     const cam = this.cameras.main;
     this._stopCameraGlide(); // manual zoom cancels an in-progress settle pan/zoom
-    const before = cam.getWorldPoint(screenX, screenY);
-    cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, this._minZoom, Config.zoom.max));
-    const after = cam.getWorldPoint(screenX, screenY);
-    cam.setScroll(cam.scrollX + (before.x - after.x), cam.scrollY + (before.y - after.y));
+    const z0 = cam.zoom;
+    const z1 = Phaser.Math.Clamp(z0 * factor, this._minZoom, Config.zoom.max);
+    if (z1 === z0) return; // already at a clamp limit: nothing to do (and avoids drift)
+    // Keep the world point under (screenX, screenY) fixed across the zoom change.
+    // We can't use getWorldPoint for the "after" point: the camera matrix is only
+    // rebuilt at render time (preRender), so right after setZoom it still holds the
+    // old zoom while cam.zoom is already the new one — a mismatched read that pulls
+    // the pivot toward the screen centre. Instead adjust scroll directly.
+    //
+    // The visible world point maps as worldX = scrollX + width/2 + (screenX - centerX)/zoom
+    // (centerX/centerY are the viewport centre in canvas pixels). Holding worldX and
+    // screenX fixed as zoom goes z0 -> z1, the width/2 term cancels, leaving:
+    const inv = 1 / z0 - 1 / z1;
+    const dx = (screenX - cam.centerX) * inv;
+    const dy = (screenY - cam.centerY) * inv;
+    cam.setZoom(z1);
+    cam.setScroll(cam.scrollX + dx, cam.scrollY + dy);
     this._clampCamera();
   }
 

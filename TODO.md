@@ -24,16 +24,6 @@ By storing the data on the level going *from*,
 we don't need to load the next level just to learn the requirement.
 This also justifies why we show the pack score at all times.
 
-## Fix zoom
-
-Zoom *works*, but it seems to zoom in on the "wrong place".
-I don't know what the convention is... is it to zoom on the pointer
-if present? What about pinch/expand?
-
-Find out what the convention for zoom in/out is, and then
-determine if we follow those conventions. If not, what would it
-take to implement them?
-
 ## Split up GameScene
 
 The GameScene is huge. It includes a lot of mechanisms for the HUD,
