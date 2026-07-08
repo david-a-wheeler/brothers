@@ -8,8 +8,6 @@ Need to figure out format, make it consistent with prev/next.
 Maybe, if there's a name, add a newline and then the name.
 For prev/next, remove the parens.
 
-???
-
 ## Level graduation requirement of pack count
 
 A level may *optionally* include a "minimum pack score to graduate
@@ -33,3 +31,30 @@ Is there a logical way to split it into smaller files?
 Maybe HUD, menus/overlays, and the game arena?
 Identify options for re-architecting, with pros and cons for each.
 
+## Demo different shapes in level 4
+
+Level 4 has 2 Mud instances and 2 Cleaner instances,
+but they're all rectangles.
+Change them to several different shapes, so we can test our sensor
+shape algorithm for detecting if a brother is on them.
+
+## Mud, Cleaners, and Bombs
+
+Brothers can move, but so can Bombs.
+What happens if a Hazard, such as an instance of Bomb,
+goes through mud or a cleaner?
+I think any instance of Hazard should have the same behavior in Mud or Cleaner
+as a Brother.
+
+I suspect we need a new class ``Movable'' that is a subclass of
+world objects. Both ``Brother'' and ``Hazard'' would be subclasses
+of ``Movable''. Then move the mud and cleaner handling logic to
+Movable. Then, a bomb or brother that goes through mud has all the
+same issues.
+
+We probably need a default view for a "Bomb with mud", e.g., show a
+mud splatter on it. They should have the same logic for getting rid of
+mud as the brothers when the brothers stop moving,
+so presumably that code goes there.
+They don't need a "wiggle" animation, but when the Brothers
+stabilize, they should get rid of mud if the count of Brother turns are up.
