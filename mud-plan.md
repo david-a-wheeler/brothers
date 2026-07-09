@@ -67,16 +67,32 @@ its own first.
 
 ---
 
-## Architecture: regions detect, the brother owns state, friction is event-driven
+## Architecture: regions detect, the mover owns state, friction is event-driven
+
+> **Update (Movable refactor).** The mud *state + logic* originally written on
+> `Brother` now lives on a shared base **`Movable` (`src/world/Movable.js`)**, and
+> both `Brother` and `Hazard` (bombs) extend it — so a bomb gets muddy, rinses in
+> a cleaner, and sheds at settle exactly like a brother. `Movable` reaches each
+> subclass's differing body/visual model through a few accessor getters
+> (`mudBody`, `mudX`, `mudY`, `mudRadius`, `mudShimmyX`, `_baseFrictionAir`).
+> Regions detect **every mover**, not just the two brothers: the `World` collects
+> anything advertising `isMovable` into `world.movables()` (no per-type knowledge,
+> same trick as `needsUpdate`), and `Region.update` point-tests that list. A
+> brother animates the shed with its shimmy; a hazard sheds silently on
+> `onSettle` (broadcast by `World.notifySettle` from `_resolveTurn`). Hazards were
+> also changed to be **frictionless coasters** (launch speed, then physics) rather
+> than re-asserting a constant speed each frame, so mud's `frictionAir` genuinely
+> slows them — a wall bounce is made loss-less in `Hazard.update` so only mud
+> changes a hazard's pace. Where this doc says "brother" below, read "mover".
 
 Two halves:
 
 1. **Regions** (`Mud`, `Cleaner`) — body-less shaped areas. Each frame they run a
    cheap point-in-shape test and **edge-detect** enter/exit transitions. They
-   don't compute physics; they call methods on the brother.
-2. **Brother state** — persistent sticky/loose mud viscosity, the set of regions
-   currently imparting transient (while-inside) drag, the visual, and the shed
-   animation.
+   don't compute physics; they call methods on the mover.
+2. **Mover state** (`Movable`) — persistent sticky/loose mud viscosity, the set of
+   regions currently imparting transient (while-inside) drag, the visual, and (on
+   brothers) the shed animation.
 
 **Friction is recomputed only on events, never per frame.** `frictionAir`
 depends solely on the brother's mud state and which regions currently contain it

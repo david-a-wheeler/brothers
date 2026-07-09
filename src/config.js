@@ -269,7 +269,7 @@ export const Config = {
    * perpetuates (held on the area, not the brother). See mud-plan.md.
    */
   cleaner: {
-    viscosity: 0.01, // very small transient drag while in the water
+    viscosity: 0.03, // small transient drag while in the water (a touch draggier than a whisper)
     color: 0x3aa0d8, // watery blue (drawn translucent)
     depth: Depth.region,
   },

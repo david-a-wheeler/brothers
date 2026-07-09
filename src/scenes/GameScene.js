@@ -2512,6 +2512,7 @@ export class GameScene extends Phaser.Scene {
   _resolveTurn() {
     this._frameBrothers(); // gently zoom/pan so both balls are fully framed at rest
     this.phase = 'RESOLVING'; // re-entry guard + "not MOVING" for the settle check
+    this.world.notifySettle(); // hazards shed a turn's worth of loose mud (no shimmy)
     this.brothers.shimmyMud(() => this._decideTurn());
   }
 

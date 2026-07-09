@@ -257,6 +257,12 @@ export class Entity {
   onLevelEnd() {}
 
   /**
+   * Both balls have settled (end of a turn). Default: do nothing. Movers use this
+   * to shed loose mud that has run out its turns; see {@link World#notifySettle}.
+   */
+  onSettle() {}
+
+  /**
    * Settle-time win predicate.
    * @param {import('../Brothers.js').Brothers} _brothers
    * @returns {boolean} Default: `false` (never a win).

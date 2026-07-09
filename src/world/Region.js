@@ -3,21 +3,22 @@ import { Entity } from './Entity.js';
 /**
  * Base class for a **body-less shaped area** the level places in the arena
  * ({@link import('./Mud.js').Mud}, {@link import('./Cleaner.js').Cleaner}). Unlike
- * a wall it has no Matter body — a brother passes through it — so it can be any
+ * a wall it has no Matter body — a mover passes through it — so it can be any
  * shape, including a concave polygon, that a solid convex body couldn't be.
  *
- * It detects a brother by a **point-in-shape** test on the brother's centre, run
- * each frame from {@link update}, and **edge-triggers** enter/exit by diffing the
- * set of brothers inside against last frame's. A body-less region gets no Matter
- * `collisionstart`/`end`, so this synthesised edge test is how we notice a brother
+ * It detects a mover — any {@link import('./Movable.js').Movable}, so both the
+ * brothers and the roaming hazards — by a **point-in-shape** test on the mover's
+ * centre, run each frame from {@link update}, and **edge-triggers** enter/exit by
+ * diffing the set inside against last frame's. A body-less region gets no Matter
+ * `collisionstart`/`end`, so this synthesised edge test is how we notice a mover
  * crossing the boundary. Only transitions do work — see {@link _enter}/{@link
  * _exit} — so friction is never recomputed on a frame where nothing changed.
  *
  * Subclasses supply their look ({@link _buildView}, usually via {@link
  * _fillShape}) and their state changes on enter/exit ({@link _entered}/{@link
- * _exited}). A subclass that drags a brother *while inside* (a bog, the water)
+ * _exited}). A subclass that drags a mover *while inside* (a bog, the water)
  * reports it from {@link inViscosity}; this base then registers/unregisters that
- * transient drag on the brother automatically, so it applies only while inside
+ * transient drag on the mover automatically, so it applies only while inside
  * and is dropped on exit. See mud-plan.md.
  */
 export class Region extends Entity {
@@ -104,50 +105,49 @@ export class Region extends Entity {
   }
 
   /**
-   * Per-frame: for each brother, test containment and fire {@link _enter}/{@link
-   * _exit} only on a transition (crossing the boundary), tracked in {@link
-   * _inside}.
+   * Per-frame: for each mover in the world, test containment (at its body centre)
+   * and fire {@link _enter}/{@link _exit} only on a transition (crossing the
+   * boundary), tracked in {@link _inside}.
    *
-   * @param {{brothers: import('../Brothers.js').Brothers}} ctx
    * @returns {void}
    */
-  update(ctx) {
-    for (const b of [ctx.brothers.david, ctx.brothers.ken]) {
-      const inside = this.contains(b.go.x, b.go.y);
-      const was = this._inside.has(b);
+  update() {
+    for (const m of this.world.movables()) {
+      const inside = this.contains(m.mudX, m.mudY);
+      const was = this._inside.has(m);
       if (inside && !was) {
-        this._inside.add(b);
-        this._enter(b);
+        this._inside.add(m);
+        this._enter(m);
       } else if (!inside && was) {
-        this._inside.delete(b);
-        this._exit(b);
+        this._inside.delete(m);
+        this._exit(m);
       }
     }
   }
 
   /**
-   * A brother crossed in: apply the subclass's state change, register any
-   * while-inside drag, then recompute the brother's friction ONCE.
+   * A mover crossed in: apply the subclass's state change, register any
+   * while-inside drag, then recompute the mover's friction ONCE.
    *
-   * @param {import('./Brother.js').Brother} b @returns {void}
+   * @param {import('./Movable.js').Movable} m @returns {void}
    */
-  _enter(b) {
-    this._entered(b);
-    if (this.inViscosity > 0) b.addRegion(this);
-    b._recomputeFriction();
+  _enter(m) {
+    this._entered(m);
+    if (this.inViscosity > 0) m.addRegion(this);
+    m._recomputeFriction();
   }
 
   /**
-   * A brother crossed out: undo any subclass exit state, drop the while-inside
+   * A mover crossed out: undo any subclass exit state, drop the while-inside
    * drag, then recompute friction ONCE. (A persistent effect like mud pickup
    * leaves nothing to undo here — that's the point of it persisting.)
    *
-   * @param {import('./Brother.js').Brother} b @returns {void}
+   * @param {import('./Movable.js').Movable} m @returns {void}
    */
-  _exit(b) {
-    this._exited(b);
-    if (this.inViscosity > 0) b.removeRegion(this);
-    b._recomputeFriction();
+  _exit(m) {
+    this._exited(m);
+    if (this.inViscosity > 0) m.removeRegion(this);
+    m._recomputeFriction();
   }
 
   /**
@@ -192,10 +192,10 @@ export class Region extends Entity {
   }
 
   // --- Subclass surface ---------------------------------------------------
-  /** Persistent state change when a brother enters. Default: none. */
-  _entered(_b) {}
-  /** State change when a brother exits (rarely needed). Default: none. */
-  _exited(_b) {}
+  /** Persistent state change when a mover enters. Default: none. */
+  _entered(_m) {}
+  /** State change when a mover exits (rarely needed). Default: none. */
+  _exited(_m) {}
   /** Build the fill; default none. Subclasses usually return {@link _fillShape}. */
   _buildView(_scene, _def) {
     return null;

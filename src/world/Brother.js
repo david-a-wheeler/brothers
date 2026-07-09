@@ -1,12 +1,13 @@
 import { Config, Depth } from '../config.js';
-import { Entity } from './Entity.js';
+import { Movable } from './Movable.js';
 
 /**
  * One brother: a dynamic circular body with an upright emoji face and a
  * subclass-specific facial feature (David's glasses, Ken's beard). A
- * {@link Entity}, so the {@link World} builds it from the level's `david`/`ken`
- * objects, its body carries `entity` for collision routing, and the pair can be
- * found via `world.byType(David|Ken)`.
+ * {@link Movable}, so it shares the whole mud mechanic with the hazards while
+ * the {@link World} builds it from the level's `david`/`ken` objects, its body
+ * carries `entity` for collision routing, and the pair can be found via
+ * `world.byType(David|Ken)`.
  *
  * A Brother owns only *itself* — its body and view. The interaction between the
  * two real brothers (the elastic tether, the slingshot, turn-taking, teleport)
@@ -19,7 +20,7 @@ import { Entity } from './Entity.js';
  * is kept **independent of size** — a bigger brother isn't heavier unless its
  * `massMult` says so.
  */
-export class Brother extends Entity {
+export class Brother extends Movable {
   /**
    * @param {Phaser.Scene} scene
    * @param {import('../levels.js').EntityDef} def  Uses `x`,`y`,`name`, optional `radiusMult`,`massMult`.
@@ -89,22 +90,11 @@ export class Brother extends Entity {
     this.lastTapTime = 0;
 
     // --- Mud (see mud-plan.md) --------------------------------------------
-    // Muddiness is extra air-friction carried on the brother. Sticky and normal
-    // ("loose") pickups are tracked separately because they outlive differently:
-    // loose mud sheds at the next settle; sticky mud persists until washed by a
-    // `cleanSticky` Cleaner. Effective mud friction is the max of the two.
-    /** Persistent friction from sticky mud (permanent until washed). */
-    this.mudStickyViscosity = 0;
-    /** Persistent friction from normal mud (shed once its turns run out, or washed). */
-    this.mudLooseViscosity = 0;
-    /** Extra settles the loose mud lingers before it shakes off (sticky ignores this). */
-    this.mudTurnsLeft = 0;
-    /** Regions currently imparting a *while-inside* drag (a bog, the water). */
-    this._activeRegions = new Set();
+    // The mud mechanic (viscosity buckets, pickup/wash, shed countdown, the splat
+    // over the body) lives in {@link Movable}, shared with the hazards. A brother
+    // adds only the shed *shimmy*: a horizontal slide of the face/feature/splat.
     /** Mud-shed shimmy: horizontal offset (px) of the face/feature/splat over the ball. */
     this._mudShimmyX = 0;
-    /** Mud splat drawn over the body (under the face); redrawn in {@link _refreshMudLook}. */
-    this.mudView = scene.add.graphics().setDepth(Depth.mud);
   }
 
   /** @returns {number} Absolute world x of the pin (centre + offset). */
@@ -268,130 +258,33 @@ export class Brother extends Entity {
     this.scene.brothers.teleport(dest, retain);
   }
 
-  // --- Mud (see mud-plan.md) ----------------------------------------------
+  // --- Mud accessors: how {@link Movable}'s shared mud logic reaches this ---
+  // brother's body/visual model (see mud-plan.md). The mechanic itself is in
+  // Movable; only the shimmy (below) is brother-specific.
 
-  /** @returns {boolean} Carrying any mud (sticky or loose). */
-  get isMuddy() {
-    return this.mudStickyViscosity > 0 || this.mudLooseViscosity > 0;
+  /** @returns {MatterJS.BodyType|null} The body that carries mud friction. */
+  get mudBody() {
+    return this.go.body;
   }
-
-  /** @returns {boolean} Carrying sticky mud (drives the dark look; sheds only in a Cleaner). */
-  get isSticky() {
-    return this.mudStickyViscosity > 0;
+  /** @returns {number} Body-centre x (the splat glue point). */
+  get mudX() {
+    return this.go.x;
   }
-
-  /**
-   * Recompute and store this brother's air-friction from its mud state and the
-   * regions currently containing it. The single write path for `frictionAir`,
-   * called only on change events (region enter/exit via {@link addRegion}/{@link
-   * removeRegion} + a Region's recompute, and {@link shedMudTurn}) — never per frame,
-   * because nothing else moves the value between those events.
-   *
-   * @returns {void}
-   */
-  _recomputeFriction() {
-    if (!this.go.body) return;
-    const mud = Math.max(this.mudStickyViscosity, this.mudLooseViscosity);
-    let region = 0;
-    for (const r of this._activeRegions) region = Math.max(region, r.inViscosity);
-    this.go.body.frictionAir = Config.ball.frictionAir + mud + region;
+  /** @returns {number} Body-centre y. */
+  get mudY() {
+    return this.go.y;
   }
-
-  /**
-   * Pick up mud into the sticky or loose bucket, keeping the heavier of what's
-   * there and the new value (a lighter puddle can't reduce a heavier one). For
-   * non-sticky mud, also keep the longest lingering time (`numberTurns` extra
-   * settles before it sheds — see {@link shedMudTurn}); sticky mud never counts
-   * down, so it ignores `numberTurns`. State only — the calling {@link
-   * import('./Region.js').Region} recomputes friction.
-   *
-   * @param {number} viscosity @param {boolean} sticky @param {number} numberTurns
-   * @returns {void}
-   */
-  _pickUpMud(viscosity, sticky, numberTurns) {
-    if (sticky) {
-      this.mudStickyViscosity = Math.max(this.mudStickyViscosity, viscosity);
-    } else {
-      this.mudLooseViscosity = Math.max(this.mudLooseViscosity, viscosity);
-      this.mudTurnsLeft = Math.max(this.mudTurnsLeft, numberTurns);
-    }
-    this._refreshMudLook();
+  /** @returns {number} Current radius, for sizing the splat. */
+  get mudRadius() {
+    return this.go.radius;
   }
-
-  /**
-   * Wash mud off (a Cleaner entered): loose mud always (and its lingering timer),
-   * sticky only when the Cleaner cleans sticky. State only — the Region recomputes
-   * friction.
-   *
-   * @param {boolean} includeSticky @returns {void}
-   */
-  _wash(includeSticky) {
-    this.mudLooseViscosity = 0;
-    this.mudTurnsLeft = 0;
-    if (includeSticky) this.mudStickyViscosity = 0;
-    this._refreshMudLook();
+  /** @returns {number} Shed-shimmy horizontal offset of the splat over the ball. */
+  get mudShimmyX() {
+    return this._mudShimmyX;
   }
-
-  /** Register a region's while-inside drag (see {@link _recomputeFriction}). */
-  addRegion(region) {
-    this._activeRegions.add(region);
-  }
-
-  /** Drop a region's while-inside drag when the brother leaves it. */
-  removeRegion(region) {
-    this._activeRegions.delete(region);
-  }
-
-  /**
-   * One settle's worth of mud shedding, run at the end of the shimmy. Loose mud
-   * lingers for `mudTurnsLeft` more settles: while that's positive, count it down
-   * and keep the mud (the brother shimmies but the mud stays); once it hits zero,
-   * wash the loose mud off. Sticky mud is never shed here — only a `cleanSticky`
-   * Cleaner removes it. Self-contained (settle, not a region, drives it), so it
-   * recomputes friction itself. The shimmy is played by
-   * {@link import('../Brothers.js').Brothers#shimmyMud}.
-   *
-   * @returns {void}
-   */
-  shedMudTurn() {
-    if (this.mudLooseViscosity > 0 && this.mudTurnsLeft > 0) {
-      this.mudTurnsLeft -= 1; // still muddy: keep the loose mud one more turn
-      return;
-    }
-    this.mudLooseViscosity = 0;
-    this.mudTurnsLeft = 0;
-    this._refreshMudLook();
-    this._recomputeFriction();
-  }
-
-  /**
-   * Redraw the mud splat over the body: a scatter of blobs in the current mud
-   * colour (dark when sticky), or nothing when clean. Sized to the current
-   * radius. Called on mud-state changes, not per frame.
-   *
-   * @returns {void}
-   */
-  _refreshMudLook() {
-    const g = this.mudView;
-    g.clear();
-    if (!this.isMuddy) return;
-    const C = Config.mud;
-    g.fillStyle(this.isSticky ? C.stickyColor : C.color, C.overlayAlpha);
-    // Blobs biased to the lower body, as fractions of the radius (dx, dy, size).
-    const r = this.go.radius;
-    const blobs = [
-      [-0.45, 0.35, 0.3],
-      [0.1, 0.5, 0.34],
-      [0.5, 0.25, 0.26],
-      [-0.1, 0.05, 0.3],
-      [0.35, -0.25, 0.2],
-    ];
-    for (const [dx, dy, br] of blobs) g.fillCircle(dx * r, dy * r, br * r);
-  }
-
-  /** Glue the mud splat to the body, offset by the shed shimmy. @returns {void} */
-  _updateMudView() {
-    this.mudView.setPosition(this.go.x + this._mudShimmyX, this.go.y);
+  /** @returns {number} A brother's passive air-friction, mud adds onto this. */
+  get _baseFrictionAir() {
+    return Config.ball.frictionAir;
   }
 
   // --- Subclass surface (David/Ken override these) ------------------------

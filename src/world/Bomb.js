@@ -1,4 +1,4 @@
-import { Config } from '../config.js';
+import { Config, Depth } from '../config.js';
 import { sfx } from '../Sfx.js';
 import { Hazard } from './Hazard.js';
 import { spawnRing } from './effects.js';
@@ -45,9 +45,11 @@ export class Bomb extends Hazard {
     /** The spark at the fuse tip; flickered by a looping tween (no per-frame code). */
     this.spark = scene.add.circle(0, -r * 1.5, Math.max(2, r * 0.18), 0xffd479);
 
+    // At the ball layer (like a brother's body) so a mud splat (Depth.mud, drawn
+    // by Movable) lands on top of the bomb rather than under it.
     this.view = scene.add
       .container(def.x, def.y, [ball, spot, eight, gloss, fuse, this.spark])
-      .setDepth(4);
+      .setDepth(Depth.ball);
     scene.tweens.add({
       targets: this.spark,
       alpha: { from: 1, to: F.sparkAlphaLow },

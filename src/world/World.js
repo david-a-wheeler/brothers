@@ -27,6 +27,12 @@ export class World {
     this._byType = new Map();
     /** Objects that opt into a per-frame update (none today; future dynamics). */
     this._updaters = [];
+    /**
+     * Movers (brothers + hazards) — every object advertising `isMovable`. Kept
+     * as one list (via the flag, no per-type knowledge) so a body-less Region can
+     * point-test them all for mud. @type {import('./Movable.js').Movable[]}
+     */
+    this._movables = [];
 
     // Build every object first (bookkeeping only), then run setup once the whole
     // world exists — so a setup may search for anything it interacts with.
@@ -52,6 +58,7 @@ export class World {
     if (bucket) bucket.push(obj);
     else this._byType.set(obj.constructor, [obj]);
     if (obj.needsUpdate) this._updaters.push(obj);
+    if (obj.isMovable) this._movables.push(obj);
     return obj;
   }
 
@@ -83,6 +90,18 @@ export class World {
     const bucket = this._byType.get(obj.constructor);
     if (bucket) drop(bucket);
     if (obj.needsUpdate) drop(this._updaters);
+    if (obj.isMovable) drop(this._movables);
+  }
+
+  /**
+   * Every mover in the world (brothers + hazards). The returned array is the live
+   * internal list — treat it as read-only. Used by {@link import('./Region.js').Region}
+   * to detect who is standing in a mud/cleaner area.
+   *
+   * @returns {import('./Movable.js').Movable[]}
+   */
+  movables() {
+    return this._movables;
   }
 
   /**
@@ -116,6 +135,17 @@ export class World {
    */
   notifyLevelEnd() {
     for (const o of this._all) o.onLevelEnd();
+  }
+
+  /**
+   * Broadcast that both balls have settled (end of a turn). Movers use this to
+   * shed a turn's worth of loose mud; brothers instead shed at the end of their
+   * shimmy, so they leave the default no-op. See {@link import('./Hazard.js').Hazard#onSettle}.
+   *
+   * @returns {void}
+   */
+  notifySettle() {
+    for (const o of this._all) o.onSettle();
   }
 
   /**

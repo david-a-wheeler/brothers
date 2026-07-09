@@ -1,5 +1,5 @@
 import { Config } from '../config.js';
-import { Entity } from './Entity.js';
+import { Movable } from './Movable.js';
 import { directionArrow } from './effects.js';
 
 /** Matter's Body namespace (raw-body manipulation; no game object here). */
@@ -8,10 +8,15 @@ const Body = Phaser.Physics.Matter.Matter.Body;
 /**
  * Base class for a *self-propelled* world object: a dynamic circular body that
  * the physics engine moves and bounces off solids (walls, the arena edge) while
- * passing through sensors (goals, teleporters). It travels at a **constant
- * speed** — {@link update} re-normalises its velocity each frame so glancing
- * hits and Matter's small energy drift never speed it up or slow it down — and
- * it teleports like an actor when it enters a teleporter ({@link onTeleport}).
+ * passing through sensors (goals, teleporters). It is **frictionless** by default,
+ * so once launched it coasts at its launch speed; {@link update} only steps in on
+ * a wall contact, reflecting the body itself and restoring the *incoming* speed
+ * (Matter's restitution is unreliable at low speed — see {@link noteBounce}), so a
+ * bounce never changes speed. The one thing that does change a hazard's pace is
+ * **mud**: its `frictionAir` (carried via {@link import('./Movable.js').Movable})
+ * is genuinely integrated by the physics step, so a hazard slows in mud just like
+ * a brother. It teleports like an actor ({@link onTeleport}), keeping its velocity
+ * through the warp.
  *
  * A hazard is **dormant** (its body static) until kickoff — the first launch's
  * first impact — when the scene calls {@link onPlayStart} (via
@@ -29,8 +34,13 @@ const Body = Phaser.Physics.Matter.Matter.Body;
  * `speed`, `angle` (degrees), `radius`/`size`, and `mode`
  * (`'gameover'` | `'turnend'`). Custom-art fields (`anim`, `animInfo`, `sound`)
  * are parsed and stored for a later pass but not yet acted on.
+ *
+ * As a {@link Movable} it shares the brothers' mud mechanic: it picks up a splat
+ * in a mud region, is genuinely slowed by that mud's air-friction (being
+ * frictionless otherwise), rinses clean in a cleaner, and sheds loose mud at
+ * settle — silently, with no shimmy (see {@link onSettle}).
  */
-export class Hazard extends Entity {
+export class Hazard extends Movable {
   /** Dynamic entities are ticked every frame (see {@link update}). */
   needsUpdate = true;
 
@@ -43,7 +53,8 @@ export class Hazard extends Entity {
     const C = Config.bomb;
     /** Circle radius (Tiled `radius`/`size`, else the config default). */
     this.radius = def.radius ?? def.size ?? C.radius;
-    /** Constant travel speed (same per-frame units as the slingshot speeds). */
+    /** Launch speed (same per-frame units as the slingshot speeds); it coasts at
+     * this on a frictionless body until mud slows it. */
     this.speed = def.speed ?? C.speed;
     /** Initial heading in degrees (0 = +x, 90 = +y/down). */
     this.angleDeg = def.angle ?? 0;
@@ -130,18 +141,48 @@ export class Hazard extends Entity {
   }
 
   /**
-   * Warp to a destination when this hazard enters a teleporter. Position jumps;
-   * direction is kept and {@link update} restores the constant speed next frame
-   * (so `retain` only softens the arrival frame — a hazard never speeds up or
-   * slows down for good).
+   * Both balls have settled: shed a turn's worth of loose mud (the same
+   * turn-countdown a brother runs at the end of its shimmy, but silent — a hazard
+   * has no wiggle). Sticky mud stays until a `cleanSticky` Cleaner. See mud-plan.md.
    *
-   * @param {{x:number, y:number}} dest @param {number} retain
    * @returns {void}
    */
-  onTeleport(dest, retain) {
+  onSettle() {
+    if (this.isMuddy) this.shedMudTurn();
+  }
+
+  // --- Mud accessors: how {@link Movable}'s shared mud logic reaches a hazard's
+  // raw-body model (its body is a Matter body, not a Phaser game object).
+
+  /** @returns {MatterJS.BodyType} The dynamic body that carries mud friction. */
+  get mudBody() {
+    return this.body;
+  }
+  /** @returns {number} Body-centre x (the splat glue point). */
+  get mudX() {
+    return this.body.position.x;
+  }
+  /** @returns {number} Body-centre y. */
+  get mudY() {
+    return this.body.position.y;
+  }
+  /** @returns {number} Circle radius, for sizing the splat. */
+  get mudRadius() {
+    return this.radius;
+  }
+
+  /**
+   * Warp to a destination when this hazard enters a teleporter. Position jumps;
+   * the velocity vector is left untouched, so the hazard exits at the same speed
+   * and heading it entered. (`retain`, which softens a brother's arrival, is
+   * intentionally ignored: a hazard is frictionless and coasts, so scaling its
+   * velocity here would slow it for good rather than for a single frame.)
+   *
+   * @param {{x:number, y:number}} dest @param {number} _retain
+   * @returns {void}
+   */
+  onTeleport(dest, _retain) {
     Body.setPosition(this.body, { x: dest.x, y: dest.y });
-    const v = this.body.velocity;
-    Body.setVelocity(this.body, { x: v.x * retain, y: v.y * retain });
   }
 
   /**
@@ -171,10 +212,12 @@ export class Hazard extends Entity {
   }
 
   /**
-   * Per-frame: glue the visual to the body, bounce off any wall touched this
-   * frame (see {@link noteBounce}), then re-assert the constant speed (keeping
-   * the resulting direction). Skipped while dormant (static). No view culling —
-   * a hazard off-screen must keep moving — so {@link bounds} stays `null`
+   * Per-frame: glue the visual to the body, and — only on a frame where a wall was
+   * touched — reflect off it (see {@link noteBounce}). Between bounces we leave the
+   * velocity alone: the frictionless body coasts at its current speed, and if it's
+   * in mud the physics step applies that mud's `frictionAir` and slows it (the one
+   * thing that changes a hazard's pace). Skipped while dormant (static). No view
+   * culling — a hazard off-screen must keep moving — so {@link bounds} stays `null`
    * (inherited).
    *
    * @returns {void}
@@ -183,34 +226,37 @@ export class Hazard extends Entity {
     const body = this.body;
     const p = body.position;
     this.view?.setPosition(p.x, p.y);
+    this._updateMudView(); // keep any mud splat glued to the body (even while dormant)
     if (body.isStatic) return;
+
+    const n = this._bounceNormal;
+    if (!n) return; // no wall contact: let physics coast (and let mud slow it)
 
     let vx = body.velocity.x;
     let vy = body.velocity.y;
-
-    const n = this._bounceNormal;
-    if (n) {
-      let dot = vx * n.x + vy * n.y; // velocity component along the outward normal
-      if (dot < 0) {
-        // Heading into the wall: reflect (angle in == angle out).
-        vx -= 2 * dot * n.x;
-        vy -= 2 * dot * n.y;
-        dot = -dot;
-      }
-      // Grazing/tangential contact (Matter damped the normal velocity): ensure a
-      // real outward component so a slow hazard can't get pinned sliding along.
-      const minOut = this.speed * 0.2;
-      if (dot < minOut) {
-        vx += n.x * (minOut - dot);
-        vy += n.y * (minOut - dot);
-      }
-      this._bounceNormal = null;
+    const speed = Math.hypot(vx, vy); // speed coming in (mud may have reduced it)
+    let dot = vx * n.x + vy * n.y; // velocity component along the outward normal
+    if (dot < 0) {
+      // Heading into the wall: reflect (angle in == angle out).
+      vx -= 2 * dot * n.x;
+      vy -= 2 * dot * n.y;
+      dot = -dot;
     }
+    // Grazing/tangential contact (Matter damped the normal velocity): ensure a
+    // real outward component so a slow hazard can't get pinned sliding along.
+    const minOut = speed * 0.2;
+    if (dot < minOut) {
+      vx += n.x * (minOut - dot);
+      vy += n.y * (minOut - dot);
+    }
+    this._bounceNormal = null;
 
+    // Restore the incoming speed: the bounce only changed direction. This keeps
+    // the reflection loss-less (so a default hazard holds its launch speed) and
+    // stops the anti-stick nudge above from pumping energy in — while preserving
+    // any mud slowdown, which lives in the *magnitude* we just measured.
     const sp = Math.hypot(vx, vy);
-    if (sp > 1e-6) {
-      Body.setVelocity(body, { x: (vx / sp) * this.speed, y: (vy / sp) * this.speed });
-    }
+    if (sp > 1e-6) Body.setVelocity(body, { x: (vx / sp) * speed, y: (vy / sp) * speed });
   }
 
   /** @returns {Phaser.GameObjects.GameObject|null} The subclass's visual gets hover/press. */
