@@ -2512,6 +2512,7 @@ export class GameScene extends Phaser.Scene {
   _resolveTurn() {
     this._frameBrothers(); // gently zoom/pan so both balls are fully framed at rest
     this.phase = 'RESOLVING'; // re-entry guard + "not MOVING" for the settle check
+    this._refreshHud(); // -> "Shaking off mud" while the shimmy plays (if any)
     this.world.notifySettle(); // hazards shed a turn's worth of loose mud (no shimmy)
     this.brothers.shimmyMud(() => this._decideTurn());
   }
@@ -2656,6 +2657,13 @@ export class GameScene extends Phaser.Scene {
     if (this.status === 'ENDED') {
       text = 'Game Ended';
       color = '#9aa0a6';
+    } else if (this.phase === 'RESOLVING') {
+      // The mud-shed shimmy is playing. This phase only lingers while at least
+      // one brother is shaking off mud (a mud-free settle passes through it
+      // synchronously), and either or both may be shimmying — so a neutral,
+      // brother-agnostic white message rather than one launcher's colour.
+      text = 'Shaking off mud';
+      color = '#ffffff';
     } else if (this.phase === 'MOVING') {
       text = 'Moving';
       color = launcher.color;
