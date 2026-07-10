@@ -31,19 +31,25 @@ Is there a logical way to split it into smaller files?
 Maybe HUD, menus/overlays, and the game arena?
 Identify options for re-architecting, with pros and cons for each.
 
+## Improve lab screen
+
+The "lab" panel should let you view
+some more the current parameters for each brother
+and change them (it already does this for size).
+At the least, turns left being muddy.
+
+The lab should let you change the level setting on whether or not
+pin moving is allowed, or if the pin continues to exist after the
+launch completes and the launcher hits the anchor.
+
+This means the lab *must* support scrolling (as well as bottom resizing
+and moving as it currently does) to handle all those parameters.
+
 ## God mode
 
 We need to make a god mode to make playtesting easier. I'm open to ideas.
 One: if "testing" mode is on, you can right-click on a brothers pair
 and move them anywhere.
-
-In addition, the "lab" could let you view
-the current parameters for each brother
-and change them (it already does this for size), such as turns being muddy.
-
-The lab should let you change the level setting on whether or not
-pin moving is allowed, or if the pin continues to exist after the
-launch completes and the launcher hits the anchor.
 
 ## Review/refind the friction from mud/cleaner/etc
 
