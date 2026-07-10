@@ -322,7 +322,7 @@
                 {
                     "name": "viscosity",
                     "type": "float",
-                    "value": 0.01
+                    "value": 0.03
                 },
                 {
                     "name": "cleanSticky",
