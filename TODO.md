@@ -56,3 +56,53 @@ and move them anywhere.
 We should review how friction info is stored on each Movable.
 We need this to be efficient; we shouldn't need to recalculate things
 on every frame.
+
+## Document how to create game levels
+
+Create a markdown file providing instructions on how to create
+game levels. Do not assume that the reader knows how to program,
+but has played video games before.
+Provide specific actions (e.g., type this command, click this, etc.).
+Briefly explain/justify steps as you go. Topics to include:
+
+* Setup on a laptop/desktop for Windows, MacOS, and Linux
+  - Download/install Tiled (2D level editor)
+  - Download/install python (if using serve).
+    On Windows, suggest typing "python"
+    and using Windows installer primarily because it's clearly not downloading
+    malware that way.
+  - Download local copy of "Brothers" game including its levels
+* Starting up local webserver (and why) - emphasize serve
+* Pointing web browser towards it
+* Starting up Tiled
+  - Loading/editing
+  - Briefly explain classes (like Bomb and Mud), properties. Note key 
+    Note editor can show them.
+  - Etc.
+  - Explain you edit and reload on web browser
+
+## Increase visual interest of "Brothers" title text
+
+Currently on the title page the word "Brothers" has a slow sliding
+visual. Identify several ways to add to that to make it even more
+interesting that wouldn't take a lot of code.
+
+## Increase logging to enable debugging
+
+We're having trouble debugging hard-to-reproduce problems.
+Let's increase the information we log, *without* interfering with game play,
+so that if there's a problem we'll have more data to work with
+even if we can't easily reproduce it.
+
+If they aren't already, log level start/end, launch of a brother,
+settle of the brothers, etc., with various related data (like x,y positions).
+
+Log data that might help us debug the mysterious "add mud sometimes
+causes a brother to disappear" bug.
+
+Currently some exceptions just lead to quiet problems that are hard
+to debug. If an exception isn't caught by something more reasonable,
+catch it and log it, storing the logs in the permanent storage in case
+we can't get the game display going. Then show on the screen a dismisable
+"something went wrong"; I think we already have that, we just need to
+do it more to help us debug problems more rapidly.
