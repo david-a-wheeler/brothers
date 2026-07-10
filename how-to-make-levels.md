@@ -141,7 +141,7 @@ must start at `1` and count up with no gaps. That's how the game finds them.
 The game is built from many small files that the browser loads as it goes.
 These files have various formats, including JavaScript using ES modules.
 
-Unfortunately, browsers refuse to run such programs if you try
+Unfortunately, web browsers refuse to run such programs if you try
 to open a page directly from your storage (a `file://`
 address), as a security rule. So the game must be handed
 to the browser by a *web server*,
