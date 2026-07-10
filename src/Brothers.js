@@ -810,13 +810,15 @@ export class Brothers {
 
   /**
    * God mode: drag the pair as a package so `grabbed` follows the pointer,
-   * keeping their relative offset (so the tether isn't stretched and they can't
-   * be shoved into each other). Both are stopped dead — a placed ball that kept
-   * its velocity would shoot off the moment the drag ended.
+   * keeping their relative offset. Both are stopped dead — a placed ball that
+   * kept its velocity would shoot off the moment the drag ended.
    *
-   * The pair is clamped so *neither* brother leaves the arena: the walls are the
-   * one rule god mode still respects, because a ball outside them is unrecoverable
-   * (and would trip {@link _checkBrothersPresent}).
+   * *While dragging*, nothing but the arena edge constrains them: they sail over
+   * walls and bombs freely. Legality is decided only when they're dropped (see
+   * {@link godDrop}), so the drag itself never fights the pointer. The pair is
+   * clamped as a unit, so the offset holds even along an edge, and neither ball
+   * can end up outside the arena where it would be unrecoverable (and would trip
+   * {@link _checkBrothersPresent}).
    *
    * Roles are untouched: the anchor stays static, the launcher stays dynamic, so
    * the next aim behaves normally from wherever they were dropped.
@@ -841,6 +843,181 @@ export class Brothers {
       b.go.setVelocity(0, 0);
       b.go.setAngularVelocity(0);
     }
+  }
+
+  /**
+   * Begin a god-mode drag: freeze BOTH brothers solid.
+   *
+   * Matter keeps stepping while the player drags. The ungripped brother is the
+   * launcher, and it's dynamic — so walls shove it out of the way, the tether
+   * spring hauls on it, and it lags or snaps away from the brother in hand
+   * (the "really long band"). Repositioning it every pointer move can't win
+   * against a simulation running between those moves. Making both bodies static
+   * takes them out of the simulation entirely: no collision response, no spring
+   * force, and the pair's offset is whatever {@link godMoveTo} says it is.
+   *
+   * {@link godDrop} thaws them back into their roles.
+   *
+   * @returns {void}
+   */
+  godBeginDrag() {
+    for (const b of [this.david, this.ken]) {
+      b.go.setVelocity(0, 0);
+      b.go.setAngularVelocity(0);
+      b.go.setStatic(true);
+    }
+  }
+
+  /**
+   * Undo {@link godBeginDrag}: the anchor stays frozen (as it always is between
+   * turns) and the launcher goes back to being dynamic, at rest. Roles never
+   * changed, so this just restores the normal aiming state.
+   *
+   * @returns {void}
+   */
+  _godThaw() {
+    this.anchor.go.setStatic(true);
+    this.anchor.go.setRotation(0); // pin offsets are world-axis; keep it aligned
+    this.launcher.go.setStatic(false);
+    for (const b of [this.david, this.ken]) {
+      b.go.setVelocity(0, 0);
+      b.go.setAngularVelocity(0);
+    }
+  }
+
+  /**
+   * Every body a brother can't be inside: solid (non-sensor) and not a brother.
+   * Sensors — goals, teleporters, mud and cleaner regions — are things you're
+   * *meant* to sit in, so they never block a drop.
+   *
+   * @returns {MatterJS.BodyType[]}
+   */
+  _solidBodies() {
+    const own = new Set([this.david.go.body, this.ken.go.body]);
+    return this.scene.matter.world.localWorld.bodies.filter((b) => !b.isSensor && !own.has(b));
+  }
+
+  /** Would a ball of radius `r` centred here overlap something solid? @returns {boolean} */
+  _overlapsSolid(x, y, r, solids) {
+    const M = Phaser.Physics.Matter.Matter;
+    // A throwaway probe body: never added to the world, just used for the query.
+    return M.Query.collides(M.Bodies.circle(x, y, r), solids).length > 0;
+  }
+
+  /** Is a solid body straddling the straight line between these two points? @returns {boolean} */
+  _solidBetween(a, b, solids) {
+    const M = Phaser.Physics.Matter.Matter;
+    return M.Query.ray(solids, a, b, 2).length > 0;
+  }
+
+  /** Is `(x, y)` fully inside the arena for a ball of radius `r`? @returns {boolean} */
+  _insideArena(x, y, r) {
+    const a = this.david._arena;
+    return x >= r && y >= r && x <= a.width - r && y <= a.height - r;
+  }
+
+  /**
+   * May `b` rest at `(x, y)` while its partner sits at `partner`? It must be in
+   * the arena, clear of solids, and able to "see" its partner — a wall between
+   * the two would leave them tethered through it.
+   *
+   * @returns {boolean}
+   */
+  _legalSpot(b, x, y, partner, solids) {
+    return (
+      this._insideArena(x, y, b.go.radius) &&
+      !this._overlapsSolid(x, y, b.go.radius, solids) &&
+      !this._solidBetween({ x, y }, { x: partner.go.x, y: partner.go.y }, solids)
+    );
+  }
+
+  /**
+   * Hunt for a legal spot for `other`, sweeping a full circle around `grabbed`
+   * at their current separation. Angles are tried alternating outward from where
+   * `other` already is (+10°, -10°, +20°, …), so the nudge is the smallest one
+   * that works and the pair keeps roughly the orientation the player dragged.
+   *
+   * @returns {{x:number, y:number}|null} null when nowhere on the circle is legal.
+   */
+  _findSpotAround(grabbed, other, solids) {
+    const dx = other.go.x - grabbed.go.x;
+    const dy = other.go.y - grabbed.go.y;
+    // Never search closer than touching, or they'd be dropped overlapping.
+    const d = Math.max(Math.hypot(dx, dy), grabbed.go.radius + other.go.radius + 1);
+    const base = Math.atan2(dy, dx);
+    const steps = 36; // 10° apart: fine enough to slip through a doorway
+    for (let i = 1; i <= steps; i++) {
+      const k = Math.ceil(i / 2) * (i % 2 ? 1 : -1); // +1, -1, +2, -2, …
+      const a = base + (k * 2 * Math.PI) / steps;
+      const x = grabbed.go.x + Math.cos(a) * d;
+      const y = grabbed.go.y + Math.sin(a) * d;
+      if (this._legalSpot(other, x, y, grabbed, solids)) return { x, y };
+    }
+    return null;
+  }
+
+  /** Put both brothers back where the drag began, at rest. @returns {void} */
+  _godRevert(start) {
+    for (const [b, p] of [
+      [this.david, start.david],
+      [this.ken, start.ken],
+    ]) {
+      b.go.setPosition(p.x, p.y);
+      b.go.setVelocity(0, 0);
+      b.go.setAngularVelocity(0);
+    }
+  }
+
+  /**
+   * Decide where a god-mode drag actually leaves the brothers. The gripped
+   * brother keeps wherever it was dropped, unless that's inside something solid.
+   * The other keeps its dragged spot if that's legal; failing that we nudge it
+   * around the gripped one; failing that the whole move is undone. Reverting
+   * both (not just one) keeps their relative position meaningful — dropping one
+   * brother into a wall shouldn't silently teleport only his brother.
+   *
+   * @param {import('./world/Brother.js').Brother} grabbed
+   * @param {{david:{x:number,y:number}, ken:{x:number,y:number}}} start  Positions at grab.
+   * @returns {string} What happened, for the HUD and the trace log.
+   */
+  godDrop(grabbed, start) {
+    const outcome = this._godResolveDrop(grabbed, start);
+    this._godThaw(); // whatever we decided, the balls stop being god-frozen
+    return outcome;
+  }
+
+  /**
+   * Work out where the drop leaves the brothers (see {@link godDrop}), without
+   * touching their frozen/dynamic state.
+   *
+   * @returns {string}
+   */
+  _godResolveDrop(grabbed, start) {
+    const other = grabbed === this.david ? this.ken : this.david;
+    const solids = this._solidBodies();
+
+    // The gripped brother lands where the player let go — the whole point of god
+    // mode — but not inside a wall or a bomb.
+    if (
+      !this._insideArena(grabbed.go.x, grabbed.go.y, grabbed.go.radius) ||
+      this._overlapsSolid(grabbed.go.x, grabbed.go.y, grabbed.go.radius, solids)
+    ) {
+      this._godRevert(start);
+      return 'blocked';
+    }
+
+    if (this._legalSpot(other, other.go.x, other.go.y, grabbed, solids)) return 'placed';
+
+    const spot = this._findSpotAround(grabbed, other, solids);
+    if (spot) {
+      other.go.setPosition(spot.x, spot.y);
+      other.go.setVelocity(0, 0);
+      other.go.setAngularVelocity(0);
+      return 'nudged';
+    }
+
+    this._godRevert(start);
+    return 'no room';
   }
 
   /**

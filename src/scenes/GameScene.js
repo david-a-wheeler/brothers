@@ -159,6 +159,8 @@ export class GameScene extends Phaser.Scene {
     this._pinDragging = false;
     /** God mode: the brother currently held by a right-button drag (null = none). */
     this._godDrag = null;
+    /** Both brothers' positions when that drag began, to revert an illegal drop. */
+    this._godStart = null;
     /** Camera-pan drag state. */
     this._isPanning = false;
     this._panLast = { x: 0, y: 0 };
@@ -1821,8 +1823,13 @@ export class GameScene extends Phaser.Scene {
           onTap: () => {
             this._testMode = !this._testMode;
             setTestMode(this._testMode);
-            // Turning Test mode off mid-drag would strand the pair on the pointer.
-            if (!this._testMode) this._godDrag = null;
+            // Turning Test mode off mid-drag would strand the pair on the pointer
+            // — and possibly inside a wall — so resolve the drop as a release would.
+            if (!this._testMode && this._godDrag) {
+              this.brothers.godDrop(this._godDrag, this._godStart);
+              this._godDrag = null;
+              this._godStart = null;
+            }
             this._rerenderMenu();
           },
         }
@@ -2123,6 +2130,15 @@ export class GameScene extends Phaser.Scene {
         const grabbed = this._brotherAt(p.worldX, p.worldY);
         if (grabbed) {
           this._godDrag = grabbed;
+          // Where to put them back if the drop turns out to be illegal.
+          const { david, ken } = this.brothers;
+          this._godStart = {
+            david: { x: david.go.x, y: david.go.y },
+            ken: { x: ken.go.x, y: ken.go.y },
+          };
+          // Freeze both balls for the drag, so physics can't shove the ungripped
+          // one around or stretch the tether while the pointer moves.
+          this.brothers.godBeginDrag();
           this._isPanning = false;
           sfx.grab();
           diag.trace('god', 'grab', { who: grabbed.def.name, ...this.brothers.snapshot() });
@@ -2210,8 +2226,15 @@ export class GameScene extends Phaser.Scene {
       }
       for (const panel of this._panels) if (panel.onPointerUp(p)) return; // ends its scroll drag
       if (this._godDrag) {
-        diag.trace('god', 'drop', { who: this._godDrag.def.name, ...this.brothers.snapshot() });
+        // The drag went wherever the pointer went; the drop decides what's legal.
+        const outcome = this.brothers.godDrop(this._godDrag, this._godStart);
+        diag.trace('god', 'drop', {
+          who: this._godDrag.def.name,
+          outcome,
+          ...this.brothers.snapshot(),
+        });
         this._godDrag = null;
+        this._godStart = null;
         this._refreshHud(); // back to the normal turn prompt
         return;
       }
