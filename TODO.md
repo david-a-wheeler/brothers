@@ -76,3 +76,7 @@ and go to *that* level, using pack base level 1 as a default.
 If you can't load that pack or that level, use pack base level 1
 as the emergency load (logging it), and if you can't do that,
 big alert.
+
+## Add tests
+
+## Add linting
