@@ -45,7 +45,9 @@ on every frame.
 
 ## In HUD, after flag show current level number
 
-Tooltip shows pack name + level name + level number.
+Tooltip should "Pack PACKNAME Level LEVELNUMBER".
+If there's a level name, follow that with "," newline, and
+on the next row show the level name.
 
 ## Title page music: fix loop
 
