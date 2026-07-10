@@ -151,6 +151,8 @@ export class GameScene extends Phaser.Scene {
     this._pinning = false;
     /** True once a pin press has been promoted to a fine-drag (drives the HUD). */
     this._pinDragging = false;
+    /** God mode: the brother currently held by a right-button drag (null = none). */
+    this._godDrag = null;
     /** Camera-pan drag state. */
     this._isPanning = false;
     this._panLast = { x: 0, y: 0 };
@@ -1802,10 +1804,14 @@ export class GameScene extends Phaser.Scene {
         {
           label: 'Test',
           on: this._testMode,
-          tip: "Test mode: unlock every level and jump freely, ignoring the normal 'win to advance' rule.",
+          tip:
+            "Test mode: unlock every level and jump freely, ignoring the normal 'win to advance' rule. " +
+            'Also enables god mode; right-drag either brother to move the pair anywhere.',
           onTap: () => {
             this._testMode = !this._testMode;
             this.registry.set('testMode', this._testMode);
+            // Turning Test mode off mid-drag would strand the pair on the pointer.
+            if (!this._testMode) this._godDrag = null;
             this._rerenderMenu();
           },
         }
@@ -2099,6 +2105,21 @@ export class GameScene extends Phaser.Scene {
       // scroll drag); anywhere else falls through to the arena.
       for (const panel of this._panels) if (panel.onPointerDown(p)) return;
 
+      // God mode: a right-press on either ball picks up the pair. Checked before
+      // the pan router so the drag doesn't also scroll the camera. A right-press
+      // anywhere else falls through and pans, as any other press would.
+      if (p.rightButtonDown() && this._godEditable()) {
+        const grabbed = this._brotherAt(p.worldX, p.worldY);
+        if (grabbed) {
+          this._godDrag = grabbed;
+          this._isPanning = false;
+          sfx.grab();
+          diag.trace('god', 'grab', { who: grabbed.def.name, ...this.brothers.snapshot() });
+          this._refreshHud(); // -> "God mode: moving the brothers"
+          return;
+        }
+      }
+
       // A press on the launcher is handled by Phaser's drag system (the
       // 'gameobjectdown' grab + 'drag' handler below), which sets isAiming; a
       // press on the anchor starts a pin gesture (sets `_pinning`); anything
@@ -2113,6 +2134,9 @@ export class GameScene extends Phaser.Scene {
     // works across the world/HUD cameras). The drag itself is Phaser's, below.
     this.input.on('gameobjectdown', (p, go) => {
       sfx.unlock(); // fires before scene 'pointerdown', so unlock audio here too
+      // The right button belongs to god mode; it must never start an aim or a
+      // pin gesture (this fires *before* the scene 'pointerdown' that grabs).
+      if (p.rightButtonDown()) return;
       if (this._modalOpen || this._menuOpen || this._pinchDist) return;
       if (this.status === 'ENDED' || this.phase !== 'AIMING') return;
       if (go === this.brothers.launcher.go) {
@@ -2144,6 +2168,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       for (const panel of this._panels) if (panel.onPointerMove(p)) return; // its scroll drag, if any
+      if (this._godDrag) return this.brothers.godMoveTo(this._godDrag, p.worldX, p.worldY);
       if (this._pinning) return this._updatePinGesture(p); // moving the anchor's pin, not the camera
       if (this.isAiming) return; // Phaser's drag moves the launcher; don't pan
       if (this._isPanning) {
@@ -2173,6 +2198,12 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       for (const panel of this._panels) if (panel.onPointerUp(p)) return; // ends its scroll drag
+      if (this._godDrag) {
+        diag.trace('god', 'drop', { who: this._godDrag.def.name, ...this.brothers.snapshot() });
+        this._godDrag = null;
+        this._refreshHud(); // back to the normal turn prompt
+        return;
+      }
       if (this._pinning) {
         this._finishPinGesture(p);
         return;
@@ -2261,6 +2292,40 @@ export class GameScene extends Phaser.Scene {
   }
 
   // --- Anchor pin editing (see pin-plan.md) --------------------------------
+
+  /**
+   * God mode (a playtesting tool): with Test mode on, a right-button drag picks
+   * up the brothers and puts them anywhere. Blocked while the balls are in
+   * flight or resolving, where moving them would fight the physics mid-shot.
+   *
+   * @returns {boolean}
+   */
+  _godEditable() {
+    return (
+      this._testMode &&
+      !this._modalOpen &&
+      !this._menuOpen &&
+      !this._pinchDist &&
+      this.phase !== 'MOVING' &&
+      this.phase !== 'RESOLVING'
+    );
+  }
+
+  /**
+   * The brother under a world point, or null. Used by god mode instead of
+   * Phaser's `gameobjectdown`, which only reports the *draggable* launcher —
+   * god mode can grab either ball, including the frozen anchor.
+   *
+   * @param {number} worldX @param {number} worldY
+   * @returns {import('../world/Brother.js').Brother|null}
+   */
+  _brotherAt(worldX, worldY) {
+    if (!this.brothers) return null;
+    for (const b of [this.brothers.launcher, this.brothers.anchor]) {
+      if (Phaser.Math.Distance.Between(worldX, worldY, b.go.x, b.go.y) <= b.go.radius) return b;
+    }
+    return null;
+  }
 
   /**
    * Can the anchor's aiming pin be edited right now? The level must allow it,
@@ -2858,7 +2923,12 @@ export class GameScene extends Phaser.Scene {
     // ball's colour. Otherwise: prompt for the current aimer's turn.
     let text;
     let color;
-    if (this.status === 'ENDED') {
+    if (this._godDrag) {
+      // Outranks even "Game Ended": god mode works after the level is over, and
+      // the prompt should say what the drag is doing.
+      text = 'God mode: moving the brothers';
+      color = this._godDrag.color;
+    } else if (this.status === 'ENDED') {
       text = 'Game Ended';
       color = '#9aa0a6';
     } else if (this.phase === 'RESOLVING') {

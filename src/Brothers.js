@@ -809,6 +809,41 @@ export class Brothers {
   }
 
   /**
+   * God mode: drag the pair as a package so `grabbed` follows the pointer,
+   * keeping their relative offset (so the tether isn't stretched and they can't
+   * be shoved into each other). Both are stopped dead — a placed ball that kept
+   * its velocity would shoot off the moment the drag ended.
+   *
+   * The pair is clamped so *neither* brother leaves the arena: the walls are the
+   * one rule god mode still respects, because a ball outside them is unrecoverable
+   * (and would trip {@link _checkBrothersPresent}).
+   *
+   * Roles are untouched: the anchor stays static, the launcher stays dynamic, so
+   * the next aim behaves normally from wherever they were dropped.
+   *
+   * @param {import('./world/Brother.js').Brother} grabbed  The brother under the pointer.
+   * @param {number} x @param {number} y  Target world position for `grabbed`.
+   * @returns {void}
+   */
+  godMoveTo(grabbed, x, y) {
+    const arena = this.david._arena;
+    let dx = x - grabbed.go.x;
+    let dy = y - grabbed.go.y;
+    // Shrink the move until it's legal for both brothers, rather than clamping
+    // each separately (which would change their offset and stretch the tether).
+    for (const b of [this.david, this.ken]) {
+      const r = b.go.radius;
+      dx = Phaser.Math.Clamp(dx, r - b.go.x, arena.width - r - b.go.x);
+      dy = Phaser.Math.Clamp(dy, r - b.go.y, arena.height - r - b.go.y);
+    }
+    for (const b of [this.david, this.ken]) {
+      b.go.setPosition(b.go.x + dx, b.go.y + dy);
+      b.go.setVelocity(0, 0);
+      b.go.setAngularVelocity(0);
+    }
+  }
+
+  /**
    * @param {{x:number, y:number, radius:number}} zone
    * @returns {boolean} true if either brother is resting inside the zone.
    */

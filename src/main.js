@@ -44,6 +44,11 @@ const gameConfig = {
   width: Config.view.width,
   height: Config.view.height,
   backgroundColor: Config.view.background,
+  // God mode drags with the right button (see GameScene._godEditable), so the
+  // browser's context menu would pop up mid-drag. This top-level flag is the
+  // one that works: `scene.input.mouse` doesn't exist, so calling
+  // `disableContextMenu()` from a scene silently does nothing.
+  disableContextMenu: true,
   scale: {
     // RESIZE: the canvas fills the window (#game is 100vw/100vh). The HUD and
     // camera are laid out to the live size in GameScene, so the arena uses the

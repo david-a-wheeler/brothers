@@ -31,12 +31,6 @@ Is there a logical way to split it into smaller files?
 Maybe HUD, menus/overlays, and the game arena?
 Identify options for re-architecting, with pros and cons for each.
 
-## God mode
-
-We need to make a god mode to make playtesting easier. I'm open to ideas.
-One: if "testing" mode is on, you can right-click on a brothers pair
-and move them anywhere.
-
 ## Review/refind the friction from mud/cleaner/etc
 
 We should review how friction info is stored on each Movable.
@@ -72,3 +66,13 @@ Briefly explain/justify steps as you go. Topics to include:
 Currently on the title page the word "Brothers" has a slow sliding
 visual. Identify several ways to add to that to make it even more
 interesting that wouldn't take a lot of code.
+
+## Persist current pack, level, test mode, lab mode
+
+Persist all these values in the persistent store.
+When we first start the GameScene, restore them.
+Instead of necessarily loading pack base level 1, load
+and go to *that* level, using pack base level 1 as a default.
+If you can't load that pack or that level, use pack base level 1
+as the emergency load (logging it), and if you can't do that,
+big alert.
