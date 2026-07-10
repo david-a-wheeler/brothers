@@ -108,6 +108,15 @@ const gameConfig = {
 
 const game = new Phaser.Game(gameConfig);
 
+// The game handle, for the console and for headless probes: `Phaser.GAMES` isn't
+// exposed by the UMD build, so without this there is no way to reach a scene from
+// outside. Left in permanently and deliberately, exactly as diag.js leaves
+// `window.__diag` in: it's a read-only reference, it changes no behaviour, and it
+// costs nothing. Adding and removing it around every debugging session was its own
+// source of bugs — a hook left in a commit, or a probe silently reading `undefined`.
+// See how-to-debug.md.
+window.__game = game;
+
 // UNCOMMENT THIS BLOCK TO TEST THE ERROR DIAGNOSTICS.
 // This throws an uncaught error ~2.5s after boot so the error
 // banner / problem report can be exercised.

@@ -265,11 +265,14 @@ OpenGL behavior when running on top of macOS.
   Python and calling `scene.tweens.tick()` between reads is enough to watch it
   move (keep each sleep well under `maxLag`).
 
-- **`Phaser.GAMES` isn't exposed** in the UMD build, so you can't reach the game
-  object from outside. Temporarily add `window.__game = game;` after
-  `new Phaser.Game(...)` in `main.js` to reach scenes, then remove it — or, better
-  for one scene, use a single-scene harness that assigns `window.__game` itself
-  (below) so `main.js` stays untouched.
+- **`window.__game` is always there.** `Phaser.GAMES` isn't exposed in the UMD
+  build, so `main.js` assigns `window.__game` permanently — the same way `diag.js`
+  always exposes `window.__diag`. Reach any scene with
+  `__game.scene.getScene('game')` (or `'title'`), from the console or a probe. It
+  used to be added and removed per session, which reliably went wrong in both
+  directions: a hook left behind in a commit, or a probe quietly reading
+  `undefined` and reporting the *code* as broken. A single-scene harness (below)
+  assigns its own `window.__game`, so both paths look the same to a probe.
 
 - **Don't pixel-tap buttons.** The canvas's CSS rect and Phaser's internal
   coordinates don't match under `Scale.RESIZE`, so a synthetic click at
