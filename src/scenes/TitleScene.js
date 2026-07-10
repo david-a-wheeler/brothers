@@ -162,6 +162,8 @@ export class TitleScene extends Phaser.Scene {
 
   /** @returns {void} */
   _buildTitle() {
+    /** True when postFX (the Shine shimmer) can actually run — see _layoutStatic. */
+    this._webgl = this.game.renderer.type === Phaser.WEBGL;
     // "Brothers" as separate letters so they can sit on an arc, each in gold. A
     // shimmer (Phaser 3.60 postFX Shine) sweeps over them while the letters stay
     // put, so it's dynamic but legible. The Shine is (re)applied in _layoutStatic
@@ -323,9 +325,14 @@ export class TitleScene extends Phaser.Scene {
       t.setRotation(frac * 0.16); // gentle fan; letters stay upright enough to read
       x += widths[i] + gapPx;
       // Rebuild the shimmer so its render target matches the new font/position;
-      // a postFX from the previous size otherwise ghosts the old letters. (postFX
-      // is WebGL-only — on a Canvas fallback it's absent and the gold text stands.)
-      if (t.postFX) {
+      // a postFX from the previous size otherwise ghosts the old letters.
+      //
+      // The renderer check is load-bearing: `t.postFX` is present even under the
+      // Canvas renderer, but `addShine` throws there (no pipelines), which would
+      // abort create() and leave a half-built title screen. Testing the renderer,
+      // not the property, is what makes the WebGL-less fallback degrade to plain
+      // gold text instead of crashing.
+      if (this._webgl && t.postFX) {
         t.postFX.clear();
         t.postFX.addShine(0.6, 0.2, 5);
       }
