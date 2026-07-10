@@ -37,30 +37,6 @@ We should review how friction info is stored on each Movable.
 We need this to be efficient; we shouldn't need to recalculate things
 on every frame.
 
-## Document how to create game levels
-
-Create a markdown file providing instructions on how to create
-game levels. Do not assume that the reader knows how to program,
-but has played video games before.
-Provide specific actions (e.g., type this command, click this, etc.).
-Briefly explain/justify steps as you go. Topics to include:
-
-* Setup on a laptop/desktop for Windows, MacOS, and Linux
-  - Download/install Tiled (2D level editor)
-  - Download/install python (if using serve).
-    On Windows, suggest typing "python"
-    and using Windows installer primarily because it's clearly not downloading
-    malware that way.
-  - Download local copy of "Brothers" game including its levels
-* Starting up local webserver (and why) - emphasize serve
-* Pointing web browser towards it
-* Starting up Tiled
-  - Loading/editing
-  - Briefly explain classes (like Bomb and Mud), properties. Note key 
-    Note editor can show them.
-  - Etc.
-  - Explain you edit and reload on web browser
-
 ## Add tests
 
 ## Add linting

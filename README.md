@@ -37,6 +37,13 @@ Then open <http://localhost:8000>. (`serve` is a tiny threaded Python static
 server used only for local development; the deployed site is served statically
 by GitHub Pages.)
 
+## Making your own levels
+
+Levels are [Tiled](https://www.mapeditor.org/) maps under `packs/`, and you
+don't need to program to make one. See **[how-to-make-levels.md](how-to-make-levels.md)**
+for a step-by-step guide: installing Tiled and Python, running the game locally,
+and what every object and setting does.
+
 ## Licensing
 
 - Code: [MIT](LICENSE.md).
