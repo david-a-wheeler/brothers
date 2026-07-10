@@ -170,6 +170,9 @@ export class TitleScene extends Phaser.Scene {
     // rather than here — a postFX left over from the previous font size ghosts the
     // old letters on resize, so it must be rebuilt whenever the layout changes.
     // (No glow: a per-letter low-quality glow read as a blobby halo artifact.)
+    // The flat `color` here is only what the letters look like before the first
+    // layout: _layoutStatic replaces it with an embossing gradient, stroke and
+    // crisp offset shadow (see _embossLetter), all sized to the current font.
     this._titleLetters = [...'Brothers'].map((ch) =>
       this.add
         .text(0, 0, ch, {
@@ -181,6 +184,103 @@ export class TitleScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setDepth(6)
     );
+  }
+
+  /**
+   * Emboss one letter so it reads as raised metal rather than flat gold.
+   *
+   * Three parts, all plain Canvas text rendering (so they survive the WebGL-less
+   * fallback), and all re-applied on every relayout because each scales with the
+   * font size:
+   *
+   * - A **vertical gradient** down the glyph — pale highlight at the top edge,
+   *   gold through the middle, dark bronze at the bottom — which is what actually
+   *   makes it look lit from above. This is the emboss.
+   * - A **crisp** dark offset shadow, down and right. `blur: 0` is the point: a
+   *   blurred shadow on a dark background just smears into muddy rectangles.
+   * - A thin dark **stroke**, to hold the letter's edge against the background.
+   *
+   * The gradient is built from the letter's own canvas context, so it must be
+   * rebuilt after `setFontSize` (its stops are in pixels down the glyph box).
+   *
+   * @param {Phaser.GameObjects.Text} letter
+   * @param {number} fontPx  The just-computed font size.
+   * @returns {void}
+   */
+  _embossLetter(letter, fontPx) {
+    letter.setStroke('#5a3208', Math.max(1, fontPx * 0.018));
+    letter.setShadow(fontPx * 0.035, fontPx * 0.045, '#2b1503', 0); // crisp, never blurred
+    // `height` is only right once the font size (and stroke) are applied above.
+    const grad = letter.context.createLinearGradient(0, 0, 0, letter.height);
+    grad.addColorStop(0, '#fff6da'); // lit top bevel
+    grad.addColorStop(0.42, '#ffd479'); // the original gold, through the middle
+    grad.addColorStop(0.66, '#e8a53a');
+    grad.addColorStop(1, '#8a4b0e'); // bronze underside, in shadow
+    letter.setFill(grad);
+  }
+
+  /**
+   * The idle wave: each letter bobs slowly, delayed a little more than the one
+   * before, so a ripple travels along the word and back. Amplitude scales with
+   * the font, so it reads the same at every size.
+   *
+   * Restarted from {@link _layoutStatic} on every relayout: the tweens drive `y`
+   * directly, so a resize that repositions the letters must kill them first or
+   * they'd keep bobbing around their *old* baseline. Each letter's post-layout
+   * `y` is stashed as `baseY` and used as that baseline.
+   *
+   * @param {number} fontPx  The just-computed letter font size.
+   * @returns {void}
+   */
+  _startTitleWave(fontPx) {
+    this.tweens.killTweensOf(this._titleLetters);
+    const amp = Math.max(2, fontPx * 0.05);
+    this._titleLetters.forEach((letter, i) => {
+      letter.setScale(1); // a killed flourish tween may have left it mid-swell
+      this.tweens.add({
+        targets: letter,
+        y: letter.getData('baseY') - amp,
+        duration: 1400,
+        delay: i * 90, // the stagger is what turns eight bobs into one wave
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.InOut',
+      });
+    });
+  }
+
+  /**
+   * The flourish: a swell travelling through the word, each letter rising toward
+   * the viewer and falling back, one after the next.
+   *
+   * Deliberately runs in the *blank beat between demo cycles*, when the stage
+   * below is empty. During the demo the eye belongs down there — a big title
+   * animation competing with the shot is a distraction, not a feature. The whole
+   * cascade takes ~1.1s, comfortably inside DEMO_TIMING.blank.
+   *
+   * Scale only. A colour pulse is tempting but can't work here: Phaser's tint
+   * *multiplies* the texture, so it can only darken the gold, and `setTintFill`
+   * replaces the colour flat, which would erase the emboss gradient for the
+   * duration. The swell, riding the embossed shading, reads as light moving over
+   * the letters anyway.
+   *
+   * Driving `scale` means `killTweensOf(letters)` in {@link _startTitleWave}
+   * sweeps this up too, and it never fights the wave's hold on `y`.
+   *
+   * @returns {void}
+   */
+  _titleFlourish() {
+    this._titleLetters.forEach((letter, i) => {
+      this.tweens.add({
+        targets: letter,
+        scale: 1.1,
+        duration: 260,
+        delay: i * 80, // the lag is the pulse: it sweeps B → s
+        yoyo: true,
+        ease: 'Sine.InOut',
+        onComplete: () => letter.setScale(1),
+      });
+    });
   }
 
   /** @returns {void} */
@@ -321,8 +421,11 @@ export class TitleScene extends Phaser.Scene {
     this._titleLetters.forEach((t, i) => {
       const lx = x + widths[i] / 2; // this letter's centre
       const frac = totalW ? (lx - cx) / (totalW / 2) : 0; // -1 .. 1 across the word
-      t.setPosition(lx, titleY - (1 - frac * frac) * arcH);
+      const ly = titleY - (1 - frac * frac) * arcH;
+      t.setPosition(lx, ly);
+      t.setData('baseY', ly); // the line the idle wave bobs around
       t.setRotation(frac * 0.16); // gentle fan; letters stay upright enough to read
+      this._embossLetter(t, fontPx);
       x += widths[i] + gapPx;
       // Rebuild the shimmer so its render target matches the new font/position;
       // a postFX from the previous size otherwise ghosts the old letters.
@@ -330,13 +433,14 @@ export class TitleScene extends Phaser.Scene {
       // The renderer check is load-bearing: `t.postFX` is present even under the
       // Canvas renderer, but `addShine` throws there (no pipelines), which would
       // abort create() and leave a half-built title screen. Testing the renderer,
-      // not the property, is what makes the WebGL-less fallback degrade to plain
-      // gold text instead of crashing.
+      // not the property, is what makes the WebGL-less fallback degrade to the
+      // embossed gold text instead of crashing.
       if (this._webgl && t.postFX) {
         t.postFX.clear();
         t.postFX.addShine(0.6, 0.2, 5);
       }
     });
+    this._startTitleWave(fontPx); // re-anchor the bob to the new baseline
 
     this._premise.setStyle({ wordWrap: { width: Math.min(W * 0.82, 660) } });
     this._premise.setFontSize(Phaser.Math.Clamp(Math.round(W / 34), 15, 21));
@@ -710,6 +814,9 @@ export class TitleScene extends Phaser.Scene {
       // Turn-taking: swap who launches before the next cycle, so the loop alternates
       // David-launches-Ken and Ken-launches-David (see _assignRoles).
       this._swapped = !this._swapped;
+      // The stage below has just faded to nothing. That empty beat is the title's
+      // turn to move — nothing down there to compete with (see _titleFlourish).
+      this._titleFlourish();
       this._blankTimer = this.time.delayedCall(DEMO_TIMING.blank, () => this._startDemo());
       return;
     }

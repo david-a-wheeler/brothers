@@ -232,6 +232,39 @@ OpenGL behavior when running on top of macOS.
   go narrower, so you can't reproduce very-narrow (phone-portrait) layouts
   directly — read the geometry at 500px and extrapolate from the formula.
 
+- **Tweens don't run headless, and you can't fast-forward them.** A headless
+  window never paints, so `requestAnimationFrame` never fires and the game loop
+  sleeps: `game.loop.frame` sits still and *nothing animates*. Read a tween's
+  target once and you'll wrongly conclude the animation is broken. Three traps,
+  in the order they bit:
+  1. Phaser 3.60's `TweenManager.update(time, delta)` **ignores both arguments** —
+     `getDelta()` reads `Date.now()`. You cannot advance a tween by passing a
+     fake delta; you must let *real* time pass.
+  2. `getDelta()` **skips** any gap longer than `maxLag` (500 ms), to avoid a
+     post-pause jump. Sleep a second, tick once, and the tween barely moves —
+     stranded mid-flight at whatever value it held.
+  3. A WebDriver `execute` round-trip costs ~50 ms, so sampling from Python
+     overshoots short animations entirely. A 355 ms cascade finished between two
+     reads and looked like it never fired.
+
+  The recipe that works: do it all **inside one `execute` call**, busy-waiting in
+  frame-sized steps and ticking the manager each step.
+
+  ```js
+  const wait = (ms) => { const s = Date.now(); while (Date.now() - s < ms) {} };
+  scene.tweens.tick();              // promote pending tweens
+  scene.someAnimation();
+  const samples = {};
+  for (let e = 20; e <= 800; e += 20) {
+    wait(20); scene.tweens.tick();  // ~one frame
+    if (e === 100 || e === 240) samples[e] = readState();
+  }
+  ```
+
+  The *idle* case is easier: a looping tween is already running, so sleeping in
+  Python and calling `scene.tweens.tick()` between reads is enough to watch it
+  move (keep each sleep well under `maxLag`).
+
 - **`Phaser.GAMES` isn't exposed** in the UMD build, so you can't reach the game
   object from outside. Temporarily add `window.__game = game;` after
   `new Phaser.Game(...)` in `main.js` to reach scenes, then remove it — or, better

@@ -61,12 +61,13 @@ Briefly explain/justify steps as you go. Topics to include:
   - Etc.
   - Explain you edit and reload on web browser
 
-## Increase visual interest of "Brothers" title text
-
-Currently on the title page the word "Brothers" has a slow sliding
-visual. Identify several ways to add to that to make it even more
-interesting that wouldn't take a lot of code.
-
 ## Add tests
 
 ## Add linting
+
+## Animations for mud (2) and cleaner (2)
+
+## In HUD, after flag show current level number
+
+Tooltip shows pack name + level name + level number.
+
