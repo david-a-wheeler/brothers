@@ -45,19 +45,6 @@ The lab should let you change the level setting on whether or not
 pin moving is allowed, or if the pin continues to exist after the
 launch completes and the launcher hits the anchor.
 
-## serve defaults
-
-If the user provides [host [port]], store that host and port value
-as the new host/port default in file `.serve-defaults`
-(as space-separated params) and use the value.
-
-If not, but `.serve-defaults` exists, load and use that.
-
-Otherwise, use safe defaults: 127.0.0.1 (home) and port 8000.
-
-Always give some status report related to .serve-defaults during that
-startup so the user will know which one happened.
-
 ## Review/refind the friction from mud/cleaner/etc
 
 We should review how friction info is stored on each Movable.

@@ -5,9 +5,12 @@ Supports multiple simultaneous requests, necessary for local development
 (e.g., where there are many ES modules loading in parallel).
 It also provides adequate security for local testing.
 
-By default it serves to IP address 0.0.0.0 on port 8000
-so you can access it on local network. You can provide on the command line
-[IP_ADDRESS [PORT]] e.g., `127.0.01 8080`.
+You can provide on the command line [IP_ADDRESS [PORT]] e.g., `0.0.0.0 8080`.
+Whatever you provide is remembered in the JSON file `.serve-defaults`
+(e.g., `{"host": "0.0.0.0", "port": 8080}`) and reused the next time you run
+without arguments. If there's no such file, we fall back to the safe defaults
+of 127.0.0.1 (this machine only) on port 8000; bind to 0.0.0.0 if you want to
+reach it from elsewhere on the local network.
 
 Many times you need a local web server for testing. E.g., if you use
 JavaScript with ES modules, they *cannot* be loaded from file:
@@ -45,6 +48,7 @@ and are auto-regenerated.
 """
 
 import hashlib
+import json
 import os
 import secrets
 import string
@@ -57,6 +61,17 @@ from urllib.parse import parse_qs
 
 PASSWORD_FILE = ".password"
 ONE_YEAR_SECONDS = 31536000  # 60 * 60 * 24 * 365
+
+# Remembers the last host/port given on the command line, so you only have to
+# type them once. A JSON object, so future settings can be added without
+# invalidating anyone's existing file.
+# Per-developer local state, so .gitignored.
+DEFAULTS_FILE = ".serve-defaults"
+
+# Safe fallbacks when nothing has been remembered: reachable from this machine
+# only. Pass 0.0.0.0 explicitly if you want to reach it from the local network.
+SAFE_HOST = "127.0.0.1"
+SAFE_PORT = 8000
 
 # Global runtime containers for the authentication data
 STORED_HASH = None
@@ -312,17 +327,124 @@ class SecureThreadingHTTPServer(ThreadingHTTPServer):
     request_queue_size = 64
 
 
-def main():
-    bind_address = "0.0.0.0"
-    port = 8000
+def load_config():
+    """Returns the parsed defaults file as a dict, or {} if there's none usable.
 
-    if len(sys.argv) > 1:
-        if sys.argv[1].isdigit():
-            port = int(sys.argv[1])
+    A missing, unreadable, or malformed file is not an error worth stopping for;
+    we warn and let the caller fall back to the safe defaults. Note that JSON is
+    *data*: parsing it can never execute anything, which matters because this
+    file decides what address we bind to.
+    """
+    if not os.path.exists(DEFAULTS_FILE):
+        return {}
+
+    try:
+        with open(DEFAULTS_FILE, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except OSError as e:
+        print(f"[Defaults Warning] Could not read {DEFAULTS_FILE} ({e}).")
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"[Defaults Warning] {DEFAULTS_FILE} is not valid JSON ({e}).")
+        return {}
+
+    if not isinstance(config, dict):
+        print(f"[Defaults Warning] {DEFAULTS_FILE} must hold a JSON object.")
+        return {}
+
+    return config
+
+
+def config_address(config):
+    """Extracts a valid (host, port) from a config dict, or None if it lacks one.
+
+    Anything absent or nonsensical is reported and treated as "not remembered",
+    so a hand-edited file can't wedge the server.
+    """
+    if "host" not in config and "port" not in config:
+        return None
+
+    host = config.get("host")
+    port = config.get("port")
+
+    if not isinstance(host, str) or not host:
+        print(
+            f"[Defaults Warning] {DEFAULTS_FILE}: 'host' must be a non-empty "
+            f"string, got {host!r}."
+        )
+        return None
+    # bool is a subclass of int, so reject it explicitly: `true` is not a port.
+    if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
+        print(
+            f"[Defaults Warning] {DEFAULTS_FILE}: 'port' must be an integer "
+            f"1-65535, got {port!r}."
+        )
+        return None
+
+    return host, port
+
+
+def save_defaults(config, host, port):
+    """Remembers this host/port for the next argument-less run.
+
+    Merges into the config we already loaded rather than overwriting the file,
+    so settings we don't know about survive a run that only supplies an address.
+    """
+    config = {**config, "host": host, "port": port}
+    try:
+        with open(DEFAULTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, sort_keys=True)
+            f.write("\n")
+        print(f"[Defaults] Saved host/port to {DEFAULTS_FILE}.")
+    except OSError as e:
+        # Not fatal: we can still serve, we just won't remember next time.
+        print(f"[Defaults Warning] Could not write {DEFAULTS_FILE} ({e}).")
+
+
+def resolve_address(args):
+    """Works out the (host, port) to bind, reporting which source won.
+
+    Command-line args beat the remembered defaults, which beat the safe
+    defaults. Args are layered *over* the remembered values, so a bare port
+    keeps the host you remembered last time.
+    """
+    config = load_config()
+    remembered = config_address(config)
+
+    if remembered:
+        host, port = remembered
+        if not args:
+            print(f"[Defaults] Loaded host/port from {DEFAULTS_FILE}.")
+    else:
+        host, port = SAFE_HOST, SAFE_PORT
+        if not args:
+            print(
+                f"[Defaults] No remembered host/port; using safe defaults "
+                f"({SAFE_HOST}:{SAFE_PORT})."
+            )
+
+    if args:
+        # Accepted forms: PORT | HOST | HOST PORT
+        if args[0].isdigit():
+            port = int(args[0])
         else:
-            bind_address = sys.argv[1]
-            if len(sys.argv) > 2 and sys.argv[2].isdigit():
-                port = int(sys.argv[2])
+            host = args[0]
+            if len(args) > 1 and args[1].isdigit():
+                port = int(args[1])
+        save_defaults(config, host, port)
+
+    return host, port
+
+
+def main():
+    # Flush every line as it's written. Python block-buffers stdout whenever it
+    # isn't a terminal (redirected to a file, piped, captured by a test rig), so
+    # without this our status and password lines sit in the buffer -- and are
+    # lost entirely if the server is killed rather than shut down cleanly.
+    # Diagnostic output you can't see when you need it is worse than none.
+    sys.stdout.reconfigure(line_buffering=True)
+
+    bind_address, port = resolve_address(sys.argv[1:])
 
     # Spin up cryptographic verification data maps
     init_authentication()
