@@ -47,3 +47,7 @@ on every frame.
 
 Tooltip shows pack name + level name + level number.
 
+## Title page music: fix loop
+
+The music loop when it restarts has a perceptible hiccup.
+Eliminate the hiccup.
