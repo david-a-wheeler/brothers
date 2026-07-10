@@ -13,6 +13,7 @@
  * - it tries to "just work" on imperfect input.
  */
 
+import { setLastLevel, setLastPack } from './prefs.js';
 import { recordLevelCount } from './scores.js';
 
 /** Defaults applied when a level omits something. */
@@ -317,6 +318,12 @@ export async function loadPack(packName) {
   activePack = { name: packName, count, levels: new Array(count) };
   activeIndex = 0;
   await ensureLevel(0);
+  // Persist only once the pack is known-good, so a failed load can't leave a
+  // broken pack stored for the next boot to trip over. This and selectLevel are
+  // the ONLY writers, so every path that changes pack/level is remembered
+  // without each caller having to remember to say so.
+  setLastPack(packName);
+  setLastLevel(0);
 }
 
 /**
@@ -343,6 +350,7 @@ export async function ensureLevel(index) {
 export async function selectLevel(index) {
   await ensureLevel(index);
   activeIndex = Math.max(0, Math.min(index, activePack.count - 1));
+  setLastLevel(activeIndex); // the clamped value, not what was asked for
 }
 
 /** @returns {string} The active pack's name (also its id). */

@@ -21,7 +21,7 @@ import {
 import { introSeen, markIntroSeen, clearIntroSeen } from '../intros.js';
 import * as scores from '../scores.js';
 import { World } from '../world/World.js';
-import { setSkipTitle } from '../prefs.js';
+import { labOpen, setLabOpen, setSkipTitle, setTestMode, testMode } from '../prefs.js';
 import * as diag from '../diag.js';
 import { Modal } from '../ui/Modal.js';
 import { Panel } from '../ui/Panel.js';
@@ -171,9 +171,9 @@ export class GameScene extends Phaser.Scene {
     this._labPanel = null;
     /** The menu/scoreboard {@link Menu} overlay (created in _buildHud). */
     this._menu = null;
-    /** Test mode: relaxes menu click-to-jump to allow any level. Persisted in
-     *  the registry so it survives scene restarts within a session. */
-    this._testMode = this.registry.get('testMode') || false;
+    /** Test mode: relaxes menu click-to-jump to allow any level, and enables
+     *  god mode. Persisted in prefs, so it survives a reload, not just a restart. */
+    this._testMode = testMode();
     /** HUD icon the attract glow is tracking (null = not attracting). */
     this._attractTarget = null;
 
@@ -195,7 +195,7 @@ export class GameScene extends Phaser.Scene {
     this._layoutHud(); // position/size every HUD element for the current screen
     // The Lab panel builds its objects lazily (like the menu/modal) so they land
     // after the UI camera's ignore snapshot. Restore a persisted-open panel here.
-    if (this.registry.get('devOpen')) this._labPanel.show();
+    if (labOpen()) this._labPanel.show();
     // Reflow on window resize / device rotation. The scale manager is
     // game-level, so remove the listener when the scene shuts down (restart).
     this.scale.on('resize', this._onResize, this);
@@ -1147,7 +1147,7 @@ export class GameScene extends Phaser.Scene {
       build: (view) => this._buildLabBody(view),
     });
     // Closing (via the × or the menu toggle) clears the persisted-open flag.
-    this._labPanel.onHidden = () => this.registry.set('devOpen', false);
+    this._labPanel.onHidden = () => setLabOpen(false);
   }
 
   /**
@@ -1420,7 +1420,7 @@ export class GameScene extends Phaser.Scene {
       this._labPanel.hide();
     } else {
       this._labPanel.show();
-      this.registry.set('devOpen', true); // survive scene restarts
+      setLabOpen(true); // survive scene restarts and reloads
     }
   }
 
@@ -1820,7 +1820,7 @@ export class GameScene extends Phaser.Scene {
             'Also enables god mode; right-drag either brother to move the pair anywhere.',
           onTap: () => {
             this._testMode = !this._testMode;
-            this.registry.set('testMode', this._testMode);
+            setTestMode(this._testMode);
             // Turning Test mode off mid-drag would strand the pair on the pointer.
             if (!this._testMode) this._godDrag = null;
             this._rerenderMenu();

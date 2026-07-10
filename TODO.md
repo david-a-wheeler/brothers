@@ -67,16 +67,6 @@ Currently on the title page the word "Brothers" has a slow sliding
 visual. Identify several ways to add to that to make it even more
 interesting that wouldn't take a lot of code.
 
-## Persist current pack, level, test mode, lab mode
-
-Persist all these values in the persistent store.
-When we first start the GameScene, restore them.
-Instead of necessarily loading pack base level 1, load
-and go to *that* level, using pack base level 1 as a default.
-If you can't load that pack or that level, use pack base level 1
-as the emergency load (logging it), and if you can't do that,
-big alert.
-
 ## Add tests
 
 ## Add linting
