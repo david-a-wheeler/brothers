@@ -259,8 +259,13 @@ export const Config = {
     depth: Depth.region, // the region layer: below the brothers, above the background
     // The end-of-turn shimmy that sheds normal (non-sticky) mud: the face slides
     // left/right over the ball `amplitude` px each way, `cycles` full oscillations,
-    // across `duration` ms total. Brief and quick.
-    wiggle: { amplitude: 9, cycles: 2, duration: 400 },
+    // across `duration` ms total.
+    //
+    // `cycles` and `duration` are deliberately in step: the shake's *speed* is
+    // cycles/duration, so raising the count without the time just makes it
+    // frantic. Doubled from 2/400 because the shimmy was over before you noticed
+    // it — and the HUD's "Shaking off mud" flashed by before it could be read.
+    wiggle: { amplitude: 9, cycles: 4, duration: 800 },
   },
 
   /**
