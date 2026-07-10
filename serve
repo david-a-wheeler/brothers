@@ -88,6 +88,18 @@ CACHED_PASSWORD = None
 # requests to the password cache to occur one-at-a-time
 CACHE_LOCK = threading.Lock()
 
+# A TLS connection (i.e., someone typed https:) opens with a handshake record,
+# whose first byte is 0x16. A plain HTTP request always opens with an ASCII
+# method name ("GET", "POST", ...), so no valid request can start with 0x16
+# and this test can't produce a false positive.
+TLS_HANDSHAKE_BYTE = 0x16
+
+# Which clients we've already nagged about https:. Browsers retry a refused
+# TLS handshake several times, and repeating the same paragraph once per retry
+# is exactly the screen noise we're trying to eliminate.
+TLS_WARNED_CLIENTS = set()
+TLS_WARN_LOCK = threading.Lock()
+
 def init_authentication():
     """Manages the password lifecycle.
 
@@ -195,6 +207,54 @@ class Handler(SimpleHTTPRequestHandler):
         ".svg": "image/svg+xml",
         ".tmj": "application/json",
     }
+
+    def looks_like_tls(self):
+        """Peeks at the first byte to see if the client opened a TLS handshake.
+
+        peek() returns buffered bytes without consuming them, so if this is a
+        normal HTTP request we leave it untouched for the usual parser.
+        """
+        try:
+            first = self.rfile.peek(1)
+        except (OSError, ValueError):
+            return False
+        return bool(first) and first[0] == TLS_HANDSHAKE_BYTE
+
+    def warn_about_https(self):
+        """Explains the https: mistake once per client, instead of dumping binary."""
+        client = self.client_address[0]
+        with TLS_WARN_LOCK:
+            if client in TLS_WARNED_CLIENTS:
+                return
+            TLS_WARNED_CLIENTS.add(client)
+
+        host, port = self.server.server_address[:2]
+        # 0.0.0.0 is a bind wildcard, not somewhere you can point a browser.
+        if host in ("0.0.0.0", "::"):
+            host = SAFE_HOST
+
+        print()
+        print("=" * 70)
+        print(f" ⚠️  {client} tried to connect with https: (TLS).")
+        print(" This server speaks plain HTTP only, so the connection was dropped.")
+        print(f" Use http://{host}:{port}/ instead.")
+        print(" If the browser keeps forcing https:, it likely cached an HSTS")
+        print(" upgrade for this host; try a private window or clear that setting.")
+        print("=" * 70)
+
+    def handle_one_request(self):
+        """Drops TLS handshakes before the HTTP parser can choke on them.
+
+        Left to itself, BaseHTTPRequestHandler parses the ClientHello as a
+        request line, fails, and logs the raw binary twice (once as a "Bad
+        request version" error, once as the access-log line). Nobody can read
+        that. We intercept first and print something actionable instead.
+        """
+        if self.looks_like_tls():
+            self.warn_about_https()
+            self.close_connection = True
+            return
+        super().handle_one_request()
 
     def is_authenticated(self):
         """Checks if the browser's cookie password matches the possibly-locally-cached password."""
