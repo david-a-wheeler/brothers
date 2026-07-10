@@ -55,6 +55,9 @@ If not, but `.serve-defaults` exists, load and use that.
 
 Otherwise, use safe defaults: 127.0.0.1 (home) and port 8000.
 
+Always give some status report related to .serve-defaults during that
+startup so the user will know which one happened.
+
 ## Review/refind the friction from mud/cleaner/etc
 
 We should review how friction info is stored on each Movable.
