@@ -363,6 +363,14 @@ export class GameScene extends Phaser.Scene {
       ic.setData('baseSY', ic.scaleY);
     });
 
+    // The level number trails the status flag (the last icon). Both its size and
+    // its offset are derived from the icon size rather than hard-coded, so it
+    // keeps its relationship to the flag if that size is ever changed. It sits
+    // outside the evenly-spaced cluster on purpose: it's a label on the flag,
+    // not a sixth icon competing for a slot.
+    this.levelText.setFontSize(Math.round(L.iconSize * 0.62));
+    this.levelText.setPosition(this.statusIcon.x + L.iconSize * 0.7, iconRowY);
+
     // Keep the attract glow on its target icon now that the icon has moved (the
     // ongoing pulse tween only animates scale/alpha, so position is ours to set).
     if (this._attractTarget) this.attractGlow.setPosition(this._attractTarget.x, this._attractTarget.y);
@@ -479,6 +487,7 @@ export class GameScene extends Phaser.Scene {
       this.prevButton,
       this.nextButton,
       this.statusIcon,
+      this.levelText,
       this.menuButton,
       this.tip.box,
       this.bannerPanel,
@@ -841,6 +850,19 @@ export class GameScene extends Phaser.Scene {
     this._statusLabel = '';
     this._attachHudTip(this.statusIcon, () => this._statusLabel);
     this.statusIcon.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
+
+    // The level number, immediately right of the status flag: "which level am I
+    // on" is asked far more often than it's answered by the menu. Left-origin so
+    // it hangs off the flag rather than being centred on a cluster slot, and it
+    // rides the icon row (positioned in _layoutHud, since the icon size varies).
+    // Read-only, like the flag: interactive only so it can carry a tooltip.
+    this.levelText = this.add
+      .text(0, 0, '', Config.ui.type.stat)
+      .setOrigin(0, 0.5)
+      .setDepth(10)
+      .setInteractive();
+    this._attachHudTip(this.levelText, () => this._levelLabel());
+    this.levelText.on('pointerdown', (_p, _x, _y, e) => e?.stopPropagation()); // don't reach the aim/pan router
 
     // Menu button (hamburger): opens the dropdown of less-used options and the
     // pack/level scoreboard. Laid out at the FRONT of the cluster in _layoutHud.
@@ -1445,6 +1467,19 @@ export class GameScene extends Phaser.Scene {
    */
   _refreshResetButton() {
     this._iconRest(this.restartButton, this._resetEnabled() ? 0.8 : 0.3, false);
+  }
+
+  /**
+   * The level-number tooltip: "Pack Base Level 3", plus a second line carrying
+   * the level's name when it has one. Computed on each reveal rather than
+   * cached, because the pack and level both change as the player navigates.
+   *
+   * @returns {string}
+   */
+  _levelLabel() {
+    const where = `Pack ${activePackName()} Level ${currentIndex() + 1}`;
+    const name = levelName(this.level);
+    return name ? `${where},\n${name}` : where;
   }
 
   /**
@@ -3001,6 +3036,7 @@ export class GameScene extends Phaser.Scene {
     this.packText.setText(`Pack: ${pack}`);
     this.bestText.setText(`Best: ${best == null ? '-' : best}`);
     this.leftText.setText(`#Left: ${this.movesLeft}`);
+    this.levelText.setText(String(currentIndex() + 1));
     this._layoutRightGroup(); // widths changed -> reflow the group
     this._refreshResetButton();
     this._refreshNavButtons();

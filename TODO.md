@@ -43,12 +43,6 @@ on every frame.
 
 ## Animations for mud (2) and cleaner (2)
 
-## In HUD, after flag show current level number
-
-Tooltip should "Pack PACKNAME Level LEVELNUMBER".
-If there's a level name, follow that with "," newline, and
-on the next row show the level name.
-
 ## Title page music: fix loop
 
 The music loop when it restarts has a perceptible hiccup.
