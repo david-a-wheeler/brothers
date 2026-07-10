@@ -147,6 +147,30 @@ export class Movable extends Entity {
   }
 
   /**
+   * Set how many more settles the loose mud lingers (the Lab's per-brother mud
+   * row). Not a plain write to `mudTurnsLeft`, because that counter is only
+   * meaningful alongside loose mud: raising it on a *clean* mover would count
+   * down nothing at all. So going above zero also lays down default loose mud,
+   * and going to zero washes the loose mud off now rather than at the next
+   * settle — either way the splat matches the number. Sticky mud is untouched;
+   * only a `cleanSticky` Cleaner removes that.
+   *
+   * @param {number} turns  Extra settles of muddiness; clamped to >= 0.
+   * @returns {void}
+   */
+  setMudTurns(turns) {
+    const n = Math.max(0, Math.round(turns));
+    if (n === 0) {
+      this._wash(false); // clears loose viscosity + the timer, redraws the splat
+    } else {
+      if (this.mudLooseViscosity === 0) this.mudLooseViscosity = Config.mud.viscosity;
+      this.mudTurnsLeft = n;
+      this._refreshMudLook();
+    }
+    this._recomputeFriction(); // _wash leaves this to its caller
+  }
+
+  /**
    * Redraw the mud splat over the body: a scatter of blobs in the current mud
    * colour (dark when sticky), or nothing when clean. Sized to the current
    * radius. Called on mud-state changes, not per frame.

@@ -1059,17 +1059,62 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _buildDevPanel() {
-    this._devParams = [
-      { obj: Config.slingshot, key: 'maxSpeed', step: 10, dp: 0, min: 0, desc: 'Launch speed at a full-strength pull.' },
-      { obj: Config.slingshot, key: 'minSpeed', step: 5, dp: 0, min: 0, desc: 'Launch-speed floor for the shortest valid pull.' },
-      { obj: Config.slingshot, key: 'curve', step: 0.1, dp: 2, min: 0.1, desc: 'Easing exponent; higher softens short/mid pulls (ends fixed).' },
-      { obj: Config.slingshot, key: 'maxPull', step: 10, dp: 0, min: 10, desc: 'Furthest the launcher can be stretched from the anchor.' },
-      { obj: Config.slingshot, key: 'minPull', step: 2, dp: 0, min: 0, desc: 'Pulls shorter than this count as a mis-click, not a launch.' },
-      { obj: Config.tether, key: 'restLength', step: 5, dp: 0, min: 0, desc: 'Tether resting length; beyond it the band pulls them together.' },
-      { obj: Config.tether, key: 'stiffness', step: 0.005, dp: 3, min: 0, desc: 'Tether spring strength once stretched past rest length.' },
-      { obj: Config.tether, key: 'damping', step: 0.02, dp: 2, min: 0, desc: 'How quickly tether oscillations settle.' },
-      { obj: Config.ball, key: 'davidRadiusMult', step: 0.01, dp: 2, min: 1, max: 2, desc: "David's radius as a multiple of Ken's (1.00-2.00)." },
-      { obj: Config.ball, key: 'davidMassMult', step: 0.01, dp: 2, min: 1, max: 3, desc: "David's mass as a multiple of Ken's (1.00-3.00)." },
+    // Rows come in two kinds. A *number* row steps by `step` (clamped to
+    // min/max) and its value can be typed directly. An *options* row cycles a
+    // fixed list, so a boolean is just the list [false, true].
+    //
+    // `obj` is either the object holding `key`, or a function returning it, for
+    // targets that don't exist yet or are replaced on every scene restart (the
+    // brothers) — the row re-resolves it on each read and shows "--" when it's
+    // missing. `onChange` applies a value that isn't picked up automatically.
+    this._devSections = [
+      {
+        heading: 'Slingshot & tether',
+        params: [
+          { obj: Config.slingshot, key: 'maxSpeed', step: 10, dp: 0, min: 0, desc: 'Launch speed at a full-strength pull.' },
+          { obj: Config.slingshot, key: 'minSpeed', step: 5, dp: 0, min: 0, desc: 'Launch-speed floor for the shortest valid pull.' },
+          { obj: Config.slingshot, key: 'curve', step: 0.1, dp: 2, min: 0.1, desc: 'Easing exponent; higher softens short/mid pulls (ends fixed).' },
+          { obj: Config.slingshot, key: 'maxPull', step: 10, dp: 0, min: 10, desc: 'Furthest the launcher can be stretched from the anchor.' },
+          { obj: Config.slingshot, key: 'minPull', step: 2, dp: 0, min: 0, desc: 'Pulls shorter than this count as a mis-click, not a launch.' },
+          { obj: Config.tether, key: 'restLength', step: 5, dp: 0, min: 0, desc: 'Tether resting length; beyond it the band pulls them together.' },
+          { obj: Config.tether, key: 'stiffness', step: 0.005, dp: 3, min: 0, desc: 'Tether spring strength once stretched past rest length.' },
+          { obj: Config.tether, key: 'damping', step: 0.02, dp: 2, min: 0, desc: 'How quickly tether oscillations settle.' },
+        ],
+      },
+      {
+        heading: 'Brothers',
+        params: [
+          { obj: Config.ball, key: 'davidRadiusMult', label: 'David size', step: 0.01, dp: 2, min: 1, max: 2, desc: "David's radius as a multiple of Ken's (1.00-2.00)." },
+          { obj: Config.ball, key: 'davidMassMult', label: 'David mass', step: 0.01, dp: 2, min: 1, max: 3, desc: "David's mass as a multiple of Ken's (1.00-3.00)." },
+          this._mudTurnsParam('David', () => this.brothers?.david),
+          this._mudTurnsParam('Ken', () => this.brothers?.ken),
+        ],
+      },
+      {
+        heading: 'Level',
+        params: [
+          {
+            obj: () => this.level,
+            key: 'pinEnabled',
+            label: 'Pin moving',
+            options: [false, true],
+            format: (v) => (v ? 'allowed' : 'off'),
+            desc: 'Whether the player may drag the anchor\'s aiming pin off-centre.',
+            // Turning it off mid-aim would strand an already-placed pin off-centre.
+            onChange: (level) => {
+              if (!level.pinEnabled) this.brothers?._resetAnchorPin();
+            },
+          },
+          {
+            obj: () => this.level,
+            key: 'pinResetOn',
+            label: 'Pin resets on',
+            options: ['impact', 'settle'],
+            format: (v) => v,
+            desc: 'When a placed pin recentres: at impact (aim-only) or once the balls settle (live off-centre tether).',
+          },
+        ],
+      },
     ];
     this._labPanel = new Panel(this, {
       position: () => ({ x: 12, y: this._hudHeight + 10 }),
@@ -1082,8 +1127,44 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Build the "turns left being muddy" row for one brother. The brother is
+   * resolved lazily because a scene restart replaces the entity, and the panel
+   * outlives it. Writes go through {@link Movable#setMudTurns}, which keeps the
+   * splat and the friction consistent with the number.
+   *
+   * @param {string} name  'David' or 'Ken', for the row label.
+   * @param {() => (import('../world/Brother.js').Brother|undefined)} get
+   * @returns {object} A param descriptor.
+   */
+  _mudTurnsParam(name, get) {
+    return {
+      obj: get,
+      key: 'mudTurnsLeft',
+      label: `${name} mud turns`,
+      step: 1,
+      dp: 0,
+      min: 0,
+      max: 9,
+      desc: `Settles of mud left on ${name}. Raise it to muddy him now; drop it to 0 to wash the (non-sticky) mud off.`,
+      onChange: (b) => b.setMudTurns(b.mudTurnsLeft),
+    };
+  }
+
+  /**
+   * Resolve a param's target object. Rows bound to a function (the brothers,
+   * the level) re-resolve on every read, so they survive a scene restart; the
+   * target can legitimately be absent before the world is built.
+   *
+   * @param {{obj: object|(() => object|undefined)}} param
+   * @returns {object|undefined}
+   */
+  _paramTarget(param) {
+    return typeof param.obj === 'function' ? param.obj() : param.obj;
+  }
+
+  /**
    * Fill the Lab panel's scroll body (local coords: 0,0 = viewport top-left) with
-   * the parameter rows, the shared help line, and the More turns / Reset buttons.
+   * a heading per section, its parameter rows, and the More turns / Reset buttons.
    * Called by the {@link Panel} on each (re)build; returns the body's full height.
    *
    * @param {import('../ui/ScrollView.js').ScrollView} view
@@ -1092,37 +1173,49 @@ export class GameScene extends Phaser.Scene {
   _buildLabBody(view) {
     const w = 280;
     const rowH = 30;
-    const n = this._devParams.length;
-    const moreTurnsY = 8 + n * rowH + 20; // a small gap below the last row
-    const resetY = moreTurnsY + 36;
+    const headingH = 26;
     // A control ignores its tap when the press that ended on it moved far enough
     // to be a scroll-drag (computed from the press/release distance).
     const moved = (p) => this._labPanel.movedFromPress(p);
 
-    this._devRows = this._devParams.map((param, i) => {
-      const rowY = 8 + i * rowH;
-      const minus = chipButton(this, 24, rowY, '-', () => this._adjustParam(param, -1), { guard: moved });
-      const plus = chipButton(this, w - 24, rowY, '+', () => this._adjustParam(param, 1), { guard: moved });
-      // Click the value to type one directly (prompt works desktop + mobile).
-      const value = this.add
-        .text(44, rowY, '', Config.ui.type.small)
+    this._devRows = [];
+    let y = 14; // half a line of headroom, so the first heading isn't clipped
+    for (const section of this._devSections) {
+      const heading = this.add
+        .text(12, y, section.heading, { ...Config.ui.type.small, color: Config.ui.color.accentText })
         .setOrigin(0, 0.5)
         .setDepth(21);
-      const row = { param, value };
-      this._setDevRowText(row); // set text before setInteractive so the hit area fits
-      value.setInteractive({ useHandCursor: true }).on('pointerup', (pointer) => {
-        if (moved(pointer)) return; // release ended a scroll-drag, not a tap
-        this._promptParam(param);
-      });
-      // Explain the parameter on hover/press of any of its controls, via the
-      // shared tooltip (anchored below the control, wrapped to ~the panel width).
-      for (const ctrl of [minus, value, plus]) {
-        this.tip.attach(ctrl, param.desc, { place: 'anchor', maxWidth: w - 20 });
-      }
-      view.add([minus, value, plus]);
-      return row;
-    });
+      view.add([heading]);
+      y += headingH;
 
+      for (const param of section.params) {
+        const minus = chipButton(this, 24, y, '-', () => this._adjustParam(param, -1), { guard: moved });
+        const plus = chipButton(this, w - 24, y, '+', () => this._adjustParam(param, 1), { guard: moved });
+        // Click the value to type one directly (number rows) or advance it
+        // (options rows) — prompt works on desktop + mobile.
+        const value = this.add
+          .text(44, y, '', Config.ui.type.small)
+          .setOrigin(0, 0.5)
+          .setDepth(21);
+        const row = { param, value };
+        this._setDevRowText(row); // set text before setInteractive so the hit area fits
+        value.setInteractive({ useHandCursor: true }).on('pointerup', (pointer) => {
+          if (moved(pointer)) return; // release ended a scroll-drag, not a tap
+          this._promptParam(param);
+        });
+        // Explain the parameter on hover/press of any of its controls, via the
+        // shared tooltip (anchored below the control, wrapped to ~the panel width).
+        for (const ctrl of [minus, value, plus]) {
+          this.tip.attach(ctrl, param.desc, { place: 'anchor', maxWidth: w - 20 });
+        }
+        view.add([minus, value, plus]);
+        this._devRows.push(row);
+        y += rowH;
+      }
+    }
+
+    const moreTurnsY = y + 20; // a small gap below the last row
+    const resetY = moreTurnsY + 36;
     // "More turns" lets us keep experimenting past a win/loss (see _moreTurns).
     view.add([
       chipButton(this, w / 2, moreTurnsY, 'More turns', () => this._moreTurns(), { guard: moved }),
@@ -1133,21 +1226,40 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Prompt for a direct numeric value for a dev parameter (clamped to its
-   * min/max). Uses window.prompt so it works on desktop and mobile without a
-   * DOM input.
+   * Refresh the Lab rows from live state. Rows showing values the *game* moves
+   * (a brother's mud turns count down at each settle) would otherwise go stale
+   * while the panel sits open, so this runs with the HUD. No-op when closed.
    *
-   * @param {{obj: object, key: string, min: number, max?: number}} param
+   * @returns {void}
+   */
+  _refreshLabRows() {
+    if (!this._labPanel?.open) return;
+    this._devRows?.forEach((r) => this._setDevRowText(r));
+  }
+
+  /**
+   * Handle a click on a row's value. A number row prompts for a value directly
+   * (clamped to its min/max); window.prompt works on desktop and mobile without
+   * a DOM input. An options row has nothing to type, so a click just advances it,
+   * matching its "+".
+   *
+   * @param {object} param  A descriptor from {@link _buildDevPanel}.
    * @returns {void}
    */
   _promptParam(param) {
-    const input = window.prompt(`Set ${param.key}`, String(param.obj[param.key]));
+    if (param.options) {
+      this._adjustParam(param, 1);
+      return;
+    }
+    const obj = this._paramTarget(param);
+    if (!obj) return; // e.g. a brother row before the world exists
+    const label = param.label ?? param.key;
+    const input = window.prompt(`Set ${label}`, String(obj[param.key]));
     if (input === null) return; // cancelled
     const v = parseFloat(input);
     if (!Number.isFinite(v)) return; // not a number
-    param.obj[param.key] = Math.min(param.max ?? Infinity, Math.max(param.min, v));
-    this._devRows.forEach((r) => this._setDevRowText(r));
-    this.brothers?._applyDavidPhysique(); // apply if this was a David size/mass row
+    obj[param.key] = Math.min(param.max ?? Infinity, Math.max(param.min, v));
+    this._applyParam(param, obj);
   }
 
   /**
@@ -1200,28 +1312,59 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Update one dev row's "key: value" label from the live Config value.
+   * Update one dev row's "label: value" text from the live value. A row whose
+   * target doesn't exist yet (no brothers before the world is built) shows "--"
+   * rather than blanking or throwing.
    *
-   * @param {{param: {obj: object, key: string, dp: number}, value: Phaser.GameObjects.Text}} row
+   * @param {{param: object, value: Phaser.GameObjects.Text}} row
    * @returns {void}
    */
   _setDevRowText(row) {
-    const { obj, key, dp } = row.param;
-    row.value.setText(`${key}: ${obj[key].toFixed(dp)}`);
+    const { param } = row;
+    const label = param.label ?? param.key;
+    const obj = this._paramTarget(param);
+    if (!obj) {
+      row.value.setText(`${label}: --`);
+      return;
+    }
+    const v = obj[param.key];
+    row.value.setText(`${label}: ${param.format ? param.format(v) : v.toFixed(param.dp)}`);
   }
 
   /**
-   * Step a parameter by ±its step (clamped to its min and optional max), then
-   * refresh the rows.
+   * Change a parameter by one step: a number row moves by ±`step` (clamped to
+   * its min and optional max), an options row advances to the next/previous
+   * entry, wrapping. Then apply and refresh.
    *
-   * @param {{obj: object, key: string, step: number, dp: number, min: number, max?: number}} param
+   * @param {object} param  A descriptor from {@link _buildDevPanel}.
    * @param {number} dir  -1 or +1.
    * @returns {void}
    */
   _adjustParam(param, dir) {
-    const raw = param.obj[param.key] + dir * param.step;
-    const clamped = Math.min(param.max ?? Infinity, Math.max(param.min, Number(raw.toFixed(param.dp))));
-    param.obj[param.key] = clamped;
+    const obj = this._paramTarget(param);
+    if (!obj) return; // e.g. a brother row before the world exists
+
+    if (param.options) {
+      const opts = param.options;
+      const at = opts.indexOf(obj[param.key]);
+      // An unrecognised current value (hand-edited level prop) lands on the first.
+      obj[param.key] = at < 0 ? opts[0] : opts[(at + dir + opts.length) % opts.length];
+    } else {
+      const raw = obj[param.key] + dir * param.step;
+      obj[param.key] = Math.min(param.max ?? Infinity, Math.max(param.min, Number(raw.toFixed(param.dp))));
+    }
+    this._applyParam(param, obj);
+  }
+
+  /**
+   * Push a just-edited value into the game and refresh every row (one edit can
+   * change another row's display — setting mud turns to 0 washes the mud off).
+   *
+   * @param {object} param @param {object} obj  The resolved target.
+   * @returns {void}
+   */
+  _applyParam(param, obj) {
+    param.onChange?.(obj);
     this._devRows.forEach((r) => this._setDevRowText(r));
     this.brothers?._applyDavidPhysique(); // apply if this was a David size/mass row
   }
@@ -2697,5 +2840,6 @@ export class GameScene extends Phaser.Scene {
     this._refreshResetButton();
     this._refreshNavButtons();
     this._refreshStatusIcon();
+    this._refreshLabRows(); // the brothers' mud turns tick down as the game runs
   }
 }
