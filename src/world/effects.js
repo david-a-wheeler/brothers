@@ -16,6 +16,25 @@ export function ensurePortalSpark(scene) {
 }
 
 /**
+ * Generate the bubble texture used by {@link import('./Cleaner.js').Cleaner}
+ * (once per scene; every cleaner shares it). It's a stroked ring with a soft
+ * centre rather than a filled dot, so it reads as a bubble of air in water and
+ * still looks right when the ultra cleaner blends it additively.
+ *
+ * @param {Phaser.Scene} scene
+ * @returns {void}
+ */
+export function ensureBubble(scene) {
+  if (scene.textures.exists('cleanerBubble')) return;
+  const g = scene.add.graphics();
+  g.fillStyle(0xffffff, 0.22).fillCircle(8, 8, 7); // faint body
+  g.lineStyle(1.5, 0xffffff, 0.95).strokeCircle(8, 8, 6.5); // bright rim
+  g.fillStyle(0xffffff, 0.85).fillCircle(5.5, 5.5, 1.6); // highlight, lit from upper-left
+  g.generateTexture('cleanerBubble', 16, 16);
+  g.destroy();
+}
+
+/**
  * One-shot expanding-and-fading ring, used to punctuate teleport-out,
  * teleport-in, and (in a brighter form) a level win. Shared by the world
  * objects so the visual is defined in one place.

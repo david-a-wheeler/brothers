@@ -94,6 +94,43 @@ export class Region extends Entity {
   }
 
   /**
+   * A random point strictly inside this area, in world coordinates. Rejection-
+   * samples the AABB against {@link contains}, so it is correct for a concave
+   * polygon, where a naive "centre plus random offset" would land outside.
+   *
+   * Bounded: a sliver polygon (tiny area, big AABB) could otherwise spin for a
+   * long time, so after `tries` misses we give up and return the AABB centre.
+   * That point may technically be outside a crescent, which is harmless here —
+   * both callers only use it to start a decoration.
+   *
+   * @param {number} [tries]
+   * @returns {{x:number, y:number}}
+   */
+  randomInteriorPoint(tries = 12) {
+    const r = this._aabb;
+    for (let i = 0; i < tries; i++) {
+      const x = r.x + Math.random() * r.width;
+      const y = r.y + Math.random() * r.height;
+      if (this.contains(x, y)) return { x, y };
+    }
+    return { x: r.centerX, y: r.centerY };
+  }
+
+  /**
+   * Is any of this area within the camera's world view? Animated subclasses stop
+   * their decoration when it isn't. They can't rely on {@link bounds} culling for
+   * this: that skips the whole `update`, which is exactly the tick they'd need to
+   * *notice* they went off-screen and pause a scene-owned particle emitter.
+   *
+   * @param {{view?: Phaser.Geom.Rectangle}} ctx  The World.update context.
+   * @returns {boolean}
+   */
+  inView(ctx) {
+    if (!ctx?.view) return true;
+    return Phaser.Geom.Intersects.RectangleToRectangle(this._aabb, ctx.view);
+  }
+
+  /**
    * Transient drag imparted to a brother WHILE it is inside this area (0 = none).
    * Overridden by subclasses with a while-inside effect (the water, a bog); the
    * value lives on the region, so it never perpetuates once the brother leaves.

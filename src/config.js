@@ -26,6 +26,7 @@ const UI_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
  */
 export const Depth = {
   region: 0, // Mud/Cleaner area fills; walls sit here too (Phaser's default 0)
+  regionFx: 1, // a region's animation (mud blobs, cleaner bubbles), over its own fill
   bandBelow: 2, // tether when centred: behind the balls
   ball: 3, // a brother's body
   mud: 4, // mud splat on a muddy brother (over the body, under the face)
@@ -338,6 +339,63 @@ export const Config = {
     ring: {
       growScale: 2.6, // how far the ring expands from its start radius
       duration: 480,
+    },
+
+    /**
+     * Mud: a slow slosh of drifting blobs, plus an occasional "plop" dome. The
+     * two kinds are told apart by how *little* the sticky one moves — near
+     * stillness is what reads as viscous — and by its plop never bursting.
+     */
+    mudFx: {
+      blobs: 5, // drifting blobs per puddle (redrawn each visible frame)
+      blobRadiusFrac: 0.26, // blob radius as a fraction of the puddle's smaller side
+      normal: {
+        amplitude: 6, // px each blob wanders from its home point
+        period: 4000, // ms for a full wander cycle
+        tint: 0x8a5a2e, // a lighter brown than Config.mud.color
+        plopEvery: [4200, 9000], // random ms between plops
+        plopBursts: true, // the dome bursts, and rings out (see spawnRing)
+      },
+      sticky: {
+        amplitude: 2, // barely moves: thick, clinging
+        period: 9000,
+        tint: 0x3d2714, // barely lighter than Config.mud.stickyColor
+        plopEvery: [7000, 15000],
+        plopBursts: false, // the dome swells, holds, and sinks back: it never lets go
+      },
+      blobAlpha: 0.45,
+      plopGrow: 320, // ms for the dome to swell
+      plopHold: 260, // ms it sits at full size (sticky reads as reluctant)
+      plopFall: 520, // ms for a non-bursting dome to sink back
+      plopRadiusFrac: 0.16, // dome radius as a fraction of the puddle's smaller side
+    },
+
+    /**
+     * Cleaner: bubbles rising from random points inside the area, popping the
+     * instant they cross its edge (a `deathZone` fed by Region.contains). The
+     * ultra cleaner fizzes: more bubbles, faster, brighter, additively blended.
+     */
+    cleanerFx: {
+      normal: {
+        frequency: 900, // ms between emissions
+        quantity: 1,
+        maxAlive: 2,
+        speed: [14, 26], // upward px/s range
+        scale: [0.5, 0.9], // start scale range
+        tint: 0xbfe6ff,
+        additive: false,
+      },
+      ultra: {
+        frequency: 250,
+        quantity: 2,
+        maxAlive: 6,
+        speed: [34, 58],
+        scale: [0.7, 1.2],
+        tint: 0xeafaff, // paler, so it reads as "more cleaning power"
+        additive: true,
+      },
+      lifespan: 4000, // generous: the deathZone at the surface ends most bubbles first
+      wobble: 8, // px/s of horizontal drift, so bubbles don't rise in straight lines
     },
     /** Bomb: the fuse spark flicker (a looping tween) + explosion ring colour. */
     bomb: {
