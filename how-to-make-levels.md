@@ -127,15 +127,29 @@ must start at `1` and count up with no gaps — that's how the game finds them.
 ### Why you can't just double-click the game
 
 The game is built from many small files that the browser loads as it goes.
-Browsers refuse to let a page opened directly from your hard disk (a `file://`
-address) load files that way — it's a security rule. So the game must be handed
-to the browser by a *web server*, even though that server is running right there
-on your own machine. Nothing is published to the internet; nobody else can see
-it.
+These files have various formats, including JavaScript using ES modules.
+
+Unfortunately, Browsers refuse to run such programs if you try
+to open a page directly from your storage (a `file://`
+address), as a security rule. So the game must be handed
+to the browser by a *web server*,
+even though that server is running right there on your own machine.
 
 ### Start the server
 
-The game comes with a small server called `serve`. Open a terminal (Windows:
+You *could* set up any web server on your system.
+However, that can be a pain, because web servers are usually
+optimized for serving pages to the web as a whole.
+"Trivial" web servers often fail to serve pages rapidly enough for our uses.
+
+To solve this, the game comes with a small server called `serve`.
+It's optimized for local testing, while protecting against nosy attackers.
+It requires a password to log in, and even then it won't serve files
+outside the directories starting from its current one.
+By default, it only responds to your own computer.
+In short, it will let you easily test without becoming a security hazard.
+
+To start it open a terminal (Windows:
 **Start menu → type `cmd` → Enter**; macOS: **Terminal**; Linux: your terminal),
 then move into the game folder and start it.
 
@@ -182,6 +196,8 @@ Open your web browser and go to:
 ```
 http://localhost:8000
 ```
+
+Note: use `http:` and not `https:`.
 
 You'll be asked for the password. Paste it in. The game appears. Press **Play**.
 
@@ -268,10 +284,11 @@ Most things are **points** — you just say *where*. Walls, mud, and cleaners ar
 
 **Place one of each, and set the Name of each to `David` and `Ken`.**
 
-Strictly, a level with a single unnamed David still works — the game takes the
-only one it finds. Name them anyway. It reads better in Tiled, where you can see
+Strictly, a level with a single unnamed David and a single unnamed Ken
+still works. If there's one David, and one Ken, the game will use them.
+Name them anyway. It reads better in Tiled, where you can see
 at a glance which circle is which, and it's the difference between working and
-not if you ever place a second David as a *dummy brother* (a lifeless
+not if you ever place another brother as a *dummy brother* (a lifeless
 doppelgänger for the player to bounce off). Name them, and adding a dummy later
 just works.
 
