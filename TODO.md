@@ -41,7 +41,23 @@ on every frame.
 
 ## Add linting
 
-## Animations for mud (2) and cleaner (2)
+## Animations for mud and cleaner
+
+We need animations for mud and cleaner to help convey what they are
+and to look interesting. The two kinds of mud should be distinct
+(sticky vs. normal) and the two kinds of cleaner shoudl be distinct
+(ultra vs. regular).
+
+Let's first discuss ideas for what wouldn't be too hard to implement
+nor too overwhelming in execution time. Sample ideas:
+
+* Normal cleaner: Bubbles (2 at a time) randomly surfacing, going up
+  briefly, popping.
+* Ultra claner: Bubbles at least 4 at a time, going up faster.
+* Normal mud: slow "sloshy" motion
+* Sticky mud: Sticky sloshy motion
+
+Alternative ideas welcome
 
 ## Title page music: fix loop
 
