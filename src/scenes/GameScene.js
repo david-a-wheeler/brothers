@@ -108,6 +108,12 @@ export class GameScene extends Phaser.Scene {
     // own per-frame step would otherwise run once at the full frame delta.
     this.matter.world.autoUpdate = false;
 
+    // A restart reuses this scene instance, so uiCamera would still point at the
+    // *previous* run's (now discarded) camera while we rebuild the world. Drop it
+    // up front so every pre-_setupCameras assignToWorld behaves the same on a
+    // restart as it does on a cold boot: a no-op, covered by the snapshot.
+    this.uiCamera = null;
+
     /** The current level model (from Tiled via levels.js). */
     this.level = currentLevel();
     /** Per-level arena size (varies between levels); drives bounds/camera/grid. */
@@ -507,7 +513,12 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   assignToWorld(obj) {
-    this.uiCamera.ignore(obj);
+    // The UI camera doesn't exist yet while create() builds the World: entity
+    // constructors (a Bomb's direction arrow, a glow ring) call this long before
+    // _setupCameras runs. That's fine — _setupCameras snapshots everything alive
+    // at that moment and assigns it to the world camera — so a missing camera
+    // here means "nothing to do yet", not an error.
+    this.uiCamera?.ignore(obj);
   }
 
   /**
