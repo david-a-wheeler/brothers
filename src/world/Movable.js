@@ -1,4 +1,5 @@
 import { Config, Depth } from '../config.js';
+import * as diag from '../diag.js';
 import { Entity } from './Entity.js';
 
 /**
@@ -76,7 +77,19 @@ export class Movable extends Entity {
     const mud = Math.max(this.mudStickyViscosity, this.mudLooseViscosity);
     let region = 0;
     for (const r of this._activeRegions) region = Math.max(region, r.inViscosity);
-    body.frictionAir = this._baseFrictionAir + mud + region;
+    const frictionAir = this._baseFrictionAir + mud + region;
+    // A non-finite frictionAir makes Matter integrate the body to NaN, which
+    // teleports it out of the world — one of the ways a mover can "disappear".
+    // Cheap to check here (change events only, never per frame) and far easier
+    // to read in a log than the wreckage it causes several frames later.
+    if (!Number.isFinite(frictionAir)) {
+      diag.error(
+        `mud: ${this.def.name ?? this.def.type} got a non-finite frictionAir`,
+        new Error(`base=${this._baseFrictionAir} mud=${mud} region=${region}`)
+      );
+      return; // leave the old, sane value in place
+    }
+    body.frictionAir = frictionAir;
   }
 
   /**
@@ -91,6 +104,12 @@ export class Movable extends Entity {
    * @returns {void}
    */
   _pickUpMud(viscosity, sticky, numberTurns) {
+    diag.trace('mud', 'pick up', {
+      who: this.def.name ?? this.def.type,
+      viscosity,
+      sticky,
+      numberTurns,
+    });
     if (sticky) {
       this.mudStickyViscosity = Math.max(this.mudStickyViscosity, viscosity);
     } else {
@@ -136,6 +155,7 @@ export class Movable extends Entity {
    * @returns {void}
    */
   shedMudTurn() {
+    diag.trace('mud', 'shed', { who: this.def.name ?? this.def.type, turns: this.mudTurnsLeft });
     if (this.mudLooseViscosity > 0 && this.mudTurnsLeft > 0) {
       this.mudTurnsLeft -= 1; // still muddy: keep the loose mud one more turn
       return;
@@ -159,7 +179,8 @@ export class Movable extends Entity {
    * @returns {void}
    */
   setMudTurns(turns) {
-    const n = Math.max(0, Math.round(turns));
+    const n = Number.isFinite(turns) ? Math.max(0, Math.round(turns)) : 0;
+    diag.trace('mud', 'set turns', { who: this.def.name ?? this.def.type, from: this.mudTurnsLeft, to: n });
     if (n === 0) {
       this._wash(false); // clears loose viscosity + the timer, redraws the splat
     } else {

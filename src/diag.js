@@ -20,16 +20,26 @@
  */
 
 const LS_KEY = 'brothers:diag';
+const TRACE_KEY = 'brothers:trace'; // the trace ring, mirrored for post-mortem reads
 const DEBUG_KEY = 'brothers:debug'; // persisted console-trace toggle
 const MAX_ENTRIES = 60; // rolling breadcrumb/error log length
 const MAX_DETAIL = 2000; // per-entry detail cap (chars) so storage stays small
 const MAX_TRACE = 120; // rolling verbose-trace ring (in-memory flight recorder)
+// Traces fire far more often than log entries, so mirroring every one to
+// localStorage would stringify the whole ring on each discrete event. Write at
+// most this often; an error() flushes immediately, so a crash never loses tail.
+const TRACE_PERSIST_MS = 1000;
 
 /** @type {Array<{t:string, kind:string, message:string, detail?:string, count?:number}>} */
 let log = [];
 /** @type {Array<{t:string, category:string, message:string, detail?:string}>} Verbose
  *  trace ring (in-memory only; included in {@link report} as a flight recorder). */
 let traceLog = [];
+/** @type {Array<{t:string, category:string, message:string, detail?:string}>} The
+ *  trace ring recovered from the previous page life (see {@link loadPersisted}). */
+let priorTraceLog = [];
+/** When {@link persistTrace} last wrote, for its throttle. */
+let lastTracePersist = 0;
 /** When true, {@link trace} also mirrors to the console (`?debug` / setDebug). */
 let debugEnabled = false;
 let installed = false;
@@ -52,6 +62,14 @@ function loadPersisted() {
   } catch {
     log = [];
   }
+  // The trace ring from the *previous* page life. Kept separate from this run's
+  // ring (below) so a reload doesn't make stale events look current, but still
+  // reportable — that's the whole point of persisting it.
+  try {
+    priorTraceLog = JSON.parse(localStorage.getItem(TRACE_KEY) || '[]') || [];
+  } catch {
+    priorTraceLog = [];
+  }
 }
 
 function persist() {
@@ -59,6 +77,25 @@ function persist() {
     localStorage.setItem(LS_KEY, JSON.stringify(log.slice(-MAX_ENTRIES)));
   } catch {
     // Storage full/unavailable: keep the in-memory log only.
+  }
+}
+
+/**
+ * Mirror the trace ring to storage so it survives a reload or a frame that
+ * never comes back. Throttled (see {@link TRACE_PERSIST_MS}); pass `force` to
+ * flush now — {@link error} does, so the events leading up to a crash are kept.
+ *
+ * @param {boolean} [force]
+ * @returns {void}
+ */
+function persistTrace(force) {
+  const now = Date.now();
+  if (!force && now - lastTracePersist < TRACE_PERSIST_MS) return;
+  lastTracePersist = now;
+  try {
+    localStorage.setItem(TRACE_KEY, JSON.stringify(traceLog.slice(-MAX_TRACE)));
+  } catch {
+    // Storage full/unavailable: keep the in-memory ring only.
   }
 }
 
@@ -147,6 +184,7 @@ export function trace(category, message, data) {
     detail: data === undefined ? undefined : traceStr(data),
   });
   if (traceLog.length > MAX_TRACE) traceLog.shift();
+  persistTrace();
   if (debugEnabled) console.debug(`[trace:${category}] ${message}`, data === undefined ? '' : data);
 }
 
@@ -174,6 +212,7 @@ export function isDebug() {
  */
 export function error(message, err) {
   add('error', String(message), detailOf(err));
+  persistTrace(true); // keep the events that led here, even if the loop dies now
   try {
     showBanner();
   } catch {
@@ -224,20 +263,30 @@ export function report() {
     const head = `[${e.t}] ${e.kind.toUpperCase()}${times} ${e.message}`;
     return e.detail ? `${head}\n    ${e.detail.replace(/\n/g, '\n    ')}` : head;
   });
-  const traceLines = traceLog.map((e) => {
+  const traceFmt = (e) => {
     const head = `[${e.t}] ${e.category} ${e.message}`;
     return e.detail ? `${head}  ${e.detail}` : head;
-  });
+  };
+  const traceLines = traceLog.map(traceFmt);
+  // Only worth showing when this run has barely started (a reload right after
+  // the problem); otherwise it's noise from a session already reported on.
+  const prior =
+    priorTraceLog.length && traceLog.length < MAX_TRACE
+      ? `\n\n--- trace from the previous page load ---\n${priorTraceLog.map(traceFmt).join('\n')}`
+      : '';
   return (
     `${env}\n\n--- log (most recent last) ---\n${lines.join('\n') || '(no events recorded)'}` +
-    `\n\n--- trace (recent last) ---\n${traceLines.join('\n') || '(none)'}`
+    `\n\n--- trace (recent last) ---\n${traceLines.join('\n') || '(none)'}${prior}`
   );
 }
 
-/** Clear the stored log. @returns {void} */
+/** Clear the stored log and both trace rings. @returns {void} */
 export function clear() {
   log = [];
+  traceLog = [];
+  priorTraceLog = [];
   persist();
+  persistTrace(true);
 }
 
 /**

@@ -1,4 +1,5 @@
 import { Config, Depth } from './config.js';
+import * as diag from './diag.js';
 import { FACES } from './faces.js';
 import { sfx } from './Sfx.js';
 import { David } from './world/David.js';
@@ -221,6 +222,7 @@ export class Brothers {
     this._applyPullOnlyTether();
     this.david.update();
     this.ken.update();
+    this._checkBrothersPresent();
 
     // Keep the glow ring centred on the movable ball (its scale is tweened).
     this._glow.setPosition(this.launcher.go.x, this.launcher.go.y);
@@ -479,6 +481,13 @@ export class Brothers {
     l.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     this.setExpressions('flight');
     this._hideIndicator();
+    diag.trace('play', 'launch', {
+      pull: Math.round(pull),
+      speed: +speed.toFixed(1),
+      angle: +Phaser.Math.RadToDeg(angle).toFixed(1),
+      pinPlaced: anchor.pinPlaced,
+      ...this.snapshot(),
+    });
     return pull;
   }
 
@@ -572,6 +581,93 @@ export class Brothers {
   }
 
   /**
+   * Compact state of one brother for the diagnostics log — everything we'd want
+   * to know about a ball that "disappeared": where it is, whether it's drawable,
+   * whether it still has a body, and what mud/physics it carries.
+   *
+   * @param {import('./world/Brother.js').Brother} b
+   * @returns {object}
+   */
+  _snapOne(b) {
+    const body = b.go.body;
+    return {
+      x: Math.round(b.go.x),
+      y: Math.round(b.go.y),
+      r: Math.round(b.go.radius),
+      vis: b.go.visible,
+      active: b.go.active,
+      alpha: +b.go.alpha.toFixed(2),
+      body: !!body,
+      static: body ? body.isStatic : null,
+      speed: body ? +body.speed.toFixed(2) : null,
+      fa: body ? +body.frictionAir.toFixed(4) : null,
+      mass: body ? +body.mass.toFixed(2) : null,
+      muddy: b.isMuddy,
+      sticky: b.isSticky,
+      turns: b.mudTurnsLeft,
+    };
+  }
+
+  /**
+   * Both brothers, their roles, and the camera — the state worth attaching to
+   * any trace about a turn, a launch, or a Lab edit. Public so the scene can
+   * fold it into its own traces rather than reaching into the brothers itself.
+   *
+   * @returns {object}
+   */
+  snapshot() {
+    const cam = this.scene.cameras.main;
+    return {
+      david: this._snapOne(this.david),
+      ken: this._snapOne(this.ken),
+      launcher: this.launcher?.def.name,
+      anchor: this.anchor?.def.name,
+      cam: { x: Math.round(cam.scrollX), y: Math.round(cam.scrollY), zoom: +cam.zoom.toFixed(3) },
+    };
+  }
+
+  /**
+   * Watchdog for the "a brother vanished" class of bug: every frame, check that
+   * both balls are still drawable, still have a body, and still hold finite
+   * coordinates somewhere near the arena. A brother can leave the *view* legally
+   * (the camera pans), so this tests the model, not visibility on screen.
+   *
+   * Reports once per scene — this runs per frame, and a stuck NaN would other-
+   * wise flood the log and the banner. The snapshot in the entry is the evidence
+   * we were missing when this went unreproducible.
+   *
+   * @returns {void}
+   */
+  _checkBrothersPresent() {
+    if (this._vanishReported) return;
+    const arena = this.david._arena;
+    // Generous: a legitimately fast ball can briefly overshoot before _contain
+    // clamps it, so only a wild value (or a non-finite one) counts as gone.
+    const slack = Math.max(arena.width, arena.height);
+    for (const b of [this.david, this.ken]) {
+      const missing =
+        !b.go.body ||
+        !b.go.active ||
+        !b.go.visible ||
+        b.go.alpha === 0 ||
+        !Number.isFinite(b.go.x) ||
+        !Number.isFinite(b.go.y) ||
+        b.go.x < -slack ||
+        b.go.x > arena.width + slack ||
+        b.go.y < -slack ||
+        b.go.y > arena.height + slack;
+      if (!missing) continue;
+      this._vanishReported = true;
+      diag.trace('brothers', 'vanished', this.snapshot());
+      diag.error(
+        `brothers: ${b.def.name} is gone (no body, hidden, or off the arena)`,
+        new Error(JSON.stringify(this.snapshot()))
+      );
+      return;
+    }
+  }
+
+  /**
    * At settle, EVERY muddy brother — loose or sticky — shimmies to try to shake
    * the mud off, then `onDone` fires once all shimmies finish (so the caller can
    * run the win/lose animation *after* the shimmy). Both brothers are checked
@@ -588,6 +684,7 @@ export class Brothers {
    */
   shimmyMud(onDone) {
     const muddy = [this.david, this.ken].filter((b) => b.isMuddy);
+    diag.trace('play', 'settle', { shimmying: muddy.map((b) => b.def.name), ...this.snapshot() });
     if (!muddy.length) {
       onDone();
       return;
@@ -613,6 +710,9 @@ export class Brothers {
           b._mudShimmyX = 0;
           b.shedMudTurn(); // count down / shed loose mud now (sticky stays) → look may update
           b.setFace(prevFace);
+          // The turn can only advance once every shimmy lands here; if one never
+          // does, the game sits in RESOLVING forever, so record each arrival.
+          diag.trace('play', 'shimmy done', { who: b.def.name, pending: pending - 1, turns: b.mudTurnsLeft });
           if (--pending === 0) onDone(); // decide the turn once all shimmies finish
         },
       });

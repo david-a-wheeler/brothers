@@ -207,6 +207,17 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(0, () => this._onResize());
     this._refreshHud();
     diag.breadcrumb('game: create', currentLevelKey());
+    // The starting conditions of the level, so any later trace can be read
+    // against where things began (and which level settings were in force).
+    diag.trace('play', 'level start', {
+      level: currentLevelKey(),
+      name: this.level.name,
+      moves: this.movesLeft,
+      arena: this.level.arena,
+      pinEnabled: this.level.pinEnabled,
+      pinResetOn: this.level.pinResetOn,
+      ...this.brothers.snapshot(),
+    });
     this._maybeShowIntro(); // first look at this level? show its intro (once)
   }
 
@@ -1364,9 +1375,24 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _applyParam(param, obj) {
+    // A Lab edit reaches straight into live game state, so it's a prime suspect
+    // whenever something goes strange right afterwards. Record the whole world
+    // on both sides of the write: the "after" of one edit and the "before" of
+    // the next also bracket whatever the *game* did in between.
+    const key = param.label ?? param.key;
+    const snap = (tag) =>
+      diag.trace('lab', `${tag} ${key}`, {
+        value: obj[param.key],
+        phase: this.phase,
+        status: this.status,
+        ...(this.brothers ? this.brothers.snapshot() : {}),
+      });
+
+    snap('before');
     param.onChange?.(obj);
     this._devRows.forEach((r) => this._setDevRowText(r));
     this.brothers?._applyDavidPhysique(); // apply if this was a David size/mass row
+    snap('after');
   }
 
   /**
@@ -2569,6 +2595,29 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   update(_time, delta) {
+    // An exception here would escape into Phaser's step and kill the render
+    // loop: the game freezes with no banner and no clue why. Catch it, report it
+    // once (the log is mirrored to localStorage, so it survives even if nothing
+    // draws again), and keep stepping — a wrong frame beats a dead one, and it
+    // keeps the "Report a problem" menu reachable.
+    try {
+      this._update(delta);
+    } catch (e) {
+      if (!this._updateFailed) {
+        this._updateFailed = true;
+        diag.trace('play', 'update threw', this.brothers ? this.brothers.snapshot() : {});
+        diag.error('game: update', e);
+      }
+    }
+  }
+
+  /**
+   * The real per-frame work, called by {@link update} inside its crash guard.
+   *
+   * @param {number} delta  Milliseconds since the last frame.
+   * @returns {void}
+   */
+  _update(delta) {
     // Advance Matter in fixed sub-steps so fast bodies can't tunnel through thin
     // obstacles (autoUpdate is off; see create() and Config.physics). The frame
     // delta is clamped so a stall doesn't produce huge, unstable steps. Stepping
@@ -2668,6 +2717,11 @@ export class GameScene extends Phaser.Scene {
    */
   _decideTurn() {
     const reached = this.world.firstReached(this.brothers);
+    diag.trace('play', 'turn decided', {
+      reached: reached?.def?.name ?? reached?.def?.type ?? null,
+      movesLeft: this.movesLeft,
+      ...this.brothers.snapshot(),
+    });
     if (reached) {
       // Record best score (most turns left) if we beat it.
       // Note that "0" is a real best score result, distinct from
@@ -2707,6 +2761,13 @@ export class GameScene extends Phaser.Scene {
    * @returns {void}
    */
   _endGame(message, face, color, won) {
+    diag.trace('play', 'level end', {
+      won,
+      message,
+      movesLeft: this.movesLeft,
+      level: currentLevelKey(),
+      ...this.brothers.snapshot(),
+    });
     this.status = 'ENDED';
     this.world.notifyLevelEnd(); // freeze bombs so they can't trigger during the banner
     this.brothers.onLevelEnd(); // turn off the "your move" cues (glow, refusal marks)

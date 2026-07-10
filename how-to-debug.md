@@ -97,12 +97,51 @@ import * as diag from '../diag.js';
 diag.trace('input', `${this.role} row tap suppressed (drag)`);
 ```
 
-Keep the `category` a short area tag so traces group cleanly. Today the only
-category in use is `'input'`, wired through the pointer path: `Overlay`
-press/release and drag-shield up/down, and `Menu.wireTap` (which traces both a
-tap that **fired** and one that was **suppressed** — the exact guard line where
-the "menu taps swallowed" bug lived). Instrument new "silent" surfaces the same
-way as you find them.
+Keep the `category` a short area tag so traces group cleanly. Instrument new
+"silent" surfaces the same way as you find them. The categories in use:
+
+| Category | What it records |
+| --- | --- |
+| `input` | `Overlay` press/release, drag-shield up/down, and `Menu.wireTap` — which traces both a tap that **fired** and one that was **suppressed** (the exact guard line where the "menu taps swallowed" bug lived) |
+| `play` | `level start`, `launch`, `settle`, `shimmy done`, `turn decided`, `level end`, `update threw` |
+| `mud` | `pick up`, `shed`, `set turns` |
+| `lab` | `before`/`after` **each** Lab parameter edit |
+| `brothers` | `vanished` — the watchdog below |
+
+Most `play` and `lab` traces carry `Brothers.snapshot()`: both brothers'
+position, radius, visibility, alpha, body presence, static flag, speed,
+`frictionAir`, mass and mud state, plus the roles and the camera. That's the
+evidence you want for "a ball went missing" or "the turn never advanced", and
+the `after` of one Lab edit plus the `before` of the next bracket whatever the
+*game* did in between.
+
+### The trace ring is persisted too
+
+`trace()` mirrors the ring to `localStorage` (`brothers:trace`), throttled to
+about once a second, and `error()` flushes it immediately — so the events leading
+up to a crash survive even if the loop never runs again. On the next page load
+the recovered ring is reported separately, under **"trace from the previous page
+load"**, so stale events can't be mistaken for current ones. (It only appears
+while this run's ring is still short — i.e. right after a reload, when it's
+actually relevant.) `__diag.clear()` wipes both rings and the log.
+
+### Watchdogs
+
+Two checks report *once* (per scene / per run) rather than per frame, so a stuck
+value can't flood the log or the banner:
+
+- **`Brothers._checkBrothersPresent()`** (every frame) — a brother with no body,
+  hidden, fully transparent, at non-finite coordinates, or flung an arena's width
+  outside the world is reported with a full snapshot. It tests the *model*, not
+  what's on screen: a brother may legitimately leave the view when the camera pans.
+- **`Movable._recomputeFriction()`** — a non-finite `frictionAir` is refused
+  (the old value stays) and reported. Matter integrates such a body straight to
+  `NaN`, which teleports it out of the world; catching it at the write is far
+  easier to read than the wreckage several frames later.
+
+`GameScene.update()` is likewise wrapped: an exception is reported once and the
+loop keeps stepping. A wrong frame beats a dead one, and it keeps the menu's
+"Report a problem" reachable.
 
 ### Graceful degradation with `guard()`
 
