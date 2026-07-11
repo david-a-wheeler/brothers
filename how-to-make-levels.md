@@ -81,7 +81,9 @@ browser. (Section 2 explains why a web server is needed at all.)
   and press Enter. If Python isn't installed, Windows opens the **Microsoft
   Store** page for Python. Click **Get** / **Install**. This route is worth
   preferring because you can *see* the download is coming from Microsoft's own
-  store, rather than from a website you'd have to trust. When it finishes, close
+  store, rather than from a website you'd have to trust. It will ask some
+  questions, in general say yes, though there's no need to read the
+  online help (so say "n" for that). When it finishes, close
   the command prompt, open a new one, and type `python` again. You should see
   something like `Python 3.12.0` and a `>>>` prompt. Type `exit()` and press
   Enter to leave it.
