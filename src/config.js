@@ -303,6 +303,22 @@ export const Config = {
   },
 
   /**
+   * Sound. Everything in src/Sfx.js is synthesised except the brother-on-brother
+   * "oof", which plays a random grunt from a recorded voice sprite (see
+   * ASSETS.md). Levels are relative to the master bus, which is already at 0.5.
+   */
+  audio: {
+    oofGain: 0.9, // level of the grunt, 0..1
+    /**
+     * Ignore a second oof within this many ms of the last. The click this cue
+     * replaced was 60 ms, so overlapping ones were harmless; a grunt runs
+     * 300-700 ms, and a pair that re-contacts on consecutive frames would stack
+     * voices and sound broken. Raise it if a single bump ever grunts twice.
+     */
+    oofRetriggerMs: 120,
+  },
+
+  /**
    * Zone animation feel. Idle loops keep the goal/teleporter looking "alive";
    * the one-shot bursts fire on win and on teleport. All subtle by design so
    * the motion never competes with aiming. Tune freely.

@@ -2658,7 +2658,7 @@ export class GameScene extends Phaser.Scene {
         // while AIMING, where it would unfreeze the immobile anchor.
         if (aBro && bBro) {
           if (moving) {
-            sfx.hit(); // billiard-style click on every brother-on-brother contact
+            sfx.oof(); // one of the brothers grunts — a random grunt each time
             this.brothers.snap();
             this._kickoff(); // the launcher reached the anchor: hazards go live
           }
