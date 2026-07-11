@@ -45,3 +45,5 @@ on every frame.
 
 The music loop when it restarts has a perceptible hiccup.
 Eliminate the hiccup.
+
+## External pack sets (just supply URL)
