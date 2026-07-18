@@ -1,5 +1,6 @@
 import { Config, Depth } from '../config.js';
 import * as diag from '../diag.js';
+import { sfx } from '../Sfx.js';
 import { activePackName } from '../levels.js';
 import { Brother } from './Brother.js';
 import { Movable } from './Movable.js';
@@ -267,6 +268,7 @@ export class Item extends Movable {
     const C = Config.item;
     const d = this.def;
     spawnRing(this.scene, d.x, d.y, Math.max(d.width, d.height) / 2, C.collectRingColor);
+    sfx.collect();
     diag.trace('item', 'collected', { who: d.name ?? 'Item' });
     this.scene.tweens.add({
       targets: this.view,

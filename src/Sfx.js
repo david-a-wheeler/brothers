@@ -445,6 +445,23 @@ export class Sfx {
   }
 
   /**
+   * Collect: a bright two-note rising chime (B5→E6) with a faint sparkle an
+   * octave up — the classic "coin" shape, played when a brother collects an
+   * Item. Deliberately just two fast notes so it stays clearly smaller than
+   * the four-note {@link win} flourish, and tonal so it's nothing like the
+   * noisy ball {@link hit}.
+   *
+   * @returns {void}
+   */
+  collect() {
+    if (!this._ctx) return;
+    const t = this._ctx.currentTime;
+    this._blip({ freq: 987.77, type: 'triangle', dur: 0.09, gain: 0.3, at: t });
+    this._blip({ freq: 1318.5, type: 'triangle', dur: 0.32, gain: 0.3, at: t + 0.08 });
+    this._blip({ freq: 2637, type: 'sine', dur: 0.28, gain: 0.09, at: t + 0.08 });
+  }
+
+  /**
    * Success: a quick rising major arpeggio (C5–E5–G5–C6) with a sparkle on
    * top — a bright, triumphant flourish.
    *

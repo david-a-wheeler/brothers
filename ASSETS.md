@@ -16,6 +16,7 @@ code. The one exception is the recorded "oof" voice pack, documented under
 | `oof`  | Brother hits his brother        | **Not synthesised** — a random grunt from the recorded voice sprite (below) |
 | `band` | While aiming, when draw changes | Looping noise → two resonant bandpasses, gain gated by stretch speed (friction creak; silent when held) |
 | `teleport` | A teleport occurs           | Quick upward pitch sweep ("vwoop") — triangle + sine an octave below |
+| `collect` | Brother collects an Item     | Two quick rising triangle notes (B5→E6) + a faint sparkle an octave up |
 | `win`  | Level cleared                   | Rising C-major arpeggio (C5–E5–G5–C6) + sparkle                |
 | `lose` | Out of moves                    | Two downward-bending lowpass tones ("awww")                    |
 
