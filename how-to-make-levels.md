@@ -291,8 +291,8 @@ To place something: click the **Insert Point** tool (or **Insert Rectangle**,
 **Insert Ellipse**, **Insert Polygon**) in the toolbar, click on the map, then in
 the **Properties** panel set its **Class** using the dropdown.
 
-Most things are **points**: you just say *where*. Walls, mud, and cleaners are
-**shapes**, so you draw their actual size.
+Most things are **points**: you just say *where*. Walls, mud, cleaners, and
+items are **shapes**, so you draw their actual size.
 
 ### The brothers: `David` and `Ken`
 
@@ -392,6 +392,27 @@ Draw as a **rectangle**, **ellipse**, or **polygon**.
 
 > **Do not overlap a Mud with a Cleaner.** What happens is undefined, and not in
 > an interesting way.
+
+### `Item`: a picture the brothers can hit
+
+A picture of your choosing, drawn from an image file. By default a brother that
+touches it **collects** it: it vanishes with a gold ring (and comes back when
+the level is restarted). Bombs never trigger items, and an item never blocks
+anyone — the brothers roll straight over it.
+
+Put the image file in your pack's `assets/` directory (for example
+`packs/Base/assets/star.png`), then draw the Item as a **rectangle** — the
+image is stretched to fill it. (A **point** works too and uses the image's own
+size.) PNG with transparency is the format to reach for: the image's
+**transparent pixels never count as part of the hit box**, so a brother can
+roll through the gaps between a star's points without collecting it.
+
+| Property | What it does | Default |
+| --- | --- | --- |
+| `image` | The image's filename inside the pack's `assets/` directory, e.g. `star.png`. Just the filename — no folders | (none — a loud checkerboard shows if it's missing) |
+| `transparency` | Fades the picture on screen, `0` (solid) to `100` (invisible). Display only — it never changes the hit box | `0` |
+| `brotherCenterHit` | Unset: a brother's round body touching a solid pixel is a hit. Set: his **centre** must be over a solid pixel — a stricter, thread-the-needle rule | `false` |
+| `onHit` | What a hit does: `collect` (vanish with a gold ring) or `none` (just a decoration) | `collect` |
 
 ---
 

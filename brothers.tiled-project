@@ -336,6 +336,44 @@
                 "property",
                 "object"
             ]
+        },
+        {
+            "color": "#fff3c969",
+            "drawFill": true,
+            "id": 12,
+            "members": [
+                {
+                    "name": "info",
+                    "type": "string",
+                    "value": "A picture the brothers can hit (draw it as a rectangle - the image is stretched to fill it; a point uses the image's own size). image is a filename inside this pack's assets/ directory (e.g. 'star.png'); its transparent pixels NEVER count as part of the hit box, so holes and gaps can be rolled through. transparency (0-100) only fades the picture on screen - it never changes the hit box. brotherCenterHit: unset (default), a brother's round body touching a solid pixel is a hit; set, his CENTRE must be over a solid pixel. onHit is what a hit does: 'collect' (default - the item vanishes with a gold ring, until the level is restarted) or 'none' (just a decoration). Bombs never trigger items. Place any number."
+                },
+                {
+                    "name": "image",
+                    "type": "string",
+                    "value": ""
+                },
+                {
+                    "name": "transparency",
+                    "type": "float",
+                    "value": 0
+                },
+                {
+                    "name": "brotherCenterHit",
+                    "type": "bool",
+                    "value": false
+                },
+                {
+                    "name": "onHit",
+                    "type": "string",
+                    "value": "collect"
+                }
+            ],
+            "name": "Item",
+            "type": "class",
+            "useAs": [
+                "property",
+                "object"
+            ]
         }
     ]
 }

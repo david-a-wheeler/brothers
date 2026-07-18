@@ -21,6 +21,7 @@ import {
 import { introSeen, markIntroSeen, clearIntroSeen } from '../intros.js';
 import * as scores from '../scores.js';
 import { World } from '../world/World.js';
+import { KINDS } from '../world/registry.js';
 import { labOpen, setLabOpen, setSkipTitle, setTestMode, testMode } from '../prefs.js';
 import * as diag from '../diag.js';
 import { Modal } from '../ui/Modal.js';
@@ -97,6 +98,19 @@ export class GameScene extends Phaser.Scene {
       if (!this.textures.exists(key)) {
         this.load.svg(key, `assets/icons/${name}.svg`, { width: 64, height: 64 });
       }
+    }
+
+    // Level assets: any world-object class may declare `static preloadAssets`
+    // to queue external files for its defs (today: Item images). The level
+    // model is already fetched by main.js before the game boots — and by
+    // selectLevel before any scene.restart — so it's readable here, and this
+    // re-runs on every restart/level switch (each class guards for idempotence).
+    const level = currentLevel();
+    for (const [kind, Cls] of Object.entries(KINDS)) {
+      Cls.preloadAssets?.(
+        this,
+        level.objects.filter((d) => d.kind === kind)
+      );
     }
   }
 

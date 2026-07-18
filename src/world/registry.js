@@ -2,6 +2,7 @@ import { Bomb } from './Bomb.js';
 import { Cleaner } from './Cleaner.js';
 import { David } from './David.js';
 import { Goal } from './Goal.js';
+import { Item } from './Item.js';
 import { Ken } from './Ken.js';
 import { Mud } from './Mud.js';
 import { Teleporter } from './Teleporter.js';
@@ -18,7 +19,7 @@ import { Wall } from './Wall.js';
  *
  * Adding a type is two steps: write the subclass file, then add it here.
  */
-const CLASSES = [David, Ken, Goal, Wall, Teleporter, TeleporterTarget, Bomb, Mud, Cleaner];
+const CLASSES = [David, Ken, Goal, Wall, Teleporter, TeleporterTarget, Bomb, Mud, Cleaner, Item];
 
 /** @type {Record<string, typeof import('./Entity.js').Entity>} kind → class. */
 export const KINDS = Object.fromEntries(CLASSES.map((C) => [C.name, C]));

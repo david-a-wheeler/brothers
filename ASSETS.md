@@ -67,6 +67,16 @@ The only modification is setting the fill color to white so it reads on the dark
 HUD ribbon. The MIT license text and copyright are preserved in
 `assets/icons/LICENSE`.
 
+## Pack images (Item pictures)
+
+Level packs may reference images for Item objects, stored in the pack's
+`assets/` directory (`packs/<Pack>/assets/`, the directory the pack's Tiled
+maps resolve relative paths against).
+
+| File | Source | License |
+| ---- | ------ | ------- |
+| `packs/Base/assets/star.png` | Self-made for this project (a gold five-pointed star drawn by a small PIL script; no third-party artwork) | This project's own license |
+
 ## Other assets
 
 - **Graphics:** Remaining visuals (balls, walls' brick pattern, target, grid,

@@ -1,4 +1,4 @@
-import { Config } from '../config.js';
+import { Config, Depth } from '../config.js';
 import { Entity } from './Entity.js';
 import { ensurePortalSpark } from './effects.js';
 
@@ -55,7 +55,7 @@ export class TeleporterTarget extends Entity {
         accelerationX: { onEmit: (p) => -p.velocityX * exitDrag },
         accelerationY: { onEmit: (p) => -p.velocityY * exitDrag },
       })
-      .setDepth(2);
+      .setDepth(Depth.bandBelow); // over region fills and any Item art, under the balls
   }
 
   /** @returns {Phaser.GameObjects.Rectangle} The exit marker receives hover/press. */

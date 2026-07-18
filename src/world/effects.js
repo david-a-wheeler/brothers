@@ -1,4 +1,4 @@
-import { Config } from '../config.js';
+import { Config, Depth } from '../config.js';
 
 /**
  * Generate the small white spark texture used by teleporter motes (once per
@@ -47,7 +47,7 @@ export function ensureBubble(scene) {
  * @returns {void}
  */
 export function spawnRing(scene, x, y, radius, color) {
-  const ring = scene.add.circle(x, y, radius).setStrokeStyle(3, color, 0.9).setDepth(5);
+  const ring = scene.add.circle(x, y, radius).setStrokeStyle(3, color, 0.9).setDepth(Depth.glow);
   scene.assignToWorld?.(ring); // world effect: keep it off the fixed HUD camera
   scene.tweens.add({
     targets: ring,
@@ -86,7 +86,7 @@ export function drawBand(g, x1, y1, x2, y2) {
  * @returns {Phaser.GameObjects.Arc}
  */
 export function pulsingGlow(scene, x, y, radius) {
-  const ring = scene.add.circle(x, y, radius, 0xffffff, 0).setDepth(5);
+  const ring = scene.add.circle(x, y, radius, 0xffffff, 0).setDepth(Depth.glow);
   ring.setStrokeStyle(3, 0xfff2a8, 0.9);
   const pulse = scene.tweens.add({
     targets: ring,
@@ -140,7 +140,7 @@ export function directionArrow(scene, { x, y, angleDeg, speed, offset }) {
   const arrow = scene.add
     .container(x, y, [shaft, head])
     .setRotation(Phaser.Math.DegToRad(angleDeg))
-    .setDepth(5); // above world objects; translucency still reveals them
+    .setDepth(Depth.glow); // above world objects; translucency still reveals them
   scene.assignToWorld?.(arrow); // world-space cue, never on the fixed HUD camera
 
   // scaleY 1 -> -1 under Sine.InOut + yoyo traces a cosine, so the blade appears

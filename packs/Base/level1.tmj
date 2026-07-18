@@ -107,6 +107,24 @@
                  "width":160,
                  "x":300,
                  "y":239
+                },
+                {
+                 "height":96,
+                 "id":9,
+                 "name":"star",
+                 "opacity":1,
+                 "properties":[
+                        {
+                         "name":"image",
+                         "type":"string",
+                         "value":"star.png"
+                        }],
+                 "rotation":0,
+                 "type":"Item",
+                 "visible":true,
+                 "width":96,
+                 "x":422,
+                 "y":332
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -115,7 +133,7 @@
          "y":0
         }],
  "nextlayerid":2,
- "nextobjectid":9,
+ "nextobjectid":10,
  "orientation":"orthogonal",
  "properties":[
         {

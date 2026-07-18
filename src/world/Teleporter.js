@@ -1,4 +1,4 @@
-import { Config } from '../config.js';
+import { Config, Depth } from '../config.js';
 import { sfx } from '../Sfx.js';
 import { Entity } from './Entity.js';
 import { TeleporterTarget } from './TeleporterTarget.js';
@@ -85,7 +85,7 @@ export class Teleporter extends Entity {
         speedX: { onEmit: (p) => -offset(p).x * T.pullSpeed },
         speedY: { onEmit: (p) => -offset(p).y * T.pullSpeed },
       })
-      .setDepth(2);
+      .setDepth(Depth.bandBelow); // over region fills and any Item art, under the balls
 
     this._circleBody(x, y, sr, true);
   }

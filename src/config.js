@@ -27,14 +27,15 @@ const UI_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 export const Depth = {
   region: 0, // Mud/Cleaner area fills; walls sit here too (Phaser's default 0)
   regionFx: 1, // a region's animation (mud blobs, cleaner bubbles), over its own fill
-  bandBelow: 2, // tether when centred: behind the balls
-  ball: 3, // a brother's body
-  mud: 4, // mud splat on a muddy brother (over the body, under the face)
-  glow: 5, // the "this one moves" ring on the launcher
-  face: 6, // a brother's emoji face
-  feature: 7, // David's glasses / Ken's beard, over the face
-  bandAbove: 8, // tether when a pin is placed: over the whole brother
-  pin: 9, // the pin dot(s), above the lifted band
+  item: 2, // an Item's image: over the floor/regions, under the balls that roll onto it
+  bandBelow: 3, // tether when centred: behind the balls
+  ball: 4, // a brother's body
+  mud: 5, // mud splat on a muddy brother (over the body, under the face)
+  glow: 6, // the "this one moves" ring on the launcher
+  face: 7, // a brother's emoji face
+  feature: 8, // David's glasses / Ken's beard, over the face
+  bandAbove: 9, // tether when a pin is placed: over the whole brother
+  pin: 10, // the pin dot(s), above the lifted band
   refusal: 20, // the "can't launch here" X, on top of everything
 };
 
@@ -214,6 +215,23 @@ export const Config = {
     // the arena in ~1s — a deliberate, dodgeable menace. Expect to tune this.
     speed: 15,
     restitution: 1, // perfectly elastic: bounces preserve speed
+  },
+
+  /**
+   * Default Item settings — a level-placed picture (an external image in the
+   * pack's `assets/` directory) that a brother can hit; see world/Item.js. The
+   * image's transparent pixels never count as part of the hit box, which is
+   * what the alpha threshold below defines.
+   */
+  item: {
+    // A texture pixel at/above this alpha (0-255) counts as solid for hit
+    // testing. 64 (~25%) keeps anti-aliased feathered edges from ghost hits.
+    alphaThreshold: 64,
+    // Body-touch mode samples the brother's rim at this fraction of his radius;
+    // slightly inset so a merely-tangential graze still lands on a sample.
+    sampleRimInset: 0.95,
+    collectRingColor: 0xf3c969, // matches the tether's gold
+    collectDuration: 300, // ms for the collected item's grow-and-fade out
   },
 
   /**
