@@ -232,6 +232,10 @@ export const Config = {
     sampleRimInset: 0.95,
     collectRingColor: 0xf3c969, // matches the tether's gold
     collectDuration: 300, // ms for the collected item's grow-and-fade out
+    // Physics for items with a body (Tiled `body: solid|pushable`); the shape
+    // is the convex hull of the image's solid pixels.
+    frictionAir: 0.025, // matches the brothers' passive slowdown, so a push settles
+    restitution: 0.8, // bounce off an item, like off a brother
   },
 
   /**

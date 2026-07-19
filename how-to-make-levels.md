@@ -397,22 +397,29 @@ Draw as a **rectangle**, **ellipse**, or **polygon**.
 
 A picture of your choosing, drawn from an image file. By default a brother that
 touches it **collects** it: it vanishes with a gold ring (and comes back when
-the level is restarted). Bombs never trigger items, and an item never blocks
-anyone — the brothers roll straight over it.
+the level is restarted). Bombs never trigger an item's `onHit` — though they do
+bounce off or shove one that has a `body` (below).
 
 Put the image file in your pack's `assets/` directory (for example
 `packs/Base/assets/star.png`), then draw the Item as a **rectangle** — the
 image is stretched to fill it. (A **point** works too and uses the image's own
-size.) PNG with transparency is the format to reach for: the image's
-**transparent pixels never count as part of the hit box**, so a brother can
-roll through the gaps between a star's points without collecting it.
+size.) PNG with transparency is the format to reach for: with the default
+`body: none`, the image's **transparent pixels never count as part of the hit
+box**, so a brother can roll through the gaps between a star's points without
+collecting it.
 
 | Property | What it does | Default |
 | --- | --- | --- |
 | `image` | The image's filename inside the pack's `assets/` directory, e.g. `star.png`. Just the filename — no folders | (none — a loud checkerboard shows if it's missing) |
+| `body` | What the item is physically. `none`: nothing bounces off it, and only the solid pixels register a hit. `solid`: fixed in place; brothers and bombs **bounce off** the outline of the solid pixels. `pushable`: like `solid`, but it gets **shoved around**, slides to a stop, and picks up mud like a brother | `none` |
 | `transparency` | Fades the picture on screen, `0` (solid) to `100` (invisible). Display only — it never changes the hit box | `0` |
-| `brotherCenterHit` | Unset: a brother's round body touching a solid pixel is a hit. Set: his **centre** must be over a solid pixel — a stricter, thread-the-needle rule | `false` |
-| `onHit` | What a hit does: `collect` (vanish with a gold ring) or `none` (just a decoration) | `collect` |
+| `brotherCenterHit` | Only with `body: none`. Unset: a brother's round body touching a solid pixel is a hit. Set: his **centre** must be over a solid pixel — a stricter, thread-the-needle rule | `false` |
+| `onHit` | What a hit does: `collect` (vanish with a gold ring) or `none` (just a decoration / pure obstacle) | `collect` |
+
+With a `body`, hits happen where the physics happens: at the **outline** (the
+convex hull) of the solid pixels. That outline spans concave gaps — a brother
+bounces off the notch between a star's points rather than rolling into it — so
+the thread-the-needle tricks above only apply to `body: none` items.
 
 ---
 

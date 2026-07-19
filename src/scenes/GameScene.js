@@ -2697,6 +2697,9 @@ export class GameScene extends Phaser.Scene {
             sfx.hit(); // brother off a wall or the arena edge — same click, no debounce
             this.brothers.snap(); // hitting a solid also frees the anchor
             this._kickoff(); // shot has connected with the world: hazards go live
+            // A solid/pushable Item reacts to being struck (e.g. collects);
+            // a wall's inert default handler ignores this.
+            other?.onActorContact(bro);
           }
           continue;
         }
@@ -2727,8 +2730,11 @@ export class GameScene extends Phaser.Scene {
         if (otherBody.isSensor) continue; // triggers (teleporter/goal): pass through
         const oe = otherBody.entity;
         if (oe instanceof Brother || oe instanceof Hazard) continue; // handled elsewhere / left to physics
+        // A dynamic body (a pushable Item) is not a wall: the physics step
+        // shoves it aside, and reflecting the hazard too would double-bounce.
+        if (!otherBody.isStatic) continue;
         if (!pair.collision) continue; // no normal to reflect off (defensive)
-        hazard.noteBounce(pair.collision.normal, otherBody); // wall or arena edge
+        hazard.noteBounce(pair.collision.normal, otherBody); // wall, arena edge, or solid Item
       }
     };
     this.matter.world.on('collisionstart', captureHazardBounce);

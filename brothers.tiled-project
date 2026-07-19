@@ -345,12 +345,17 @@
                 {
                     "name": "info",
                     "type": "string",
-                    "value": "A picture the brothers can hit (draw it as a rectangle - the image is stretched to fill it; a point uses the image's own size). image is a filename inside this pack's assets/ directory (e.g. 'star.png'); its transparent pixels NEVER count as part of the hit box, so holes and gaps can be rolled through. transparency (0-100) only fades the picture on screen - it never changes the hit box. brotherCenterHit: unset (default), a brother's round body touching a solid pixel is a hit; set, his CENTRE must be over a solid pixel. onHit is what a hit does: 'collect' (default - the item vanishes with a gold ring, until the level is restarted) or 'none' (just a decoration). Bombs never trigger items. Place any number."
+                    "value": "A picture the brothers can hit (draw it as a rectangle - the image is stretched to fill it; a point uses the image's own size). image is a filename inside this pack's assets/ directory (e.g. 'star.png'). body is what the item is physically: 'none' (default - nothing bounces off it, and its hit box is the image's solid pixels only, so holes and gaps can be rolled through), 'solid' (fixed in place; brothers and bombs bounce off the outline of the solid pixels), or 'pushable' (like solid, but it gets shoved around, slides to a stop, and picks up mud). With a body, hits happen at that outline, which spans concave gaps. transparency (0-100) only fades the picture on screen - it never changes the hit box. brotherCenterHit (body 'none' only): unset (default), a brother's round body touching a solid pixel is a hit; set, his CENTRE must be over a solid pixel. onHit is what a hit does: 'collect' (default - the item vanishes with a gold ring, until the level is restarted) or 'none'. Bombs bounce off or shove a body but never trigger onHit. Place any number."
                 },
                 {
                     "name": "image",
                     "type": "string",
                     "value": ""
+                },
+                {
+                    "name": "body",
+                    "type": "string",
+                    "value": "none"
                 },
                 {
                     "name": "transparency",
