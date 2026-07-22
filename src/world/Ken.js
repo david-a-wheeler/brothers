@@ -2,8 +2,8 @@ import { Depth } from '../config.js';
 import { Brother } from './Brother.js';
 
 /**
- * Ken: the red brother, the baseline size (radius/mass multipliers default to
- * 1), who sports a small chin beard on every expression.
+ * Ken: the red brother, the baseline size
+ * (radius/mass multipliers default to 1).
  */
 export class Ken extends Brother {
   get _fillColor() {
@@ -24,26 +24,26 @@ export class Ken extends Brother {
    *
    * @returns {Phaser.GameObjects.Graphics}
    */
-  _createFeature() {
-    const g = this.scene.add.graphics().setDepth(Depth.feature);
-    g.fillStyle(0x000000, 0.85); // near-solid black: strong contrast on red, but not harsh
-    // A thin crescent centred on his face: the curved bottom follows the face
-    // edge (so it always connects), and the top edge dips down in the middle so
-    // the centre is thin and reveals more of the face. `R` ~ the emoji face
-    // radius; `a` is where it meets the face on each side; `dip` is how far the
-    // centre of the top drops (larger = thinner centre).
-    const R = 15;
-    const a = Phaser.Math.DegToRad(32);
-    const dip = 12;
-    g.beginPath();
-    g.arc(0, 0, R, a, Math.PI - a, false); // curved bottom, along the face edge
-    g.lineTo(0, dip); // top edge dips down in the centre...
-    g.closePath(); // ...back up to the far side -> a thin crescent
-    g.fillPath();
-    return g;
-  }
-
-  _updateFeature() {
-    this.feature.setPosition(this.go.x, this.go.y); // centred on his face
-  }
+  // _createFeature() {
+  //   const g = this.scene.add.graphics().setDepth(Depth.feature);
+  //   g.fillStyle(0x000000, 0.85); // near-solid black: strong contrast on red, but not harsh
+  //   // A thin crescent centred on his face: the curved bottom follows the face
+  //   // edge (so it always connects), and the top edge dips down in the middle so
+  //   // the centre is thin and reveals more of the face. `R` ~ the emoji face
+  //   // radius; `a` is where it meets the face on each side; `dip` is how far the
+  //   // centre of the top drops (larger = thinner centre).
+  //   const R = 15;
+  //   const a = Phaser.Math.DegToRad(32);
+  //   const dip = 12;
+  //   g.beginPath();
+  //   g.arc(0, 0, R, a, Math.PI - a, false); // curved bottom, along the face edge
+  //   g.lineTo(0, dip); // top edge dips down in the centre...
+  //   g.closePath(); // ...back up to the far side -> a thin crescent
+  //   g.fillPath();
+  //   return g;
+  // }
+  //
+  // _updateFeature() {
+  //   this.feature.setPosition(this.go.x, this.go.y); // centred on his face
+  // }
 }
