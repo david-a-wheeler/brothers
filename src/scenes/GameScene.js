@@ -378,6 +378,54 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Give whichever overlay currently owns input first crack at a gesture: the
+   * active modal (if any), else the menu (if open), else each modeless panel in
+   * turn. The lowest-level routing primitive: {@link _wireGesture} builds most
+   * pointer/wheel handlers on top of it, and `_wireInput`'s blur handler and
+   * `pointerdown` handler (which has work that must run before routing) call it
+   * directly. One priority order, defined and changed in exactly one place.
+   *
+   * @param {(o: import('../ui/Overlay.js').Overlay) => boolean|void} dispatch
+   *   Calls the right method on one overlay. A modal or the menu is always
+   *   considered to own the gesture once called; a panel owns it only if
+   *   `dispatch` returns true (it may decline, e.g. a press outside itself).
+   * @returns {boolean} true if some overlay owned the gesture.
+   */
+  _routeToOverlay(dispatch) {
+    if (this._activeModal) {
+      dispatch(this._activeModal);
+      return true;
+    }
+    if (this._menuOpen) {
+      dispatch(this.gameMenu.menu);
+      return true;
+    }
+    for (const panel of this._panels) if (dispatch(panel)) return true;
+    return false;
+  }
+
+  /**
+   * Wire a pointer/wheel event so an open overlay gets first refusal via
+   * {@link _routeToOverlay}, and `onArena` only runs if none claims it.
+   * `onArena` is plain arena-input code: it never has to check whether an
+   * overlay owns the event, because it's simply never called when one does.
+   * Use this for any gesture with no work that must run before that check
+   * (e.g. `pointerdown` still wires by hand, since audio-unlock has to fire on
+   * every press, overlay or not).
+   *
+   * @param {string} event  A Phaser input event name.
+   * @param {(o: import('../ui/Overlay.js').Overlay, ...args: any[]) => boolean|void} toOverlay
+   *   Builds the overlay call from this event's own arguments.
+   * @param {(...args: any[]) => void} onArena  Runs with those same arguments.
+   * @returns {void}
+   */
+  _wireGesture(event, toOverlay, onArena) {
+    this.input.on(event, (...args) => {
+      if (!this._routeToOverlay((o) => toOverlay(o, ...args))) onArena(...args);
+    });
+  }
+
+  /**
    * Overlay router hook: an overlay just opened. Any open cancels a camera pan.
    * A modal joins the input-owning stack (and clears any menu scroll-drag left by
    * the press that opened it from a menu row); a modeless panel joins `_panels`;
@@ -562,20 +610,12 @@ export class GameScene extends Phaser.Scene {
       sfx.unlock(); // browsers need a user gesture to start audio
       this.camRig.stopGlide(); // any press cancels an in-progress settle pan/zoom
       // A blocking overlay owns input while up (its buttons handle their own
-      // taps); a press starts its scroll drag. Confirms sit above the menu.
-      if (this._activeModal) {
-        this._activeModal.onPointerDown(p);
-        return;
-      }
-      if (this._menuOpen) {
-        this.gameMenu.menu.onPointerDown(p);
-        return;
-      }
+      // taps); a press starts its scroll drag. Confirms sit above the menu. A
+      // modeless panel (the Lab) owns presses only over itself (and starts its
+      // own scroll drag); anywhere else falls through to the arena.
+      if (this._routeToOverlay((o) => o.onPointerDown(p))) return;
       if (this._pinchDist) return; // a two-finger pinch owns the gesture
       if (p.y < this._hudHeight) return; // press is on the HUD ribbon, not the arena
-      // A modeless panel (the Lab) owns presses over itself (and starts its own
-      // scroll drag); anywhere else falls through to the arena.
-      for (const panel of this._panels) if (panel.onPointerDown(p)) return;
 
       // God mode: a right-press on either ball picks up the pair. Checked before
       // the pan router so the drag doesn't also scroll the camera. A right-press
@@ -637,48 +677,38 @@ export class GameScene extends Phaser.Scene {
       if (go === this.brothers.anchor.go && this._pinEditable()) this._beginPinGesture(p);
     });
 
-    this.input.on('pointermove', (p) => {
-      // (The arena name label follows the pointer via the Tooltip service's own
-      // pointermove listener — no need to reposition it here.)
-      if (this._activeModal) {
-        this._activeModal.onPointerMove(p); // drives its scroll drag, if any
-        return;
+    this._wireGesture(
+      'pointermove',
+      (o, p) => o.onPointerMove(p), // drives its scroll drag, if any
+      (p) => {
+        // (The arena name label follows the pointer via the Tooltip service's own
+        // pointermove listener — no need to reposition it here.)
+        if (this._godDrag) return this.brothers.godMoveTo(this._godDrag, p.worldX, p.worldY);
+        if (this._pinning) return this._updatePinGesture(p); // moving the anchor's pin, not the camera
+        if (this.isAiming) return; // Phaser's drag moves the launcher; don't pan
+        if (this._isPanning) {
+          // Drag the world under the finger: scroll opposite to the move, scaled
+          // by zoom. Phaser clamps to the camera bounds in preRender.
+          const cam = this.cameras.main;
+          cam.setScroll(
+            cam.scrollX - (p.x - this._panLast.x) / cam.zoom,
+            cam.scrollY - (p.y - this._panLast.y) / cam.zoom
+          );
+          this.camRig.clamp();
+          this._panLast.x = p.x;
+          this._panLast.y = p.y;
+        }
       }
-      if (this._menuOpen) {
-        this.gameMenu.menu.onPointerMove(p); // drives its scroll drag, if any
-        return;
-      }
-      for (const panel of this._panels) if (panel.onPointerMove(p)) return; // its scroll drag, if any
-      if (this._godDrag) return this.brothers.godMoveTo(this._godDrag, p.worldX, p.worldY);
-      if (this._pinning) return this._updatePinGesture(p); // moving the anchor's pin, not the camera
-      if (this.isAiming) return; // Phaser's drag moves the launcher; don't pan
-      if (this._isPanning) {
-        // Drag the world under the finger: scroll opposite to the move, scaled
-        // by zoom. Phaser clamps to the camera bounds in preRender.
-        const cam = this.cameras.main;
-        cam.setScroll(
-          cam.scrollX - (p.x - this._panLast.x) / cam.zoom,
-          cam.scrollY - (p.y - this._panLast.y) / cam.zoom
-        );
-        this.camRig.clamp();
-        this._panLast.x = p.x;
-        this._panLast.y = p.y;
-      }
-    });
+    );
 
     // A release *outside* the canvas fires `pointerupoutside`, not `pointerup`, so
-    // handle both — otherwise a gesture (an overlay resize/drag, an aim, a pin, a
+    // wire both to the same arena handler — otherwise a gesture (an aim, a pin, a
     // pan) sticks if the pointer leaves the window before the button is released.
-    const onPointerUp = (p) => {
-      if (this._activeModal) {
-        this._activeModal.onPointerUp(p); // ends its scroll drag, if any
-        return;
-      }
-      if (this._menuOpen) {
-        this.gameMenu.menu.onPointerUp(p); // ends its scroll drag, if any
-        return;
-      }
-      for (const panel of this._panels) if (panel.onPointerUp(p)) return; // ends its scroll drag
+    // (An overlay's own stuck-gesture case is handled by the blur cancellation
+    // below instead, since a window-blur isn't guaranteed to be followed by
+    // either pointer event.)
+    const toOverlayUp = (o, p) => o.onPointerUp(p);
+    const onArenaPointerUp = (p) => {
       if (this._godDrag) {
         // The drag went wherever the pointer went; the drop decides what's legal.
         const outcome = this.brothers.godDrop(this._godDrag, this._godStart);
@@ -721,8 +751,8 @@ export class GameScene extends Phaser.Scene {
       // — see _kickoff, fired from the first snap in the collision router.
       this.hud.refresh();
     };
-    this.input.on('pointerup', onPointerUp);
-    this.input.on('pointerupoutside', onPointerUp);
+    this._wireGesture('pointerup', toOverlayUp, onArenaPointerUp);
+    this._wireGesture('pointerupoutside', toOverlayUp, onArenaPointerUp);
 
     // Phaser supplies dragX/dragY already offset for where the launcher was
     // grabbed, so the ball tracks the pointer without snapping its centre under
@@ -743,23 +773,28 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Laptop: mouse wheel zooms toward the cursor.
-    this.input.on('wheel', (p, _over, _dx, dy) => {
-      if (this._activeModal) {
-        this._activeModal.onWheel(p, dy); // wheel scrolls the modal body, not the arena
-        return;
+    this._wireGesture(
+      'wheel',
+      (o, p, _over, _dx, dy) => o.onWheel(p, dy), // scrolls it, not the arena
+      (p, _over, _dx, dy) => {
+        const step = Config.zoom.wheelStep;
+        this.camRig.zoomBy(dy > 0 ? 1 - step : 1 + step, p.x, p.y);
       }
-      if (this._menuOpen) {
-        this.gameMenu.menu.onWheel(p, dy); // wheel scrolls the menu list, not the arena
-        return;
-      }
-      for (const panel of this._panels) if (panel.onWheel(p, dy)) return; // scrolls it, not the arena
-      const step = Config.zoom.wheelStep;
-      this.camRig.zoomBy(dy > 0 ? 1 - step : 1 + step, p.x, p.y);
-    });
+    );
 
     // Mobile: make a second touch pointer available for pinch (handled in
     // update() so we can track the changing finger spread frame to frame).
     this.input.addPointer(1);
+
+    // An overlay's window-drag/resize/scroll can get stuck mid-gesture if focus
+    // moves away before the matching release (alt-tab, switching tabs, a native
+    // dialog): the eventual mouseup then lands outside the page, so nothing here
+    // ever hears it, and the overlay would keep "dragging" on every later move
+    // even with the button now up. Cancel whatever's active the moment focus
+    // actually goes, via the same priority _routeToOverlay uses everywhere else
+    // (only the input-owning overlay could have started a gesture, so that's the
+    // only one that needs cancelling). Mirrors TitleScene's own BLUR handling.
+    this.game.events.on(Phaser.Core.Events.BLUR, () => this._routeToOverlay((o) => o.onPointerUp()));
   }
 
   /**

@@ -267,7 +267,21 @@ export class Overlay {
     }
   }
 
-  /** @param {Phaser.Input.Pointer} p @returns {boolean} true if owned. */
+  /**
+   * End whatever gesture is active: a window drag/resize (clearing it and
+   * releasing its pointer shield) or a scroll drag (clearing the ScrollView's
+   * drag mode). A no-op if nothing was active.
+   *
+   * Called with a real `p` on an actual pointer release. Also called with no
+   * `p` at all, from GameScene's window-blur handler, to forcibly cancel a
+   * gesture whose matching release never arrives: focus can move away
+   * mid-gesture (alt-tab, switching tabs, a native dialog), and the eventual
+   * mouseup then lands outside the page, so this overlay never hears it.
+   * Nothing below reads `p`, so that cancellation path behaves exactly like a
+   * real release.
+   *
+   * @param {Phaser.Input.Pointer} [p] @returns {boolean} true if owned.
+   */
   onPointerUp(p) {
     diag.trace('input', `${this.role} up`, {
       resizing: this._resizing, windowDrag: this._windowDragging, scrolling: !!this.scrollView?.dragging,
