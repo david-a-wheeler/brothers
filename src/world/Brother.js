@@ -97,6 +97,20 @@ export class Brother extends Movable {
     this._mudShimmyX = 0;
   }
 
+  /**
+   * All of this brother's display objects. Use this (instead of listing
+   * `go`/`face`/`feature` yourself) whenever you need every part of him at
+   * once: adding them to a container, fading them, etc.
+   *
+   * @returns {Array<Phaser.GameObjects.GameObject>} His display objects (e.g.
+   *   body, face, and feature if he has one); don't assume which. This getter
+   *   decides that, filtering out any that don't apply (e.g. Ken has no
+   *   feature, since "Remove Ken's beard").
+   */
+  get parts() {
+    return [this.go, this.face, this.feature].filter(Boolean);
+  }
+
   /** @returns {number} Absolute world x of the pin (centre + offset). */
   get pinX() {
     return this.go.x + this.pinOffsetX;

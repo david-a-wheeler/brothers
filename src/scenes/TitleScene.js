@@ -526,10 +526,12 @@ export class TitleScene extends Phaser.Scene {
     this._labelScale = 1;
     this._goalExtraDrop = 0;
 
-    // Everything that fades out during the blank between loops.
+    // Everything that fades out during the blank between loops. Brother.parts
+    // already excludes a missing feature (e.g. Ken has no beard), so no filtering
+    // needed here.
     this._faders = [
-      this.david.go, this.david.face, this.david.feature,
-      this.ken.go, this.ken.face, this.ken.feature,
+      ...this.david.parts,
+      ...this.ken.parts,
       this.goal.gfx, this.goal.reticle,
       ...this._labels.map((l) => l.txt),
     ];
@@ -543,15 +545,13 @@ export class TitleScene extends Phaser.Scene {
     // the depth stack they use in-game: body, then face, then the facial feature
     // ON TOP (David's glasses at depth 7 sit over the face at depth 6). Feature
     // after face — otherwise the face emoji paints over the glasses and hides them.
-    this.stage.add(
-      [
-        this.goal.gfx, this.goal.reticle,
-        this.band, this.glow,
-        this.ken.go, this.ken.face, this.ken.feature,
-        this.david.go, this.david.face, this.david.feature,
-        ...this._labels.map((l) => l.txt),
-      ].filter(Boolean)
-    );
+    this.stage.add([
+      this.goal.gfx, this.goal.reticle,
+      this.band, this.glow,
+      ...this.ken.parts,
+      ...this.david.parts,
+      ...this._labels.map((l) => l.txt),
+    ]);
 
     // The first turn is David-launches-Ken (matching the game's usual opener).
     // `_swapped` flips after each cycle (see _runStep) to alternate turns.
