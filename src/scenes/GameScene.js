@@ -786,15 +786,17 @@ export class GameScene extends Phaser.Scene {
     // update() so we can track the changing finger spread frame to frame).
     this.input.addPointer(1);
 
-    // An overlay's window-drag/resize/scroll can get stuck mid-gesture if focus
-    // moves away before the matching release (alt-tab, switching tabs, a native
-    // dialog): the eventual mouseup then lands outside the page, so nothing here
-    // ever hears it, and the overlay would keep "dragging" on every later move
-    // even with the button now up. Cancel whatever's active the moment focus
-    // actually goes, via the same priority _routeToOverlay uses everywhere else
-    // (only the input-owning overlay could have started a gesture, so that's the
-    // only one that needs cancelling). Mirrors TitleScene's own BLUR handling.
-    this.game.events.on(Phaser.Core.Events.BLUR, () => this._routeToOverlay((o) => o.onPointerUp()));
+    // Any gesture, overlay or arena, can get stuck mid-drag if focus moves away
+    // before its matching release (alt-tab, switching tabs, a native dialog):
+    // the eventual mouseup then lands outside the page, so nothing here ever
+    // hears it. Cancel whatever's active the moment focus actually goes, via
+    // the same two calls that already cancel a gesture for other reasons
+    // elsewhere (_routeToOverlay for a modal/menu/panel drag; _cancelArenaGesture
+    // for an aim/pin/god-drag/pan). Mirrors TitleScene's own BLUR handling.
+    this.game.events.on(Phaser.Core.Events.BLUR, () => {
+      this._routeToOverlay((o) => o.onPointerUp());
+      this._cancelArenaGesture();
+    });
   }
 
   /**
@@ -1039,9 +1041,39 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Abort whatever arena gesture is running, as an interruption rather than a
+   * release: revert a mid-drag pin, cancel a mid-pull aim (never fire it), drop
+   * a god-mode grab wherever it legally can (never leave it stuck mid-air), and
+   * stop panning. Each line is independently a no-op unless that gesture is
+   * actually active, so this is always safe to call wholesale wherever
+   * something else needs to take over input without a normal release deciding
+   * it: a second touch starting a pinch (below), and the window losing focus
+   * mid-gesture (see _wireInput's blur handler). `_godEditable` already forbids
+   * god mode during a pinch, so those two can't collide.
+   *
+   * @returns {void}
+   */
+  _cancelArenaGesture() {
+    this._isPanning = false;
+    if (this._pinning) this._cancelPinGesture();
+    if (this.isAiming) {
+      this.isAiming = false;
+      this.brothers.cancelAim();
+      this._endGrab();
+      this.hud.refresh();
+    }
+    if (this._godDrag) {
+      this.brothers.godDrop(this._godDrag, this._godStart);
+      this._godDrag = null;
+      this._godStart = null;
+      this.hud.refresh();
+    }
+  }
+
+  /**
    * Two-finger pinch zoom. Tracks the spread between the two active touch
    * pointers; the per-frame change in spread drives the zoom about their
-   * midpoint. Cancels any in-progress aim so a pinch never fires a shot.
+   * midpoint. Cancels any in-progress gesture so a pinch never fires a shot.
    *
    * @returns {void}
    */
@@ -1053,14 +1085,7 @@ export class GameScene extends Phaser.Scene {
       this._pinchDist = 0;
       return;
     }
-    this._isPanning = false; // pinch takes over from a single-finger pan
-    if (this._pinning) this._cancelPinGesture(); // a second finger ends a pin drag (revert)
-    if (this.isAiming) {
-      this.isAiming = false;
-      this.brothers.cancelAim();
-      this._endGrab();
-      this.hud.refresh();
-    }
+    this._cancelArenaGesture(); // a second finger interrupts whatever was running
     const dist = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
     if (this._pinchDist > 0 && dist > 0) {
       this.camRig.zoomBy(dist / this._pinchDist, (p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
