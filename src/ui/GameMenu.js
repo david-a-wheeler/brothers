@@ -28,9 +28,9 @@ const HELP_TEXT = [
   'Goal: Land a brother at rest inside the goal ring to win.',
   'Camera: mouse wheel or pinch/spread to zoom in and out; drag empty space to pan.',
   'Scoring: "Best" is the turns you had left on a win (higher is better). "Pack" adds up your Bests. "-" means not won yet; "0" is a real score.',
-  'Info: touch and hold, or hover with a mouse, over anything in the arena or the HUD to see what it is.',
+  'Explore: touch and hold, or hover with a mouse, over anything in the arena or the HUD to see what it is.',
+  'Obstacles: walls block and bounce. Teleporters warp the pair to a matching target. Bombs are hazards: a spinning arrow shows where each will go and how fast; touching one usually ends the game.',
   'Anchor pin adjustment: single-tap for nearest compass point or center, double-tap for center, drag for fine positioning.',
-  'Walls block and bounce. Teleporters warp the pair to a matching target. Bombs are hazards: a spinning arrow shows where each will go and how fast; touching one usually ends the game.',
 ].join('\n\n');
 
 /** Body text for the About modal (plain text; the modal word-wraps it). */
