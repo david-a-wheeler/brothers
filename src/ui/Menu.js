@@ -127,6 +127,20 @@ export class Menu extends Overlay {
   }
 
   /**
+   * Mark the *next* render as scroll-preserving: no reset-to-top, no fade-in
+   * (the same treatment a resize {@link rebuild} gives itself). Use this
+   * before re-rendering the current view for a reason that isn't navigation
+   * (e.g. GameMenu.rerender after a dev toggle), so the user stays where they
+   * were and sees the result land right where they're already looking instead
+   * of being scrolled back to the top.
+   *
+   * @returns {void}
+   */
+  preserveScrollOnNextRender() {
+    this._preserveScroll = true;
+  }
+
+  /**
    * Begin drawing a view: show/hide Back (which shifts the list top), clear the
    * old rows, and reset the scroll to the top unless this is a resize rebuild.
    *

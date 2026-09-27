@@ -179,16 +179,24 @@ export class GameMenu {
   }
 
   /**
-   * Re-render the current menu view on the NEXT tick (not inside the current
-   * pointer event, which would destroy the row being tapped). Used by the dev
-   * toggles and after forgetting scores.
+   * Re-render the current menu view, preserving scroll: used by the dev
+   * toggles (Lab/Test), so flipping one doesn't jar the user back to the top
+   * and hide the very toggle they just used to see it land "On"/"Off".
+   *
+   * Safe to call straight from an `onTap` (no {@link deferTap} of its own
+   * needed here): both current callers are toggle rows, and `Menu.wireTap`
+   * already defers every `onTap` it wires, so Phaser has already finished
+   * dispatching the original tap by the time this runs. A future caller NOT
+   * reached through `wireTap` would need its own deferral first, for the same
+   * reason `wireTap` needs one: re-rendering clears and rebuilds the scroll
+   * body, which would destroy a row still mid-dispatch.
    *
    * @returns {void}
    */
   rerender() {
-    this.scene.time.delayedCall(0, () => {
-      if (this.menu.open) this._renderView();
-    });
+    if (!this.menu.open) return;
+    this.menu.preserveScrollOnNextRender();
+    this._renderView();
   }
 
   /**
