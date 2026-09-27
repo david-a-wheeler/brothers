@@ -25,6 +25,7 @@ import { Hud } from '../ui/Hud.js';
 import { GameMenu } from '../ui/GameMenu.js';
 import { Lab } from '../ui/Lab.js';
 import { Tooltip } from '../ui/Tooltip.js';
+import { flushDeferredTaps } from '../ui/deferTap.js';
 
 /**
  * Level state is tracked along two axes.
@@ -1205,6 +1206,11 @@ export class GameScene extends Phaser.Scene {
     // draws again), and keep stepping — a wrong frame beats a dead one, and it
     // keeps the "Report a problem" menu reachable.
     try {
+      // Run this frame's deferred taps (see deferTap) first: Phaser has already
+      // finished dispatching this frame's input by the time update() runs, so
+      // whatever a tap deferred (e.g. a menu row destroying its own scroll body
+      // to navigate) can now run without disturbing dispatch that's already done.
+      flushDeferredTaps();
       this._update(delta);
     } catch (e) {
       if (!this._updateFailed) {

@@ -232,7 +232,7 @@ export class Modal extends Overlay {
     btn.on('pointerout', () => btn.setAlpha(1));
     btn.on('pointerup', () => {
       sfx.tick();
-      deferTap(this.scene, () => onClick(btn));
+      deferTap(() => onClick(btn));
     });
     return btn;
   }

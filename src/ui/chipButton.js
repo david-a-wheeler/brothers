@@ -30,7 +30,7 @@ export function chipButton(scene, x, y, label, onClick, { bg = '#444444', bgHove
     sfx.tick();
     // Deferred (see deferTap): the close × calls onClick = () => this.hide(),
     // which destroys this very button as part of its overlay's teardown.
-    deferTap(scene, onClick);
+    deferTap(onClick);
   });
   return btn;
 }
