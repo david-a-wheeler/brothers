@@ -242,6 +242,9 @@ export class Overlay {
     }
     const sv = this.scrollView;
     if (sv && sv.dragging) {
+      diag.trace('input', `${this.role} scroll-drag move`, {
+        isDown: p.isDown, x: Math.round(p.x), y: Math.round(p.y), scroll: Math.round(sv.scroll),
+      });
       sv.drag(p);
       return true;
     }
@@ -303,6 +306,7 @@ export class Overlay {
   /** @param {Phaser.Input.Pointer} p @param {number} dy @returns {boolean} true if owned. */
   onWheel(p, dy) {
     if (this.modal || this._overSelf(p)) {
+      diag.trace('input', `${this.role} wheel`, { dy: Math.round(dy) });
       this.scrollView?.wheel(dy);
       return true;
     }

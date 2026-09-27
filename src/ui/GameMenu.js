@@ -404,6 +404,7 @@ export class GameMenu {
    * @returns {void}
    */
   _showPackDetail(manifest, from = 'main') {
+    if (!this.menu.open) return; // onTap now runs a tick late (see Menu.wireTap); the menu could have closed meanwhile
     const scene = this.scene;
     this._view = 'detail';
     this._detail = manifest;

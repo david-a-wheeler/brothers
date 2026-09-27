@@ -310,7 +310,16 @@ export class Menu extends Overlay {
   /**
    * Wire a tap handler onto a list object: ignore the release that ended a
    * scroll-drag (scrolled-out rows are already input-disabled by the ScrollView),
-   * play the click sound, then run `onTap`.
+   * play the click sound, then run `onTap` on the next tick.
+   *
+   * That deferral matters. `onTap` runs from this object's own `pointerup`
+   * handler, while Phaser is still mid-dispatch for that very event. A
+   * navigating `onTap` (e.g. opening Pack details) rebuilds the scroll body,
+   * destroying this row out from under that in-progress dispatch; that stops
+   * Phaser from ever reaching the scene-level `pointerup` that would have ended
+   * the press's scroll-drag, leaving it stuck "dragging" (so the new view keeps
+   * scrolling on every later mouse move, with no button held). Running `onTap`
+   * one tick later lets Phaser finish this event undisturbed first.
    *
    * @param {Phaser.GameObjects.GameObject} obj @param {() => void} onTap @returns {void}
    */
@@ -322,7 +331,7 @@ export class Menu extends Overlay {
       }
       diag.trace('input', `${this.role} row tap`);
       sfx.tick();
-      onTap();
+      this.scene.time.delayedCall(0, onTap);
     });
   }
 
