@@ -1,6 +1,7 @@
 import { Config } from '../config.js';
 import { sfx } from '../Sfx.js';
 import { Overlay } from './Overlay.js';
+import { deferTap } from './deferTap.js';
 
 /**
  * A centred, blocking dialog: a dimming backdrop, a rounded card with a title, an
@@ -216,7 +217,9 @@ export class Modal extends Overlay {
    * @param {number} x @param {number} y @param {string} label
    * @param {string} bg  CSS background colour.
    * @param {(btn:Phaser.GameObjects.Text)=>void} onClick  Receives the button, so
-   *   a handler that stays open (e.g. "Copy") can update its own label.
+   *   a handler that stays open (e.g. "Copy") can update its own label. Runs
+   *   deferred (see {@link deferTap}), since e.g. "Yes"/"No" close this modal,
+   *   destroying this very button as part of its teardown.
    * @returns {Phaser.GameObjects.Text}
    */
   _button(x, y, label, bg, onClick) {
@@ -229,7 +232,7 @@ export class Modal extends Overlay {
     btn.on('pointerout', () => btn.setAlpha(1));
     btn.on('pointerup', () => {
       sfx.tick();
-      onClick(btn);
+      deferTap(this.scene, () => onClick(btn));
     });
     return btn;
   }

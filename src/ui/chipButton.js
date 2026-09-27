@@ -1,5 +1,6 @@
 import { Config } from '../config.js';
 import { sfx } from '../Sfx.js';
+import { deferTap } from './deferTap.js';
 
 /**
  * A small labelled "chip" button: text on a coloured background with a hover
@@ -8,7 +9,9 @@ import { sfx } from '../Sfx.js';
  * re-depth / reposition / group / destroy it (the default depth is 21).
  *
  * @param {Phaser.Scene} scene
- * @param {number} x @param {number} y @param {string} label @param {() => void} onClick
+ * @param {number} x @param {number} y @param {string} label
+ * @param {() => void} onClick  Runs deferred (see {@link deferTap}), so it's
+ *   safe to destroy this very button from inside it (e.g. `() => this.hide()`).
  * @param {{bg?:string, bgHover?:string, guard?:((p:Phaser.Input.Pointer)=>boolean)|null}} [opts]
  *   `guard` is passed the release pointer; returning true skips the tap, so a
  *   scroll-drag that ends over the control doesn't also trigger it.
@@ -25,7 +28,9 @@ export function chipButton(scene, x, y, label, onClick, { bg = '#444444', bgHove
   btn.on('pointerup', (pointer) => {
     if (guard && guard(pointer)) return; // release ended a scroll-drag, not a tap
     sfx.tick();
-    onClick();
+    // Deferred (see deferTap): the close × calls onClick = () => this.hide(),
+    // which destroys this very button as part of its overlay's teardown.
+    deferTap(scene, onClick);
   });
   return btn;
 }
