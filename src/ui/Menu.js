@@ -339,7 +339,7 @@ export class Menu extends Overlay {
       }
       diag.trace('input', `${this.role} row tap`);
       sfx.tick();
-      deferTap(onTap);
+      deferTap(this.scene, onTap);
     });
   }
 

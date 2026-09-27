@@ -1,13 +1,13 @@
 /**
- * Actions queued by {@link deferTap}, drained once per frame by
- * {@link flushDeferredTaps} (see GameScene.update).
- * @type {Array<() => void>}
- */
-let queue = [];
-
-/**
- * Queue `fn` to run after this frame's input handling finishes, instead of
- * running it synchronously right now.
+ * Queue `fn` to run once, on `scene`'s next `Phaser.Scenes.Events.UPDATE`,
+ * instead of running it synchronously right now.
+ *
+ * That event is the library's own boundary between "this frame's input is
+ * fully dispatched" and "this frame's game logic starts": Phaser updates its
+ * input manager during the earlier game-level `PRE_STEP` (see `Phaser.Game#step`),
+ * then each scene's `Systems#step` emits `UPDATE` before calling the scene's
+ * own `update()` method. Listening for it here needs no queue of our own and
+ * no change to any scene's `update()`; Phaser already fires it every frame.
  *
  * Use this to wrap the action of any discrete tap/click whose effect might
  * destroy the very game object Phaser is currently dispatching *this* event
@@ -24,26 +24,10 @@ let queue = [];
  * internally by Phaser's own scene manager, and a handler that only mutates
  * data (not game objects) has nothing to derail.
  *
+ * @param {Phaser.Scene} scene
  * @param {() => void} fn
  * @returns {void}
  */
-export function deferTap(fn) {
-  queue.push(fn);
-}
-
-/**
- * Run every action queued by {@link deferTap}, in order, then clear the
- * queue. Called once per frame from GameScene.update(), after Phaser has
- * already finished dispatching this frame's input, so a deferred action can
- * safely destroy whatever it needs to without disturbing dispatch that's
- * already complete. An action a flushed callback itself queues (there's no
- * current case that does) runs on the next flush, not this one, since the
- * queue is swapped out before any of the current batch runs.
- *
- * @returns {void}
- */
-export function flushDeferredTaps() {
-  const pending = queue;
-  queue = [];
-  for (const fn of pending) fn();
+export function deferTap(scene, fn) {
+  scene.events.once(Phaser.Scenes.Events.UPDATE, fn);
 }
