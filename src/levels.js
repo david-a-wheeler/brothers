@@ -15,6 +15,7 @@
 
 import { setLastLevel, setLastPack } from './prefs.js';
 import { recordLevelCount } from './scores.js';
+import { reportLoadFailure } from './loadFailure.js';
 
 /** Defaults applied when a level omits something. */
 const DEFAULTS = {
@@ -225,6 +226,38 @@ const levelFile = (index) => `level${index + 1}.tmj`;
 const MAX_LEVELS = 999;
 
 /**
+ * A pack/level fetch failed in a way the player should hear about in plain
+ * language (the server's unreachable, a level's file is gone), as opposed to
+ * a programming bug. Reported via {@link reportLoadFailure} at the point it's
+ * thrown (see {@link fetchOrThrow}), so the UI layer can show it without any
+ * caller here having to remember to; still a normal `Error` otherwise, so
+ * existing generic `catch` blocks (e.g. main.js's boot-time fallback) keep
+ * working unchanged.
+ */
+export class LoadError extends Error {}
+
+/**
+ * `fetch()`, but a network-layer failure (server unreachable, connection
+ * dropped, offline) is reported and re-thrown as a {@link LoadError} instead
+ * of the raw `TypeError`/`NetworkError` propagating unannounced. Doesn't
+ * touch a normal non-ok response (e.g. a 404 probing for a level that
+ * doesn't exist is expected control flow, not a load failure); callers still
+ * check `.ok` themselves exactly as before.
+ *
+ * @param {string} url @param {RequestInit} [opts]
+ * @returns {Promise<Response>}
+ */
+async function fetchOrThrow(url, opts) {
+  try {
+    return await fetch(url, opts);
+  } catch (e) {
+    const err = new LoadError('Could not reach the server. Check your connection and try again.', { cause: e });
+    reportLoadFailure(err);
+    throw err;
+  }
+}
+
+/**
  * The active pack: its directory name (which is also its id and display name)
  * plus a sparse cache of loaded {@link Level}s (filled lazily by
  * {@link ensureLevel}). `count` is discovered by probing; level bodies are
@@ -262,7 +295,7 @@ async function probeLevelCount(packName) {
 
   /** @param {number} i 0-based level index. @returns {Promise<boolean>} */
   const exists = async (i) =>
-    (await fetch(`${PACKS_ROOT}/${packName}/${levelFile(i)}`, { method: 'HEAD' })).ok;
+    (await fetchOrThrow(`${PACKS_ROOT}/${packName}/${levelFile(i)}`, { method: 'HEAD' })).ok;
 
   let count;
   if (!(await exists(0))) {
@@ -299,8 +332,13 @@ async function probeLevelCount(packName) {
  * @returns {Promise<Level>}
  */
 async function fetchLevel(packName, index) {
-  const res = await fetch(`${PACKS_ROOT}/${packName}/${levelFile(index)}`);
-  if (!res.ok) throw new Error(`Missing level: ${packName}/${levelFile(index)}`);
+  const url = `${PACKS_ROOT}/${packName}/${levelFile(index)}`;
+  const res = await fetchOrThrow(url);
+  if (!res.ok) {
+    const err = new LoadError("Couldn't load that level. Check your connection and try again.", { cause: url });
+    reportLoadFailure(err);
+    throw err;
+  }
   return loadTiledLevel(await res.json());
 }
 
@@ -314,7 +352,11 @@ async function fetchLevel(packName, index) {
  */
 export async function loadPack(packName) {
   const count = await probeLevelCount(packName);
-  if (count === 0) throw new Error(`Pack "${packName}" has no levels`);
+  if (count === 0) {
+    const err = new LoadError(`Couldn't load pack "${packName}". Check your connection and try again.`);
+    reportLoadFailure(err);
+    throw err;
+  }
   activePack = { name: packName, count, levels: new Array(count) };
   activeIndex = 0;
   await ensureLevel(0);
@@ -390,7 +432,7 @@ let packList = null;
  */
 export async function listPacks() {
   if (packList) return packList;
-  const names = await (await fetch(`${PACKS_ROOT}/index.json`)).json();
+  const names = await (await fetchOrThrow(`${PACKS_ROOT}/index.json`)).json();
   packList = names.map((name) => ({ id: name, name }));
   return packList;
 }

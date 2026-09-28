@@ -14,6 +14,7 @@ import {
   levelIntro,
 } from '../levels.js';
 import { introSeen, markIntroSeen } from '../intros.js';
+import { onLoadFailure } from '../loadFailure.js';
 import * as scores from '../scores.js';
 import { World } from '../world/World.js';
 import { KINDS } from '../world/registry.js';
@@ -53,6 +54,15 @@ import { Tooltip } from '../ui/Tooltip.js';
 export class GameScene extends Phaser.Scene {
   constructor() {
     super('game');
+    // Registered once (the constructor never re-runs on a scene.restart(),
+    // unlike create()): whenever levels.js reports a load failure (a pack or
+    // level fetch that couldn't reach the server), log it and tell the
+    // player plainly. See src/loadFailure.js for why no menu/HUD code needs
+    // its own error handling for this.
+    onLoadFailure((e) => {
+      diag.error('load failed', e);
+      this._showMessage("Couldn't load", e.message);
+    });
   }
 
   /**
